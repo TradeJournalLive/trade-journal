@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --color-ink: 11 15 20;
+  --color-panel: 17 24 39;
+  --color-elevate: 31 41 55;
+  --color-primary: 59 130 246;
+  --color-positive: 16 185 129;
+  --color-negative: 239 68 68;
+  --color-muted: 156 163 175;
+  --color-text: 248 250 252;
+  --color-border: 255 255 255;
+  --color-chip: 255 255 255;
+}
+
+html.light {
+  color-scheme: light;
+  --color-ink: 248 250 252;
+  --color-panel: 255 255 255;
+  --color-elevate: 241 245 249;
+  --color-primary: 37 99 235;
+  --color-positive: 16 185 129;
+  --color-negative: 239 68 68;
+  --color-muted: 71 85 105;
+  --color-text: 15 23 42;
+  --color-border: 15 23 42;
+  --color-chip: 15 23 42;
+}
+
+body {
+  @apply bg-ink antialiased;
+  color: rgb(var(--color-text));
+  font-family: "General Sans", "Satoshi", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  scrollbar-color: #1f2937 #0b0f14;
+  scrollbar-width: thin;
+}
+
+.section-title {
+  @apply text-2xl md:text-3xl font-semibold tracking-tight;
+}
+
+.section-lead {
+  @apply text-muted text-base md:text-lg;
+}
+
+.card {
+  @apply rounded-2xl p-6 shadow-soft;
+  background-color: rgb(var(--color-panel));
+  border: 1px solid rgb(var(--color-border) / 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi {
+  @apply rounded-xl px-5 py-4;
+  background-color: rgb(var(--color-panel));
+  border: 1px solid rgb(var(--color-border) / 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.badge {
+  @apply inline-flex items-center rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted;
+  background-color: rgb(var(--color-chip) / 0.06);
+  border: 1px solid rgb(var(--color-border) / 0.12);
+}
+
+.text-white {
+  color: rgb(var(--color-text)) !important;
+}
+
+.border-white\/5 {
+  border-color: rgb(var(--color-border) / 0.08) !important;
+}
+
+.border-white\/10 {
+  border-color: rgb(var(--color-border) / 0.12) !important;
+}
+
+.bg-white\/5 {
+  background-color: rgb(var(--color-chip) / 0.06) !important;
+}
+
+.bg-white\/10 {
+  background-color: rgb(var(--color-chip) / 0.12) !important;
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(90deg, rgb(var(--color-border) / 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgb(var(--color-border) / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.card::before,
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--color-primary) / 0.45),
+    transparent
+  );
+  opacity: 0.8;
+}
+
+.card::after,
+.kpi::after {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -80px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(
+    closest-side,
+    rgb(var(--color-primary) / 0.25),
+    transparent
+  );
+  opacity: 0.8;
+}
