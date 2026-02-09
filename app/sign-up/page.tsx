@@ -5,35 +5,38 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
-export default function SignInPage() {
+export default function SignUpPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
 
-  async function handleSignIn(event: React.FormEvent) {
+  async function handleSignUp(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    setSuccess("");
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
     }
     setLoading(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { error: signUpError } = await supabase.auth.signUp({
       email,
       password
     });
     setLoading(false);
-    if (signInError) {
-      setError(signInError.message);
+    if (signUpError) {
+      setError(signUpError.message);
       return;
     }
-    router.push("/dashboard");
+    setSuccess("Account created. Please check your email to confirm.");
+    setTimeout(() => router.push("/sign-in"), 1500);
   }
 
-  async function handleGoogleSignIn() {
+  async function handleGoogleSignUp() {
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
@@ -69,30 +72,30 @@ export default function SignInPage() {
               <span className="text-xl font-semibold">Trade Journal</span>
             </div>
             <h1 className="mt-6 text-3xl font-semibold tracking-tight">
-              Sign in to your trading cockpit
+              Create your trading workspace
             </h1>
             <p className="mt-4 text-sm text-muted max-w-sm">
-              Review KPIs, track risk, and log trades with a clean dashboard built for decisions.
+              Separate accounts keep strategies and results isolated for each trader.
             </p>
             <div className="mt-8 flex gap-3 text-xs text-muted">
-              <span>Risk analytics</span>
-              <span>Strategy breakdown</span>
-              <span>Equity curve</span>
+              <span>Private analytics</span>
+              <span>Secure storage</span>
+              <span>Multi-user ready</span>
             </div>
           </div>
 
           <div className="card">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-semibold">Welcome back</h2>
-                <p className="text-sm text-muted">Sign in to continue.</p>
+                <h2 className="text-2xl font-semibold">Create account</h2>
+                <p className="text-sm text-muted">Start your journal.</p>
               </div>
               <Link href="/" className="text-xs text-muted hover:text-white">
                 Home
               </Link>
             </div>
 
-            <form className="space-y-4" onSubmit={handleSignIn}>
+            <form className="space-y-4" onSubmit={handleSignUp}>
               <div>
                 <label className="text-xs text-muted">Email</label>
                 <input
@@ -115,35 +118,27 @@ export default function SignInPage() {
                   required
                 />
               </div>
-              <div className="flex items-center justify-between text-xs text-muted">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" />
-                  Remember me
-                </label>
-                <Link href="/forgot-password" className="text-xs text-muted hover:text-white">
-                  Forgot password?
-                </Link>
-              </div>
               {error && <p className="text-xs text-negative">{error}</p>}
+              {success && <p className="text-xs text-positive">{success}</p>}
               <button
                 type="submit"
                 className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-white"
                 disabled={loading}
               >
-                {loading ? "Signing in..." : "Sign in"}
+                {loading ? "Creating..." : "Create account"}
               </button>
               <button
                 type="button"
                 className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold"
-                onClick={handleGoogleSignIn}
+                onClick={handleGoogleSignUp}
                 disabled={oauthLoading}
               >
-                {oauthLoading ? "Connecting..." : "Continue with Google"}
+                {oauthLoading ? "Connecting..." : "Sign up with Google"}
               </button>
               <p className="text-xs text-muted">
-                New here?{" "}
-                <Link href="/sign-up" className="text-white">
-                  Create an account
+                Already have an account?{" "}
+                <Link href="/sign-in" className="text-white">
+                  Sign in
                 </Link>
               </p>
               {!isSupabaseConfigured && (

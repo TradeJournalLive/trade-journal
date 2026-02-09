@@ -111,6 +111,7 @@ body {
     transparent
   );
   opacity: 0.8;
+  pointer-events: none;
 }
 
 .card::after,
@@ -127,4 +128,5 @@ body {
     transparent
   );
   opacity: 0.8;
+  pointer-events: none;
 }

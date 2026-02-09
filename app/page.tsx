@@ -78,13 +78,24 @@ export default function Home() {
           <Link href="#pricing" className="hover:text-white">
             Pricing
           </Link>
+          <Link href="/sign-in" className="hover:text-white">
+            Sign in
+          </Link>
         </div>
-        <Link
-          href="/dashboard"
-          className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900"
-        >
-          Open demo
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/sign-up"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold"
+          >
+            Sign up
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+          >
+            Open demo
+          </Link>
+        </div>
       </header>
 
       <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr]">

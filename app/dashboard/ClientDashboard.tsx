@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { Session } from "@supabase/supabase-js";
 import { trades as seedTrades, type Trade } from "../data/trades";
 import {
   breakdownByDay,
@@ -15,6 +17,7 @@ import {
 } from "../data/analytics";
 import { BarList, DonutChart, Sparkline } from "../components/Charts";
 import TradeJournal from "./TradeJournal";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 const STORAGE_KEY = "pulsejournal_trades_v2";
 const THEME_KEY = "pulsejournal_theme";
@@ -162,6 +165,49 @@ function parseCsv(text: string) {
   return rows;
 }
 
+function toSupabaseRow(trade: Trade, userId: string) {
+  return {
+    user_id: userId,
+    trade_id: trade.tradeId,
+    date: trade.date,
+    instrument: trade.instrument,
+    market: trade.market,
+    entry_time: trade.entryTime,
+    exit_time: trade.exitTime,
+    strategy: trade.strategy,
+    direction: trade.direction,
+    size_qty: trade.sizeQty,
+    entry_price: trade.entryPrice,
+    exit_price: trade.exitPrice,
+    stop_loss: trade.stopLoss,
+    target_price: trade.targetPrice,
+    exit_reason: trade.exitReason,
+    platform: trade.platform
+  };
+}
+
+function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
+  const timeValue = (value: string | null) =>
+    value ? value.slice(0, 5) : "00:00";
+  return {
+    tradeId: String(row.trade_id ?? ""),
+    date: String(row.date ?? ""),
+    instrument: String(row.instrument ?? ""),
+    market: String(row.market ?? "Equity"),
+    entryTime: timeValue(row.entry_time ? String(row.entry_time) : null),
+    exitTime: timeValue(row.exit_time ? String(row.exit_time) : null),
+    strategy: String(row.strategy ?? "Unspecified"),
+    direction: row.direction === "Short" ? "Short" : "Long",
+    sizeQty: Number(row.size_qty ?? 0),
+    entryPrice: Number(row.entry_price ?? 0),
+    exitPrice: Number(row.exit_price ?? 0),
+    stopLoss: Number(row.stop_loss ?? 0),
+    targetPrice: Number(row.target_price ?? 0),
+    exitReason: String(row.exit_reason ?? "Manual"),
+    platform: String(row.platform ?? "Web")
+  };
+}
+
 function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
   const header = CSV_HEADERS.join(",");
   const rows = derivedTrades.map((trade) =>
@@ -203,7 +249,7 @@ function buildTemplateCsv() {
 }
 
 type AddTradeFormProps = {
-  onAdd: (trade: Trade) => void;
+  onAdd: (trade: Trade) => Promise<string | null> | string | null;
 };
 
 function AddTradeForm({ onAdd }: AddTradeFormProps) {
@@ -224,10 +270,13 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
   const [exitReason, setExitReason] = useState("");
   const [platform, setPlatform] = useState("Web");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState("");
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    setSuccess("");
 
     if (
       !tradeId ||
@@ -279,15 +328,28 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
       platform
     };
 
-    onAdd(trade);
-    setTradeId(`T-${Date.now()}`);
-    setInstrument("");
-    setStrategy("");
-    setEntryPrice("");
-    setExitPrice("");
-    setStopLoss("");
-    setTargetPrice("");
-    setExitReason("");
+    setSaving(true);
+    try {
+      const response = await onAdd(trade);
+      if (response) {
+        setError(response);
+        return;
+      }
+      setTradeId(`T-${Date.now()}`);
+      setInstrument("");
+      setStrategy("");
+      setEntryPrice("");
+      setExitPrice("");
+      setStopLoss("");
+      setTargetPrice("");
+      setExitReason("");
+      setSuccess("Trade saved.");
+      setTimeout(() => setSuccess(""), 2000);
+    } catch (err) {
+      setError("Save failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -302,12 +364,19 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
         <button
           type="submit"
           className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+          disabled={saving}
         >
-          Save trade
+          {saving ? "Saving..." : "Save trade"}
         </button>
       </div>
 
       {error && <p className="mt-3 text-xs text-negative">{error}</p>}
+      {success && <p className="mt-3 text-xs text-positive">{success}</p>}
+      {!error && (
+        <p className="mt-3 text-[11px] text-muted">
+          Tip: If you don’t see the trade, clear top filters.
+        </p>
+      )}
 
       <div className="mt-4 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
         <input
@@ -425,7 +494,10 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
 }
 
 export default function ClientDashboard() {
-  const [tradeList, setTradeList] = useState<Trade[]>(seedTrades);
+  const router = useRouter();
+  const [tradeList, setTradeList] = useState<Trade[]>(() =>
+    isSupabaseConfigured ? [] : seedTrades
+  );
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -436,8 +508,68 @@ export default function ClientDashboard() {
   const [globalStartDate, setGlobalStartDate] = useState("");
   const [globalEndDate, setGlobalEndDate] = useState("");
   const [activeSection, setActiveSection] = useState("overview");
+  const [dataSource, setDataSource] = useState(
+    isSupabaseConfigured ? "supabase" : "local"
+  );
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setDataSource("local");
+      setAuthLoading(false);
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) return;
+      try {
+        const parsed = JSON.parse(stored) as Trade[];
+        if (Array.isArray(parsed)) {
+          setTradeList(parsed);
+        }
+      } catch (error) {
+        console.error("Failed to load stored trades", error);
+      }
+      return;
+    }
+
+    setDataSource("supabase");
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      lastUserIdRef.current = data.session?.user?.id ?? null;
+      setAuthLoading(false);
+      if (!data.session) {
+        router.replace("/sign-in");
+      }
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        const nextUserId = nextSession?.user?.id ?? null;
+        if (nextUserId !== lastUserIdRef.current) {
+          setTradeList([]);
+          setImportStatus(null);
+        }
+        lastUserIdRef.current = nextUserId;
+        setSession(nextSession);
+        if (!nextSession) {
+          router.replace("/sign-in");
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (dataSource !== "local") return;
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return;
     try {
@@ -448,7 +580,31 @@ export default function ClientDashboard() {
     } catch (error) {
       console.error("Failed to load stored trades", error);
     }
-  }, []);
+  }, [dataSource]);
+
+  useEffect(() => {
+    if (dataSource !== "supabase" || !supabase || !session) return;
+    (async () => {
+      setImportStatus(null);
+      const { data, error } = await supabase
+        .from("trades")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .is("team_id", null)
+        .order("date", { ascending: false })
+        .order("entry_time", { ascending: false });
+      if (error) {
+        setImportStatus(`Supabase error: ${error.message}`);
+        setTradeList([]);
+        return;
+      }
+      if (data) {
+        setTradeList(data.map((row) => fromSupabaseRow(row)));
+      } else {
+        setTradeList([]);
+      }
+    })();
+  }, [dataSource, session]);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -475,11 +631,19 @@ export default function ClientDashboard() {
   }, [currency]);
 
   useEffect(() => {
+    if (dataSource === "supabase") return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tradeList));
-  }, [tradeList]);
+  }, [tradeList, dataSource]);
 
   useEffect(() => {
-    const sectionIds = ["overview", "performance", "strategy", "day", "behavior", "journal"];
+    const sectionIds = [
+      "overview",
+      "performance",
+      "strategy",
+      "day",
+      "behavior",
+      "journal"
+    ];
     const sections = sectionIds
       .map((id) => document.getElementById(id))
       .filter((section): section is HTMLElement => Boolean(section));
@@ -785,10 +949,52 @@ export default function ClientDashboard() {
       return;
     }
 
-    if (replaceOnImport) {
-      setTradeList(imported);
+    if (dataSource === "supabase") {
+      if (!supabase) {
+        setImportStatus("Supabase is not configured.");
+        return;
+      }
+      if (!session) {
+        setImportStatus("Please sign in to import trades.");
+        return;
+      }
+      if (replaceOnImport) {
+        const { error: deleteError } = await supabase
+          .from("trades")
+          .delete()
+          .eq("user_id", session.user.id)
+          .is("team_id", null);
+        if (deleteError) {
+          setImportStatus(`Supabase delete failed: ${deleteError.message}`);
+          return;
+        }
+      }
+      const { error } = await supabase
+        .from("trades")
+        .upsert(
+          imported.map((trade) => toSupabaseRow(trade, session.user.id)),
+          { onConflict: "user_id,trade_id" }
+        );
+      if (error) {
+        setImportStatus(`Supabase import failed: ${error.message}`);
+        return;
+      }
+      const { data } = await supabase
+        .from("trades")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .is("team_id", null)
+        .order("date", { ascending: false })
+        .order("entry_time", { ascending: false });
+      if (data) {
+        setTradeList(data.map((row) => fromSupabaseRow(row)));
+      }
     } else {
-      setTradeList((prev) => [...imported, ...prev]);
+      if (replaceOnImport) {
+        setTradeList(imported);
+      } else {
+        setTradeList((prev) => [...imported, ...prev]);
+      }
     }
 
     setImportStatus(
@@ -796,6 +1002,14 @@ export default function ClientDashboard() {
         skipped ? `, skipped ${skipped}` : ""
       }.`
     );
+  }
+
+  async function handleSignOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSession(null);
+    setTradeList([]);
+    router.replace("/sign-in");
   }
 
   const navItems = [
@@ -806,6 +1020,27 @@ export default function ClientDashboard() {
     { label: "Behavior", href: "#behavior", id: "behavior" },
     { label: "Journal", href: "#journal", id: "journal" }
   ];
+
+  const dataSourceLabel =
+    dataSource === "supabase"
+      ? `Supabase — ${session?.user?.email ?? "Personal"}`
+      : "Browser local storage";
+
+  if (dataSource === "supabase" && authLoading) {
+    return (
+      <main className="min-h-screen bg-ink text-white flex items-center justify-center">
+        <div className="card text-sm text-muted">Loading your workspace...</div>
+      </main>
+    );
+  }
+
+  if (dataSource === "supabase" && !session) {
+    return (
+      <main className="min-h-screen bg-ink text-white flex items-center justify-center">
+        <div className="card text-sm text-muted">Redirecting to sign in...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-ink text-white relative overflow-hidden">
@@ -838,7 +1073,7 @@ export default function ClientDashboard() {
             ))}
           </nav>
           <div className="mt-auto text-xs text-muted">
-            Data source: Browser local storage
+            Data source: {dataSourceLabel}
           </div>
         </aside>
 
@@ -934,6 +1169,19 @@ export default function ClientDashboard() {
                 >
                   {theme === "dark" ? "Light" : "Dark"} mode
                 </button>
+                {session?.user?.email && (
+                  <span className="rounded-full border border-white/10 px-3 py-2 text-[11px] text-muted">
+                    {session.user.email}
+                  </span>
+                )}
+                {session && (
+                  <button
+                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
+                    onClick={handleSignOut}
+                  >
+                    Sign out
+                  </button>
+                )}
                 <button
                   className="rounded-full bg-primary px-4 py-2 font-semibold"
                   onClick={handleExportCsv}
@@ -1291,7 +1539,38 @@ export default function ClientDashboard() {
             id="journal"
             className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
           >
-            <AddTradeForm onAdd={(trade) => setTradeList((prev) => [trade, ...prev])} />
+            <AddTradeForm
+              onAdd={async (trade) => {
+                if (dataSource === "supabase") {
+                  if (!supabase) return "Supabase is not configured.";
+                  if (!session) return "Please sign in to save trades.";
+                  const { error } = await supabase
+                    .from("trades")
+                    .insert(toSupabaseRow(trade, session.user.id));
+                  if (error) {
+                    setImportStatus(`Supabase insert failed: ${error.message}`);
+                    return `Supabase error: ${error.message}`;
+                  }
+                  const { data, error: fetchError } = await supabase
+                    .from("trades")
+                    .select("*")
+                    .eq("user_id", session.user.id)
+                    .is("team_id", null)
+                    .order("date", { ascending: false })
+                    .order("entry_time", { ascending: false });
+                  if (fetchError) {
+                    setImportStatus(`Supabase fetch failed: ${fetchError.message}`);
+                    return `Supabase fetch error: ${fetchError.message}`;
+                  }
+                  if (data) {
+                    setTradeList(data.map((row) => fromSupabaseRow(row)));
+                  }
+                  return null;
+                }
+                setTradeList((prev) => [trade, ...prev]);
+                return null;
+              }}
+            />
 
             <div className="card">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1345,7 +1624,10 @@ export default function ClientDashboard() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-              <span>{tradeList.length} trades stored locally</span>
+              <span>
+                {tradeList.length} trades · Data source:{" "}
+                {dataSource === "supabase" ? "Supabase" : "Local"}
+              </span>
               <div className="flex gap-3">
                 <button
                   className="rounded-full border border-white/10 px-4 py-2"
