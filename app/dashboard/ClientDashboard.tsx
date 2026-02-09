@@ -1348,8 +1348,8 @@ export default function ClientDashboard({
                 href={item.href}
                 className={`w-full rounded-lg px-3 py-2 text-left transition ${
                   activeSection === item.id
-                    ? "bg-white/10 text-white"
-                    : "text-muted hover:bg-white/10 hover:text-white"
+                    ? "bg-primary/10 text-white"
+                    : "text-muted hover:bg-primary/10 hover:text-white"
                 }`}
               >
                 {item.label}
@@ -1488,7 +1488,7 @@ export default function ClientDashboard({
                       className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow transition ${
                         theme === "dark" ? "bg-white" : "bg-slate-900"
                       } ${
-                        theme === "dark" ? "translate-x-1" : "translate-x-6"
+                        theme === "dark" ? "translate-x-6" : "translate-x-1"
                       }`}
                     />
                   </button>
