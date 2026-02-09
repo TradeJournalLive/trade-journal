@@ -4,16 +4,16 @@
 
 :root {
   color-scheme: dark;
-  --color-ink: 11 15 20;
-  --color-panel: 17 24 39;
-  --color-elevate: 31 41 55;
-  --color-primary: 59 130 246;
-  --color-positive: 16 185 129;
-  --color-negative: 239 68 68;
-  --color-muted: 156 163 175;
-  --color-text: 248 250 252;
-  --color-border: 255 255 255;
-  --color-chip: 255 255 255;
+  --color-ink: 9 12 18;
+  --color-panel: 16 23 42;
+  --color-elevate: 24 33 54;
+  --color-primary: 56 189 248;
+  --color-positive: 34 197 94;
+  --color-negative: 248 113 113;
+  --color-muted: 148 163 184;
+  --color-text: 226 232 240;
+  --color-border: 148 163 184;
+  --color-chip: 148 163 184;
 }
 
 html.light {
@@ -22,12 +22,12 @@ html.light {
   --color-panel: 255 255 255;
   --color-elevate: 241 245 249;
   --color-primary: 37 99 235;
-  --color-positive: 16 185 129;
+  --color-positive: 22 163 74;
   --color-negative: 239 68 68;
   --color-muted: 71 85 105;
   --color-text: 15 23 42;
-  --color-border: 15 23 42;
-  --color-chip: 15 23 42;
+  --color-border: 100 116 139;
+  --color-chip: 100 116 139;
 }
 
 body {

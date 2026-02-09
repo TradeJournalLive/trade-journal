@@ -2,16 +2,25 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 export default function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
+
+  const signupParam = searchParams.get("signup");
+  const signupMessage =
+    signupParam === "email"
+      ? "Sign up successful. Please confirm your email, then sign in."
+      : signupParam === "google"
+      ? "Google sign up successful. Please sign in to continue."
+      : "";
 
   async function handleSignIn(event: React.FormEvent) {
     event.preventDefault();
@@ -38,6 +47,7 @@ export default function SignInPage() {
       setError("Supabase is not configured.");
       return;
     }
+    localStorage.removeItem("signup_provider");
     setOauthLoading(true);
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -124,6 +134,9 @@ export default function SignInPage() {
                   Forgot password?
                 </Link>
               </div>
+              {signupMessage && (
+                <p className="text-xs text-positive">{signupMessage}</p>
+              )}
               {error && <p className="text-xs text-negative">{error}</p>}
               <button
                 type="submit"

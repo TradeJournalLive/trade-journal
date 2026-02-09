@@ -598,9 +598,8 @@ export default function ClientDashboard({
   const [strategyNameInput, setStrategyNameInput] = useState("");
   const [strategyRulesInput, setStrategyRulesInput] = useState("");
   const [strategyStatus, setStrategyStatus] = useState("");
-  const [activeSection, setActiveSection] = useState<
-    DashboardView | "performance" | "strategy" | "day" | "behavior"
-  >("overview");
+  const [activeSection, setActiveSection] =
+    useState<DashboardView>("overview");
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -770,9 +769,7 @@ export default function ClientDashboard({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setActiveSection(
-              entry.target.id as DashboardView | "performance" | "strategy" | "day" | "behavior"
-            );
+            setActiveSection(entry.target.id as DashboardView);
           }
         });
       },
@@ -1245,12 +1242,12 @@ export default function ClientDashboard({
       </div>
       <div className="relative flex items-start">
         <aside className="hidden h-screen w-60 flex-col border-r border-white/5 bg-panel/40 p-6 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto">
-          <div className="flex items-center gap-3">
+          <Link href="/dashboard" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
               TJ
             </div>
             <span className="text-lg font-semibold">Trade Journal</span>
-          </div>
+          </Link>
           <nav className="mt-10 grid gap-1 text-sm">
             {navItems.map((item) => (
               <Link
@@ -1280,7 +1277,7 @@ export default function ClientDashboard({
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Link
-                  href="/"
+                  href="/dashboard"
                   className="rounded-full border border-white/10 px-4 py-2 text-muted"
                 >
                   Home

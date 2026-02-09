@@ -32,8 +32,8 @@ export default function SignUpPage() {
       setError(signUpError.message);
       return;
     }
-    setSuccess("Account created. Please check your email to confirm.");
-    setTimeout(() => router.push("/sign-in"), 1500);
+    setSuccess("Sign up successful. Please check your email to confirm.");
+    setTimeout(() => router.push("/sign-in?signup=email"), 1500);
   }
 
   async function handleGoogleSignUp() {
@@ -42,6 +42,7 @@ export default function SignUpPage() {
       return;
     }
     setOauthLoading(true);
+    localStorage.setItem("signup_provider", "google");
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -50,6 +51,7 @@ export default function SignUpPage() {
     });
     if (oauthError) {
       setError(oauthError.message);
+      localStorage.removeItem("signup_provider");
       setOauthLoading(false);
     }
   }

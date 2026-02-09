@@ -28,9 +28,25 @@ export default function AuthCallbackPage() {
     const refreshToken = hashParams.get("refresh_token");
 
     if (errorDesc) {
+      localStorage.removeItem("signup_provider");
       setError(errorDesc);
       return;
     }
+
+    const handleSignedIn = async () => {
+      const signupProvider = localStorage.getItem("signup_provider");
+      if (signupProvider) {
+        localStorage.removeItem("signup_provider");
+        setStatus(
+          `Sign up successful with ${signupProvider}. Redirecting to sign in...`
+        );
+        await supabase.auth.signOut();
+        router.replace(`/sign-in?signup=${signupProvider}`);
+        return;
+      }
+      setStatus("Signed in. Redirecting...");
+      router.replace("/dashboard");
+    };
 
     if (code) {
       supabase.auth
@@ -40,8 +56,7 @@ export default function AuthCallbackPage() {
             setError(exchangeError.message);
             return;
           }
-          setStatus("Signed in. Redirecting...");
-          router.replace("/dashboard");
+          handleSignedIn();
         })
         .catch(() => {
           setError("Unable to complete sign in. Please try again.");
@@ -60,8 +75,7 @@ export default function AuthCallbackPage() {
             setError(sessionError.message);
             return;
           }
-          setStatus("Signed in. Redirecting...");
-          router.replace("/dashboard");
+          handleSignedIn();
         })
         .catch(() => {
           setError("Unable to complete sign in. Please try again.");
@@ -75,8 +89,7 @@ export default function AuthCallbackPage() {
         return;
       }
       if (data.session) {
-        setStatus("Signed in. Redirecting...");
-        router.replace("/dashboard");
+        handleSignedIn();
         return;
       }
       setError("Missing auth code. Please try signing in again.");
