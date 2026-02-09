@@ -2,47 +2,53 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
-export default function SignUpPage() {
+export default function SignInClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
 
-  async function handleSignUp(event: React.FormEvent) {
+  const signupParam = searchParams.get("signup");
+  const signupMessage =
+    signupParam === "email"
+      ? "Sign up successful. Please confirm your email, then sign in."
+      : signupParam === "google"
+      ? "Google sign up successful. Please sign in to continue."
+      : "";
+
+  async function handleSignIn(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    setSuccess("");
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
     }
     setLoading(true);
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password
     });
     setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message);
+    if (signInError) {
+      setError(signInError.message);
       return;
     }
-    setSuccess("Sign up successful. Please check your email to confirm.");
-    setTimeout(() => router.push("/sign-in?signup=email"), 1500);
+    router.push("/dashboard");
   }
 
-  async function handleGoogleSignUp() {
+  async function handleGoogleSignIn() {
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
     }
+    localStorage.removeItem("signup_provider");
     setOauthLoading(true);
-    localStorage.setItem("signup_provider", "google");
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -51,7 +57,6 @@ export default function SignUpPage() {
     });
     if (oauthError) {
       setError(oauthError.message);
-      localStorage.removeItem("signup_provider");
       setOauthLoading(false);
     }
   }
@@ -74,30 +79,30 @@ export default function SignUpPage() {
               <span className="text-xl font-semibold">Trade Journal</span>
             </div>
             <h1 className="mt-6 text-3xl font-semibold tracking-tight">
-              Create your trading workspace
+              Sign in to your trading cockpit
             </h1>
             <p className="mt-4 text-sm text-muted max-w-sm">
-              Separate accounts keep strategies and results isolated for each trader.
+              Review KPIs, track risk, and log trades with a clean dashboard built for decisions.
             </p>
             <div className="mt-8 flex gap-3 text-xs text-muted">
-              <span>Private analytics</span>
-              <span>Secure storage</span>
-              <span>Multi-user ready</span>
+              <span>Risk analytics</span>
+              <span>Strategy breakdown</span>
+              <span>Equity curve</span>
             </div>
           </div>
 
           <div className="card">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-semibold">Create account</h2>
-                <p className="text-sm text-muted">Start your journal.</p>
+                <h2 className="text-2xl font-semibold">Welcome back</h2>
+                <p className="text-sm text-muted">Sign in to continue.</p>
               </div>
               <Link href="/dashboard" className="text-xs text-muted hover:text-white">
                 Home
               </Link>
             </div>
 
-            <form className="space-y-4" onSubmit={handleSignUp}>
+            <form className="space-y-4" onSubmit={handleSignIn}>
               <div>
                 <label className="text-xs text-muted">Email</label>
                 <input
@@ -120,27 +125,38 @@ export default function SignUpPage() {
                   required
                 />
               </div>
+              <div className="flex items-center justify-between text-xs text-muted">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" />
+                  Remember me
+                </label>
+                <Link href="/forgot-password" className="text-xs text-muted hover:text-white">
+                  Forgot password?
+                </Link>
+              </div>
+              {signupMessage && (
+                <p className="text-xs text-positive">{signupMessage}</p>
+              )}
               {error && <p className="text-xs text-negative">{error}</p>}
-              {success && <p className="text-xs text-positive">{success}</p>}
               <button
                 type="submit"
                 className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-white"
                 disabled={loading}
               >
-                {loading ? "Creating..." : "Create account"}
+                {loading ? "Signing in..." : "Sign in"}
               </button>
               <button
                 type="button"
                 className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold"
-                onClick={handleGoogleSignUp}
+                onClick={handleGoogleSignIn}
                 disabled={oauthLoading}
               >
-                {oauthLoading ? "Connecting..." : "Sign up with Google"}
+                {oauthLoading ? "Connecting..." : "Continue with Google"}
               </button>
               <p className="text-xs text-muted">
-                Already have an account?{" "}
-                <Link href="/sign-in" className="text-white">
-                  Sign in
+                New here?{" "}
+                <Link href="/sign-up" className="text-white">
+                  Create an account
                 </Link>
               </p>
               {!isSupabaseConfigured && (
