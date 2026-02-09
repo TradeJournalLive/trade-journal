@@ -22,6 +22,8 @@ import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 const STORAGE_KEY = "pulsejournal_trades_v2";
 const THEME_KEY = "pulsejournal_theme";
 const CURRENCY_KEY = "pulsejournal_currency";
+const INSTRUMENTS_KEY = "pulsejournal_instruments";
+const STRATEGIES_KEY = "pulsejournal_strategies";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -66,6 +68,14 @@ const REQUIRED_HEADERS = [
   "Exit Reason",
   "Platform"
 ];
+
+const DEFAULT_INSTRUMENTS = ["Nifty", "B.Nifty", "Sensex"];
+
+type StrategyDefinition = {
+  id: string;
+  name: string;
+  rules: string;
+};
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
@@ -250,28 +260,64 @@ function buildTemplateCsv() {
 
 type AddTradeFormProps = {
   onAdd: (trade: Trade) => Promise<string | null> | string | null;
+  instruments: string[];
+  strategies: StrategyDefinition[];
 };
 
-function AddTradeForm({ onAdd }: AddTradeFormProps) {
+function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [tradeId, setTradeId] = useState(`T-${Date.now()}`);
   const [date, setDate] = useState(today);
-  const [instrument, setInstrument] = useState("");
+  const [instrumentChoice, setInstrumentChoice] = useState(
+    instruments[0] ?? ""
+  );
+  const [customInstrument, setCustomInstrument] = useState("");
   const [market, setMarket] = useState("Equity");
   const [entryTime, setEntryTime] = useState("09:30");
   const [exitTime, setExitTime] = useState("10:30");
-  const [strategy, setStrategy] = useState("");
+  const [strategyChoice, setStrategyChoice] = useState(
+    strategies[0]?.name ?? "Unspecified"
+  );
   const [direction, setDirection] = useState<Trade["direction"]>("Long");
   const [sizeQty, setSizeQty] = useState("1");
   const [entryPrice, setEntryPrice] = useState("");
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
-  const [exitReason, setExitReason] = useState("");
+  const [exitReasonChoice, setExitReasonChoice] = useState("Trailing SL");
+  const [customExitReason, setCustomExitReason] = useState("");
   const [platform, setPlatform] = useState("Web");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    if (!instruments.length) {
+      setInstrumentChoice("__custom__");
+      return;
+    }
+    if (!instrumentChoice || !instruments.includes(instrumentChoice)) {
+      setInstrumentChoice(instruments[0]);
+    }
+  }, [instruments, instrumentChoice]);
+
+  useEffect(() => {
+    if (!strategies.length) {
+      setStrategyChoice("Unspecified");
+      return;
+    }
+    if (!strategies.find((strategy) => strategy.name === strategyChoice)) {
+      setStrategyChoice(strategies[0].name);
+    }
+  }, [strategies, strategyChoice]);
+
+  const instrumentValue =
+    instrumentChoice === "__custom__" ? customInstrument.trim() : instrumentChoice;
+
+  const exitReasonValue =
+    exitReasonChoice === "__custom__"
+      ? customExitReason.trim() || "Custom"
+      : exitReasonChoice;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -281,7 +327,7 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
     if (
       !tradeId ||
       !date ||
-      !instrument ||
+      !instrumentValue ||
       !entryTime ||
       !exitTime ||
       !entryPrice ||
@@ -313,18 +359,18 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
     const trade: Trade = {
       tradeId,
       date,
-      instrument: instrument.toUpperCase(),
+      instrument: instrumentValue,
       market,
       entryTime,
       exitTime,
-      strategy: strategy || "Unspecified",
+      strategy: strategyChoice || "Unspecified",
       direction,
       sizeQty: qtyValue,
       entryPrice: entryValue,
       exitPrice: exitValue,
       stopLoss: stopValue,
       targetPrice: targetValue,
-      exitReason: exitReason || "Manual",
+      exitReason: exitReasonValue,
       platform
     };
 
@@ -336,13 +382,15 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
         return;
       }
       setTradeId(`T-${Date.now()}`);
-      setInstrument("");
-      setStrategy("");
+      setInstrumentChoice(instruments[0] ?? "");
+      setCustomInstrument("");
+      setStrategyChoice(strategies[0]?.name ?? "Unspecified");
       setEntryPrice("");
       setExitPrice("");
       setStopLoss("");
       setTargetPrice("");
-      setExitReason("");
+      setExitReasonChoice("Trailing SL");
+      setCustomExitReason("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -380,10 +428,10 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
 
       <div className="mt-4 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
         <input
-          placeholder="Trade ID"
+          placeholder="Trade ID (Auto)"
           value={tradeId}
-          onChange={(event) => setTradeId(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          readOnly
+          className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-white"
         />
         <input
           type="date"
@@ -391,13 +439,18 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
           onChange={(event) => setDate(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <input
-          placeholder="Instrument"
-          value={instrument}
-          onChange={(event) => setInstrument(event.target.value)}
+        <select
+          value={instrumentChoice || ""}
+          onChange={(event) => setInstrumentChoice(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-          required
-        />
+        >
+          {instruments.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+          <option value="__custom__">Custom...</option>
+        </select>
         <select
           value={market}
           onChange={(event) => setMarket(event.target.value)}
@@ -422,12 +475,23 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
       </div>
 
       <div className="mt-3 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
-        <input
-          placeholder="Strategy"
-          value={strategy}
-          onChange={(event) => setStrategy(event.target.value)}
+        <select
+          value={strategyChoice}
+          onChange={(event) => setStrategyChoice(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
+        >
+          {strategies.length === 0 && (
+            <option value="Unspecified">Unspecified</option>
+          )}
+          {strategies.map((strategy) => (
+            <option key={strategy.id} value={strategy.name}>
+              {strategy.name}
+            </option>
+          ))}
+          {strategies.length > 0 && (
+            <option value="Unspecified">Unspecified</option>
+          )}
+        </select>
         <select
           value={direction}
           onChange={(event) =>
@@ -476,12 +540,16 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           required
         />
-        <input
-          placeholder="Exit Reason"
-          value={exitReason}
-          onChange={(event) => setExitReason(event.target.value)}
+        <select
+          value={exitReasonChoice}
+          onChange={(event) => setExitReasonChoice(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
+        >
+          <option value="Trailing SL">Trailing SL</option>
+          <option value="SL">SL</option>
+          <option value="Target">Target</option>
+          <option value="__custom__">Custom...</option>
+        </select>
         <input
           placeholder="Platform"
           value={platform}
@@ -489,6 +557,30 @@ function AddTradeForm({ onAdd }: AddTradeFormProps) {
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
       </div>
+
+      {instrumentChoice === "__custom__" && (
+        <div className="mt-3 text-xs">
+          <input
+            placeholder="Custom instrument name"
+            value={customInstrument}
+            onChange={(event) => setCustomInstrument(event.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            required
+          />
+        </div>
+      )}
+
+      {exitReasonChoice === "__custom__" && (
+        <div className="mt-3 text-xs">
+          <input
+            placeholder="Custom exit reason"
+            value={customExitReason}
+            onChange={(event) => setCustomExitReason(event.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            required
+          />
+        </div>
+      )}
     </form>
   );
 }
@@ -514,6 +606,26 @@ export default function ClientDashboard() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const lastUserIdRef = useRef<string | null>(null);
+  const [instruments, setInstruments] = useState<string[]>(DEFAULT_INSTRUMENTS);
+  const [instrumentInput, setInstrumentInput] = useState("");
+  const [strategies, setStrategies] = useState<StrategyDefinition[]>([]);
+  const [strategyNameInput, setStrategyNameInput] = useState("");
+  const [strategyRulesInput, setStrategyRulesInput] = useState("");
+  const [strategyStatus, setStrategyStatus] = useState("");
+
+  const instrumentStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${INSTRUMENTS_KEY}_${session.user.id}`;
+    }
+    return INSTRUMENTS_KEY;
+  }, [dataSource, session?.user?.id]);
+
+  const strategyStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${STRATEGIES_KEY}_${session.user.id}`;
+    }
+    return STRATEGIES_KEY;
+  }, [dataSource, session?.user?.id]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -607,6 +719,52 @@ export default function ClientDashboard() {
   }, [dataSource, session]);
 
   useEffect(() => {
+    const stored = localStorage.getItem(instrumentStorageKey);
+    if (!stored) {
+      setInstruments(DEFAULT_INSTRUMENTS);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as string[];
+      if (Array.isArray(parsed) && parsed.length) {
+        setInstruments(parsed);
+      } else {
+        setInstruments(DEFAULT_INSTRUMENTS);
+      }
+    } catch (error) {
+      console.error("Failed to load instruments", error);
+      setInstruments(DEFAULT_INSTRUMENTS);
+    }
+  }, [instrumentStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(instrumentStorageKey, JSON.stringify(instruments));
+  }, [instrumentStorageKey, instruments]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(strategyStorageKey);
+    if (!stored) {
+      setStrategies([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as StrategyDefinition[];
+      if (Array.isArray(parsed)) {
+        setStrategies(parsed);
+      } else {
+        setStrategies([]);
+      }
+    } catch (error) {
+      console.error("Failed to load strategies", error);
+      setStrategies([]);
+    }
+  }, [strategyStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(strategyStorageKey, JSON.stringify(strategies));
+  }, [strategyStorageKey, strategies]);
+
+  useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
     if (storedTheme === "light" || storedTheme === "dark") {
       setTheme(storedTheme);
@@ -642,6 +800,7 @@ export default function ClientDashboard() {
       "strategy",
       "day",
       "behavior",
+      "setup",
       "journal"
     ];
     const sections = sectionIds
@@ -928,7 +1087,7 @@ export default function ClientDashboard() {
       imported.push({
         tradeId,
         date,
-        instrument: instrument.toUpperCase(),
+        instrument,
         market,
         entryTime,
         exitTime,
@@ -1012,12 +1171,58 @@ export default function ClientDashboard() {
     router.replace("/sign-in");
   }
 
+  function handleAddInstrument() {
+    const name = instrumentInput.trim();
+    if (!name) return;
+    setInstruments((prev) => {
+      if (prev.some((item) => item.toLowerCase() === name.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, name];
+    });
+    setInstrumentInput("");
+  }
+
+  function handleRemoveInstrument(name: string) {
+    setInstruments((prev) => prev.filter((item) => item !== name));
+  }
+
+  function handleAddStrategy() {
+    const name = strategyNameInput.trim();
+    const rules = strategyRulesInput.trim();
+    if (!name) {
+      setStrategyStatus("Strategy name is required.");
+      return;
+    }
+    if (strategies.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      setStrategyStatus("Strategy already exists.");
+      return;
+    }
+    setStrategies((prev) => [
+      {
+        id: `STR-${Date.now()}`,
+        name,
+        rules
+      },
+      ...prev
+    ]);
+    setStrategyNameInput("");
+    setStrategyRulesInput("");
+    setStrategyStatus("Strategy added.");
+    setTimeout(() => setStrategyStatus(""), 1500);
+  }
+
+  function handleRemoveStrategy(id: string) {
+    setStrategies((prev) => prev.filter((item) => item.id !== id));
+  }
+
   const navItems = [
     { label: "Overview", href: "#overview", id: "overview" },
     { label: "Performance", href: "#performance", id: "performance" },
     { label: "Strategy", href: "#strategy", id: "strategy" },
     { label: "Day-wise", href: "#day", id: "day" },
     { label: "Behavior", href: "#behavior", id: "behavior" },
+    { label: "Setup", href: "#setup", id: "setup" },
     { label: "Journal", href: "#journal", id: "journal" }
   ];
 
@@ -1536,10 +1741,122 @@ export default function ClientDashboard() {
           </section>
 
           <section
+            id="setup"
+            className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+          >
+            <div>
+              <h2 className="section-title">Setup</h2>
+              <p className="section-lead">
+                Maintain your instrument list and strategy playbook.
+              </p>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="card space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Instruments</h3>
+                  <p className="text-sm text-muted">
+                    Default: Nifty, B.Nifty, Sensex. Add your own names below.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <input
+                    placeholder="Add instrument"
+                    value={instrumentInput}
+                    onChange={(event) => setInstrumentInput(event.target.value)}
+                    className="flex-1 rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <button
+                    className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                    onClick={handleAddInstrument}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {instruments.map((item) => (
+                    <span
+                      key={item}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1"
+                    >
+                      {item}
+                      <button
+                        className="text-[10px] text-muted hover:text-white"
+                        onClick={() => handleRemoveInstrument(item)}
+                        aria-label={`Remove ${item}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Strategies</h3>
+                  <p className="text-sm text-muted">
+                    Add a strategy and its rules — it will appear in the trade form.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  <input
+                    placeholder="Strategy name"
+                    value={strategyNameInput}
+                    onChange={(event) => setStrategyNameInput(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <textarea
+                    placeholder="Rules / checklist (optional)"
+                    value={strategyRulesInput}
+                    onChange={(event) => setStrategyRulesInput(event.target.value)}
+                    rows={3}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <button
+                    className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                    onClick={handleAddStrategy}
+                  >
+                    Add strategy
+                  </button>
+                  {strategyStatus && (
+                    <span className="text-xs text-muted">{strategyStatus}</span>
+                  )}
+                </div>
+
+                {strategies.length === 0 && (
+                  <p className="text-xs text-muted">No strategies added yet.</p>
+                )}
+                {strategies.map((strategy) => (
+                  <div
+                    key={strategy.id}
+                    className="flex items-start justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <div className="font-semibold">{strategy.name}</div>
+                      {strategy.rules && (
+                        <div className="text-muted">{strategy.rules}</div>
+                      )}
+                    </div>
+                    <button
+                      className="text-[10px] text-muted hover:text-white"
+                      onClick={() => handleRemoveStrategy(strategy.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section
             id="journal"
             className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
           >
             <AddTradeForm
+              instruments={instruments}
+              strategies={strategies}
               onAdd={async (trade) => {
                 if (dataSource === "supabase") {
                   if (!supabase) return "Supabase is not configured.";
