@@ -24,6 +24,7 @@ const THEME_KEY = "pulsejournal_theme";
 const CURRENCY_KEY = "pulsejournal_currency";
 const INSTRUMENTS_KEY = "pulsejournal_instruments";
 const STRATEGIES_KEY = "pulsejournal_strategies";
+const PROFILE_KEY = "pulsejournal_profile";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -84,7 +85,8 @@ type DashboardView =
   | "day"
   | "behavior"
   | "setup"
-  | "journal";
+  | "journal"
+  | "profile";
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
@@ -600,6 +602,12 @@ export default function ClientDashboard({
   const [strategyStatus, setStrategyStatus] = useState("");
   const [activeSection, setActiveSection] =
     useState<DashboardView>("overview");
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [passwordNext, setPasswordNext] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [profileStatus, setProfileStatus] = useState("");
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -613,6 +621,13 @@ export default function ClientDashboard({
       return `${STRATEGIES_KEY}_${session.user.id}`;
     }
     return STRATEGIES_KEY;
+  }, [dataSource, session?.user?.id]);
+
+  const profileStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${PROFILE_KEY}_${session.user.id}`;
+    }
+    return PROFILE_KEY;
   }, [dataSource, session?.user?.id]);
 
   useEffect(() => {
@@ -715,7 +730,10 @@ export default function ClientDashboard({
     try {
       const parsed = JSON.parse(stored) as string[];
       if (Array.isArray(parsed) && parsed.length) {
-        setInstruments(parsed);
+        const merged = Array.from(
+          new Set([...DEFAULT_INSTRUMENTS, ...parsed])
+        );
+        setInstruments(merged);
       } else {
         setInstruments(DEFAULT_INSTRUMENTS);
       }
@@ -751,6 +769,36 @@ export default function ClientDashboard({
   useEffect(() => {
     localStorage.setItem(strategyStorageKey, JSON.stringify(strategies));
   }, [strategyStorageKey, strategies]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(profileStorageKey);
+    if (!stored) {
+      setProfileImage(null);
+      return;
+    }
+    setProfileImage(stored);
+  }, [profileStorageKey]);
+
+  useEffect(() => {
+    if (profileImage) {
+      localStorage.setItem(profileStorageKey, profileImage);
+    } else {
+      localStorage.removeItem(profileStorageKey);
+    }
+  }, [profileImage, profileStorageKey]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (view !== "overview") {
@@ -1157,6 +1205,47 @@ export default function ClientDashboard({
     router.replace("/sign-in");
   }
 
+  async function handlePasswordUpdate() {
+    setProfileStatus("");
+    if (!supabase) {
+      setProfileStatus("Supabase is not configured.");
+      return;
+    }
+    if (!passwordNext || passwordNext.length < 8) {
+      setProfileStatus("Password must be at least 8 characters.");
+      return;
+    }
+    if (passwordNext !== passwordConfirm) {
+      setProfileStatus("Passwords do not match.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({
+      password: passwordNext
+    });
+    if (error) {
+      setProfileStatus(error.message);
+      return;
+    }
+    setPasswordNext("");
+    setPasswordConfirm("");
+    setProfileStatus("Password updated.");
+  }
+
+  function handleProfileImageUpload(file: File | null) {
+    setProfileStatus("");
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setProfileStatus("Please upload an image file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      setProfileImage(result || null);
+    };
+    reader.readAsDataURL(file);
+  }
+
   function handleAddInstrument() {
     const name = instrumentInput.trim();
     if (!name) return;
@@ -1212,6 +1301,9 @@ export default function ClientDashboard({
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
 
+  const profileInitial =
+    session?.user?.email?.charAt(0).toUpperCase() ?? "U";
+
   const dataSourceLabel =
     dataSource === "supabase"
       ? `Supabase — ${session?.user?.email ?? "Personal"}`
@@ -1237,6 +1329,7 @@ export default function ClientDashboard({
     <main className="min-h-screen bg-ink text-white relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-grid opacity-70" />
+        <div className="absolute inset-0 bg-candles opacity-30" />
         <div className="absolute -top-40 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[140px]" />
         <div className="absolute bottom-[-20%] right-[-10%] h-[360px] w-[360px] rounded-full bg-white/10 blur-[120px]" />
       </div>
@@ -1352,26 +1445,71 @@ export default function ClientDashboard({
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                 </select>
-                <button
-                  className="rounded-full border border-white/10 px-4 py-2 text-muted"
-                  onClick={() =>
-                    setTheme((prev) => (prev === "dark" ? "light" : "dark"))
-                  }
-                >
-                  {theme === "dark" ? "Light" : "Dark"} mode
-                </button>
-                {session?.user?.email && (
-                  <span className="rounded-full border border-white/10 px-3 py-2 text-[11px] text-muted">
-                    {session.user.email}
-                  </span>
-                )}
-                {session && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted">Theme</span>
                   <button
-                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
-                    onClick={handleSignOut}
+                    type="button"
+                    aria-pressed={theme === "dark"}
+                    onClick={() =>
+                      setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+                    }
+                    className={`relative h-7 w-12 rounded-full border border-white/10 transition ${
+                      theme === "dark" ? "bg-white/10" : "bg-white/20"
+                    }`}
                   >
-                    Sign out
+                    <span
+                      className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow transition ${
+                        theme === "dark" ? "translate-x-1" : "translate-x-6"
+                      }`}
+                    />
                   </button>
+                </div>
+                {session && (
+                  <div className="relative" ref={profileMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setProfileOpen((prev) => !prev)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold"
+                    >
+                      {profileImage ? (
+                        <img
+                          src={profileImage}
+                          alt="Profile"
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span>{profileInitial}</span>
+                      )}
+                    </button>
+                    {profileOpen && (
+                      <div className="absolute right-0 mt-2 w-56 rounded-xl border border-white/10 bg-panel/95 p-3 text-xs text-muted shadow-lg backdrop-blur">
+                        <div className="mb-3 border-b border-white/10 pb-2 text-[11px]">
+                          Signed in as{" "}
+                          <span className="text-white">
+                            {session.user.email ?? "Trader"}
+                          </span>
+                        </div>
+                        <Link
+                          href="/dashboard/profile"
+                          className="block rounded-lg px-2 py-2 hover:bg-white/10 hover:text-white"
+                        >
+                          Profile settings
+                        </Link>
+                        <Link
+                          href="/dashboard/profile#password"
+                          className="block rounded-lg px-2 py-2 hover:bg-white/10 hover:text-white"
+                        >
+                          Change password
+                        </Link>
+                        <button
+                          className="mt-2 w-full rounded-lg border border-white/10 px-2 py-2 text-left text-xs text-muted hover:bg-white/10 hover:text-white"
+                          onClick={handleSignOut}
+                        >
+                          Sign out
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <button
                   className="rounded-full bg-primary px-4 py-2 font-semibold"
@@ -1840,6 +1978,105 @@ export default function ClientDashboard({
               </div>
             </div>
           </section>
+          )}
+
+          {view === "profile" && (
+            <section
+              id="profile"
+              className="mx-auto max-w-3xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">Profile</h2>
+                <p className="section-lead">
+                  Manage your profile photo, password, and preferences.
+                </p>
+              </div>
+
+              <div className="card space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center text-lg font-semibold">
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{profileInitial}</span>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">
+                      {session?.user?.email ?? "Trader"}
+                    </div>
+                    <div className="text-xs text-muted">Trading workspace</div>
+                  </div>
+                </div>
+                <label className="text-xs text-muted">
+                  Update profile photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="mt-2 block w-full text-xs text-muted"
+                    onChange={(event) =>
+                      handleProfileImageUpload(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                {profileImage && (
+                  <button
+                    className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+                    onClick={() => setProfileImage(null)}
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+
+              <div id="password" className="card space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Change password</h3>
+                  <p className="text-sm text-muted">
+                    Use a strong password to keep your journal secure.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  <input
+                    type="password"
+                    placeholder="New password"
+                    value={passwordNext}
+                    onChange={(event) => setPasswordNext(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={passwordConfirm}
+                    onChange={(event) => setPasswordConfirm(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <button
+                    className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                    onClick={handlePasswordUpdate}
+                  >
+                    Update password
+                  </button>
+                  {profileStatus && (
+                    <span className="text-xs text-muted">{profileStatus}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="card space-y-3">
+                <h3 className="text-lg font-semibold">Other settings</h3>
+                <div className="text-xs text-muted">
+                  Default currency: {currency} · Theme: {theme}
+                </div>
+                <div className="text-xs text-muted">
+                  Data source: {dataSourceLabel}
+                </div>
+              </div>
+            </section>
           )}
 
           {view === "journal" && (
