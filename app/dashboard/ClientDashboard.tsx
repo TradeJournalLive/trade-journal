@@ -268,10 +268,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [tradeId, setTradeId] = useState(`T-${Date.now()}`);
   const [date, setDate] = useState(today);
-  const [instrumentChoice, setInstrumentChoice] = useState(
-    instruments[0] ?? ""
-  );
-  const [customInstrument, setCustomInstrument] = useState("");
+  const [instrument, setInstrument] = useState(instruments[0] ?? "");
   const [market, setMarket] = useState("Equity");
   const [entryTime, setEntryTime] = useState("09:30");
   const [exitTime, setExitTime] = useState("10:30");
@@ -284,8 +281,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
-  const [exitReasonChoice, setExitReasonChoice] = useState("Trailing SL");
-  const [customExitReason, setCustomExitReason] = useState("");
+  const [exitReason, setExitReason] = useState("Trailing SL");
   const [platform, setPlatform] = useState("Web");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -293,13 +289,15 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
 
   useEffect(() => {
     if (!instruments.length) {
-      setInstrumentChoice("__custom__");
+      if (!instrument) {
+        setInstrument("");
+      }
       return;
     }
-    if (!instrumentChoice || !instruments.includes(instrumentChoice)) {
-      setInstrumentChoice(instruments[0]);
+    if (!instrument) {
+      setInstrument(instruments[0]);
     }
-  }, [instruments, instrumentChoice]);
+  }, [instruments, instrument]);
 
   useEffect(() => {
     if (!strategies.length) {
@@ -311,13 +309,8 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
     }
   }, [strategies, strategyChoice]);
 
-  const instrumentValue =
-    instrumentChoice === "__custom__" ? customInstrument.trim() : instrumentChoice;
-
-  const exitReasonValue =
-    exitReasonChoice === "__custom__"
-      ? customExitReason.trim() || "Custom"
-      : exitReasonChoice;
+  const instrumentValue = instrument.trim();
+  const exitReasonValue = exitReason.trim() || "Trailing SL";
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -382,15 +375,13 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
         return;
       }
       setTradeId(`T-${Date.now()}`);
-      setInstrumentChoice(instruments[0] ?? "");
-      setCustomInstrument("");
+      setInstrument(instruments[0] ?? "");
       setStrategyChoice(strategies[0]?.name ?? "Unspecified");
       setEntryPrice("");
       setExitPrice("");
       setStopLoss("");
       setTargetPrice("");
-      setExitReasonChoice("Trailing SL");
-      setCustomExitReason("");
+      setExitReason("Trailing SL");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -439,18 +430,21 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
           onChange={(event) => setDate(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <select
-          value={instrumentChoice || ""}
-          onChange={(event) => setInstrumentChoice(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          {instruments.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-          <option value="__custom__">Custom...</option>
-        </select>
+        <div>
+          <input
+            list="instrument-options"
+            placeholder="Instrument"
+            value={instrument}
+            onChange={(event) => setInstrument(event.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            required
+          />
+          <datalist id="instrument-options">
+            {instruments.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+        </div>
         <select
           value={market}
           onChange={(event) => setMarket(event.target.value)}
@@ -540,16 +534,20 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           required
         />
-        <select
-          value={exitReasonChoice}
-          onChange={(event) => setExitReasonChoice(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="Trailing SL">Trailing SL</option>
-          <option value="SL">SL</option>
-          <option value="Target">Target</option>
-          <option value="__custom__">Custom...</option>
-        </select>
+        <div>
+          <input
+            list="exit-reason-options"
+            placeholder="Exit Reason"
+            value={exitReason}
+            onChange={(event) => setExitReason(event.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          />
+          <datalist id="exit-reason-options">
+            <option value="Trailing SL" />
+            <option value="SL" />
+            <option value="Target" />
+          </datalist>
+        </div>
         <input
           placeholder="Platform"
           value={platform}
@@ -557,30 +555,6 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
       </div>
-
-      {instrumentChoice === "__custom__" && (
-        <div className="mt-3 text-xs">
-          <input
-            placeholder="Custom instrument name"
-            value={customInstrument}
-            onChange={(event) => setCustomInstrument(event.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-            required
-          />
-        </div>
-      )}
-
-      {exitReasonChoice === "__custom__" && (
-        <div className="mt-3 text-xs">
-          <input
-            placeholder="Custom exit reason"
-            value={customExitReason}
-            onChange={(event) => setCustomExitReason(event.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-            required
-          />
-        </div>
-      )}
     </form>
   );
 }
