@@ -20,29 +20,67 @@ export default function AuthCallbackPage() {
     const errorDesc =
       params.get("error_description") || params.get("error") || "";
 
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+
     if (errorDesc) {
       setError(errorDesc);
       return;
     }
 
-    if (!code) {
-      setError("Missing auth code. Please try signing in again.");
+    if (code) {
+      supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ error: exchangeError }) => {
+          if (exchangeError) {
+            setError(exchangeError.message);
+            return;
+          }
+          setStatus("Signed in. Redirecting...");
+          router.replace("/dashboard");
+        })
+        .catch(() => {
+          setError("Unable to complete sign in. Please try again.");
+        });
       return;
     }
 
-    supabase.auth
-      .exchangeCodeForSession(code)
-      .then(({ error: exchangeError }) => {
-        if (exchangeError) {
-          setError(exchangeError.message);
-          return;
-        }
+    if (accessToken && refreshToken) {
+      supabase.auth
+        .setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        })
+        .then(({ error: sessionError }) => {
+          if (sessionError) {
+            setError(sessionError.message);
+            return;
+          }
+          setStatus("Signed in. Redirecting...");
+          router.replace("/dashboard");
+        })
+        .catch(() => {
+          setError("Unable to complete sign in. Please try again.");
+        });
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (sessionError) {
+        setError(sessionError.message);
+        return;
+      }
+      if (data.session) {
         setStatus("Signed in. Redirecting...");
         router.replace("/dashboard");
-      })
-      .catch(() => {
-        setError("Unable to complete sign in. Please try again.");
-      });
+        return;
+      }
+      setError("Missing auth code. Please try signing in again.");
+    });
   }, [router]);
 
   return (
