@@ -598,6 +598,9 @@ export default function ClientDashboard({
   const [strategyNameInput, setStrategyNameInput] = useState("");
   const [strategyRulesInput, setStrategyRulesInput] = useState("");
   const [strategyStatus, setStrategyStatus] = useState("");
+  const [activeSection, setActiveSection] = useState<
+    DashboardView | "performance" | "strategy" | "day" | "behavior"
+  >("overview");
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -749,6 +752,36 @@ export default function ClientDashboard({
   useEffect(() => {
     localStorage.setItem(strategyStorageKey, JSON.stringify(strategies));
   }, [strategyStorageKey, strategies]);
+
+  useEffect(() => {
+    if (view !== "overview") {
+      setActiveSection(view);
+      return;
+    }
+
+    setActiveSection("overview");
+    const sectionIds = ["overview", "performance", "strategy", "day", "behavior"];
+    const sections = sectionIds
+      .map((id) => document.getElementById(id))
+      .filter((section): section is HTMLElement => Boolean(section));
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveSection(
+              entry.target.id as DashboardView | "performance" | "strategy" | "day" | "behavior"
+            );
+          }
+        });
+      },
+      { rootMargin: "-20% 0px -65% 0px", threshold: 0.1 }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [view]);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -1176,10 +1209,10 @@ export default function ClientDashboard({
 
   const navItems = [
     { label: "Overview", href: "/dashboard", id: "overview" },
-    { label: "Performance", href: "/dashboard/performance", id: "performance" },
-    { label: "Strategy", href: "/dashboard/strategy", id: "strategy" },
-    { label: "Day-wise", href: "/dashboard/day", id: "day" },
-    { label: "Behavior", href: "/dashboard/behavior", id: "behavior" },
+    { label: "Performance", href: "/dashboard#performance", id: "performance" },
+    { label: "Strategy", href: "/dashboard#strategy", id: "strategy" },
+    { label: "Day-wise", href: "/dashboard#day", id: "day" },
+    { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
@@ -1356,10 +1389,11 @@ export default function ClientDashboard({
           </header>
 
           {view === "overview" && (
-            <section
-              id="overview"
-              className="mx-auto max-w-6xl space-y-8 px-6 py-8"
-            >
+            <>
+              <section
+                id="overview"
+                className="mx-auto max-w-6xl space-y-8 px-6 py-8 scroll-mt-24"
+              >
             <div>
               <h2 className="section-title">Overview</h2>
               <p className="section-lead">
@@ -1427,14 +1461,12 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-          </section>
-          )}
+              </section>
 
-          {view === "performance" && (
-            <section
-              id="performance"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
-            >
+              <section
+                id="performance"
+                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+              >
             <div>
               <h2 className="section-title">Performance</h2>
               <p className="section-lead">
@@ -1492,14 +1524,12 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-          </section>
-          )}
+              </section>
 
-          {view === "strategy" && (
-            <section
-              id="strategy"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
-            >
+              <section
+                id="strategy"
+                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+              >
             <div>
               <h2 className="section-title">Strategy analysis</h2>
               <p className="section-lead">
@@ -1590,14 +1620,12 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-          </section>
-          )}
+              </section>
 
-          {view === "day" && (
-            <section
-              id="day"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
-            >
+              <section
+                id="day"
+                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+              >
             <div>
               <h2 className="section-title">Day-wise analysis</h2>
               <p className="section-lead">
@@ -1640,14 +1668,12 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-          </section>
-          )}
+              </section>
 
-          {view === "behavior" && (
-            <section
-              id="behavior"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
-            >
+              <section
+                id="behavior"
+                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+              >
             <div>
               <h2 className="section-title">Behavior & risk insights</h2>
               <p className="section-lead">
@@ -1705,7 +1731,8 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-          </section>
+              </section>
+            </>
           )}
 
           {view === "setup" && (
