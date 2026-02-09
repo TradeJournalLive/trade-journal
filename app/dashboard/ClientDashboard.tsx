@@ -812,8 +812,6 @@ export default function ClientDashboard({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tradeList));
   }, [tradeList, dataSource]);
 
-  const activeSection = view;
-
   const marketOptions = useMemo(
     () => Array.from(new Set(tradeList.map((t) => t.market))).sort(),
     [tradeList]
