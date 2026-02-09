@@ -1480,15 +1480,15 @@ export default function ClientDashboard({
                     onClick={() =>
                       setTheme((prev) => (prev === "dark" ? "light" : "dark"))
                     }
-                    className={`relative h-7 w-12 rounded-full border border-white/10 transition ${
-                      theme === "dark" ? "bg-white/10" : "bg-slate-200"
+                    className={`relative flex h-7 w-12 items-center rounded-full border transition ${
+                      theme === "dark"
+                        ? "justify-end border-white/10 bg-white/10"
+                        : "justify-start border-slate-300 bg-slate-200"
                     }`}
                   >
                     <span
-                      className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow transition ${
+                      className={`mx-1 h-5 w-5 rounded-full shadow transition ${
                         theme === "dark" ? "bg-white" : "bg-slate-900"
-                      } ${
-                        theme === "dark" ? "translate-x-6" : "translate-x-1"
                       }`}
                     />
                   </button>
@@ -1498,7 +1498,7 @@ export default function ClientDashboard({
                     <button
                       type="button"
                       onClick={() => setProfileOpen((prev) => !prev)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-sm font-semibold text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white"
                     >
                       {profileImage ? (
                         <img
@@ -1511,27 +1511,27 @@ export default function ClientDashboard({
                       )}
                     </button>
                     {profileOpen && (
-                      <div className="absolute right-0 mt-2 w-56 rounded-xl border border-white/10 bg-panel/95 p-3 text-xs text-muted shadow-lg backdrop-blur">
-                        <div className="mb-3 border-b border-white/10 pb-2 text-[11px]">
+                      <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg dark:border-white/10 dark:bg-panel/95 dark:text-muted">
+                        <div className="mb-3 border-b border-slate-200 pb-2 text-[11px] text-slate-600 dark:border-white/10 dark:text-muted">
                           Signed in as{" "}
-                          <span className="text-white">
+                          <span className="text-slate-900 dark:text-white">
                             {session.user.email ?? "Trader"}
                           </span>
                         </div>
                         <Link
                           href="/dashboard/profile"
-                          className="block rounded-lg px-2 py-2 hover:bg-white/10 hover:text-white"
+                          className="block rounded-lg px-2 py-2 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white"
                         >
                           Profile settings
                         </Link>
                         <Link
                           href="/dashboard/profile#password"
-                          className="block rounded-lg px-2 py-2 hover:bg-white/10 hover:text-white"
+                          className="block rounded-lg px-2 py-2 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white"
                         >
                           Change password
                         </Link>
                         <button
-                          className="mt-2 w-full rounded-lg border border-white/10 px-2 py-2 text-left text-xs text-muted hover:bg-white/10 hover:text-white"
+                          className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-2 text-left text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-white/10 dark:text-muted dark:hover:bg-white/10 dark:hover:text-white"
                           onClick={handleSignOut}
                         >
                           Sign out
