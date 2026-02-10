@@ -394,7 +394,7 @@ function AddTradeForm({
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
-  const [instrument, setInstrument] = useState("");
+  const [instrument, setInstrument] = useState("Nifty");
   const [market, setMarket] = useState("F&O");
   const [entryTime, setEntryTime] = useState("");
   const [exitTime, setExitTime] = useState("");
@@ -421,7 +421,7 @@ function AddTradeForm({
       wasEditingRef.current = true;
       setTradeId(editingTrade.tradeId);
       setDate(editingTrade.date || new Date().toISOString().slice(0, 10));
-      setInstrument(editingTrade.instrument || "");
+      setInstrument(editingTrade.instrument || "Nifty");
       setMarket(editingTrade.market || "F&O");
       setEntryTime(editingTrade.entryTime || "");
       setExitTime(editingTrade.exitTime || "");
@@ -484,6 +484,16 @@ function AddTradeForm({
       setRemarks("");
     }
   }, [editingTrade, instruments]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    if (!instrument) {
+      const nifty = instruments.find(
+        (item) => item.name.toLowerCase() === "nifty"
+      );
+      setInstrument(nifty?.name ?? instruments[0]?.name ?? "Nifty");
+    }
+  }, [instrument, instruments, isEditing]);
 
   const instrumentValue = instrument.trim();
   const selectedLotSize =
