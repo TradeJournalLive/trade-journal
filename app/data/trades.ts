@@ -19,6 +19,7 @@ export type Trade = {
   exitReason: string;
   platform: string;
   chartUrl?: string;
+  remarks?: string;
 };
 
 export const trades: Trade[] = [

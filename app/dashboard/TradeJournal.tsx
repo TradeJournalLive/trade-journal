@@ -267,6 +267,11 @@ export default function TradeJournal({
                     <span className="text-muted">Platform</span>
                     <span>{trade.platform}</span>
                   </div>
+                  {trade.remarks && (
+                    <div className="text-muted text-[11px] mt-2">
+                      {trade.remarks}
+                    </div>
+                  )}
                 </div>
               </div>
 

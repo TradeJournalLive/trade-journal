@@ -297,7 +297,8 @@ function toSupabaseRow(trade: Trade, userId: string) {
     target_price: trade.targetPrice,
     exit_reason: trade.exitReason,
     platform: trade.platform,
-    chart_url: trade.chartUrl ?? null
+    chart_url: trade.chartUrl ?? null,
+    remarks: trade.remarks ?? null
   };
 }
 
@@ -327,7 +328,8 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     targetPrice: Number(row.target_price ?? 0),
     exitReason: String(row.exit_reason ?? "Manual"),
     platform: String(row.platform ?? "Web"),
-    chartUrl: row.chart_url ? String(row.chart_url) : undefined
+    chartUrl: row.chart_url ? String(row.chart_url) : undefined,
+    remarks: row.remarks ? String(row.remarks) : undefined
   };
 }
 
@@ -389,9 +391,11 @@ function AddTradeForm({
   strategies
 }: AddTradeFormProps) {
   const [tradeId, setTradeId] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
   const [instrument, setInstrument] = useState("");
-  const [market, setMarket] = useState("");
+  const [market, setMarket] = useState("F&O");
   const [entryTime, setEntryTime] = useState("");
   const [exitTime, setExitTime] = useState("");
   const [strategyChoice, setStrategyChoice] = useState("");
@@ -405,6 +409,7 @@ function AddTradeForm({
   const [exitReasonCustom, setExitReasonCustom] = useState("");
   const [platform, setPlatform] = useState("");
   const [chartUrl, setChartUrl] = useState("");
+  const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -415,9 +420,9 @@ function AddTradeForm({
     if (editingTrade) {
       wasEditingRef.current = true;
       setTradeId(editingTrade.tradeId);
-      setDate(editingTrade.date || "");
+      setDate(editingTrade.date || new Date().toISOString().slice(0, 10));
       setInstrument(editingTrade.instrument || "");
-      setMarket(editingTrade.market || "");
+      setMarket(editingTrade.market || "F&O");
       setEntryTime(editingTrade.entryTime || "");
       setExitTime(editingTrade.exitTime || "");
       setStrategyChoice(editingTrade.strategy || "");
@@ -453,15 +458,16 @@ function AddTradeForm({
       }
       setPlatform(editingTrade.platform || "");
       setChartUrl(editingTrade.chartUrl || "");
+      setRemarks(editingTrade.remarks || "");
       return;
     }
 
     if (wasEditingRef.current) {
       wasEditingRef.current = false;
       setTradeId("");
-      setDate("");
-      setInstrument("");
-      setMarket("");
+      setDate(new Date().toISOString().slice(0, 10));
+      setInstrument("Nifty");
+      setMarket("F&O");
       setEntryTime("");
       setExitTime("");
       setStrategyChoice("");
@@ -475,6 +481,7 @@ function AddTradeForm({
       setExitReasonCustom("");
       setPlatform("");
       setChartUrl("");
+      setRemarks("");
     }
   }, [editingTrade, instruments]);
 
@@ -558,7 +565,8 @@ function AddTradeForm({
       targetPrice: targetValue,
       exitReason: exitReasonValue,
       platform,
-      chartUrl: chartUrlValue || undefined
+      chartUrl: chartUrlValue || undefined,
+      remarks: remarks.trim() || undefined
     };
 
     setSaving(true);
@@ -575,8 +583,8 @@ function AddTradeForm({
         return;
       }
       setTradeId("");
-      setInstrument("");
-      setMarket("");
+      setInstrument("Nifty");
+      setMarket("F&O");
       setEntryTime("");
       setExitTime("");
       setStrategyChoice("");
@@ -590,6 +598,7 @@ function AddTradeForm({
       setExitReasonCustom("");
       setPlatform("");
       setChartUrl("");
+      setRemarks("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -808,6 +817,16 @@ function AddTradeForm({
           value={chartUrl}
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        />
+      </div>
+
+      <div className="mt-3">
+        <textarea
+          placeholder="Remarks (optional)"
+          value={remarks}
+          onChange={(event) => setRemarks(event.target.value)}
+          rows={3}
+          className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
         />
       </div>
     </form>
