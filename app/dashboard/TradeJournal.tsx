@@ -316,10 +316,6 @@ export default function TradeJournal({
                       {trade.riskReward ? `1:${trade.riskReward.toFixed(2)}` : "—"}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">RR</span>
-                    <span>{trade.rr ? trade.rr.toFixed(2) : "—"}</span>
-                  </div>
                 </div>
               </div>
             </div>
