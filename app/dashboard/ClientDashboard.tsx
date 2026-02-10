@@ -1363,7 +1363,7 @@ export default function ClientDashboard({
 
         <div className="flex-1">
           <header className="sticky top-0 z-10 border-b border-white/5 bg-ink/80 backdrop-blur">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
+            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
               <div>
                 <h1 className="text-xl font-semibold">Trader cockpit</h1>
                 <p className="text-xs text-muted">Review period: {dateRange}</p>
@@ -1546,6 +1546,23 @@ export default function ClientDashboard({
                 >
                   Export CSV
                 </button>
+              </div>
+            </div>
+            <div className="lg:hidden border-t border-white/5">
+              <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-xs sm:px-6">
+                {navItems.map((item) => (
+                  <Link
+                    key={`mobile-${item.label}`}
+                    href={item.href}
+                    className={`rounded-full px-3 py-1 whitespace-nowrap ${
+                      activeSection === item.id
+                        ? "bg-primary/15 text-white"
+                        : "text-muted hover:bg-primary/10 hover:text-white"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
             </div>
           </header>

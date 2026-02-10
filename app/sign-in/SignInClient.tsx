@@ -3,7 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import {
+  getAuthRedirectUrl,
+  isSupabaseConfigured,
+  supabase
+} from "../lib/supabaseClient";
 
 export default function SignInClient() {
   const router = useRouter();
@@ -52,7 +56,7 @@ export default function SignInClient() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: getAuthRedirectUrl()
       }
     });
     if (oauthError) {
