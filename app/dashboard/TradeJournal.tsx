@@ -304,6 +304,24 @@ export default function TradeJournal({
                     Delete
                   </button>
                 )}
+                {trade.chartUrl ? (
+                  <a
+                    href={trade.chartUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:text-white"
+                  >
+                    Show trade
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted opacity-60"
+                    disabled
+                  >
+                    Show trade
+                  </button>
+                )}
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
                   {formatDirectionLabel(trade.direction)}
                 </span>
