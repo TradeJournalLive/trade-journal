@@ -418,7 +418,7 @@ function AddTradeForm({
     if (editingTrade) {
       setTradeId(editingTrade.tradeId);
       setDate(editingTrade.date || today);
-      setInstrument(editingTrade.instrument || instruments[0] || "");
+      setInstrument(editingTrade.instrument || instruments[0]?.name || "");
       setMarket(editingTrade.market || "Equity");
       setEntryTime(editingTrade.entryTime || "09:30");
       setExitTime(editingTrade.exitTime || "10:30");
