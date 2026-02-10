@@ -212,6 +212,8 @@ function toSupabaseRow(trade: Trade, userId: string) {
     strategy: trade.strategy,
     direction: trade.direction,
     size_qty: trade.sizeQty,
+    lots: trade.lots ?? null,
+    lot_size: trade.lotSize ?? null,
     entry_price: trade.entryPrice,
     exit_price: trade.exitPrice,
     stop_loss: trade.stopLoss,
@@ -225,6 +227,9 @@ function toSupabaseRow(trade: Trade, userId: string) {
 function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   const timeValue = (value: string | null) =>
     value ? value.slice(0, 5) : "00:00";
+  const sizeQty = Number(row.size_qty ?? 0);
+  const lotsValue = row.lots === null ? undefined : Number(row.lots);
+  const lotSizeValue = row.lot_size === null ? undefined : Number(row.lot_size);
   return {
     tradeId: String(row.trade_id ?? ""),
     date: String(row.date ?? ""),
@@ -234,7 +239,11 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     exitTime: timeValue(row.exit_time ? String(row.exit_time) : null),
     strategy: String(row.strategy ?? "Unspecified"),
     direction: row.direction === "Short" ? "Short" : "Long",
-    sizeQty: Number(row.size_qty ?? 0),
+    sizeQty,
+    lots: Number.isFinite(lotsValue as number) ? (lotsValue as number) : undefined,
+    lotSize: Number.isFinite(lotSizeValue as number)
+      ? (lotSizeValue as number)
+      : undefined,
     entryPrice: Number(row.entry_price ?? 0),
     exitPrice: Number(row.exit_price ?? 0),
     stopLoss: Number(row.stop_loss ?? 0),
@@ -313,7 +322,8 @@ function AddTradeForm({
     strategies[0]?.name ?? "Unspecified"
   );
   const [direction, setDirection] = useState<Trade["direction"]>("Long");
-  const [sizeQty, setSizeQty] = useState("1");
+  const [lots, setLots] = useState("1");
+  const [lotSize, setLotSize] = useState("1");
   const [entryPrice, setEntryPrice] = useState("");
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
@@ -337,7 +347,13 @@ function AddTradeForm({
       setExitTime(editingTrade.exitTime || "10:30");
       setStrategyChoice(editingTrade.strategy || "Unspecified");
       setDirection(editingTrade.direction || "Long");
-      setSizeQty(String(editingTrade.sizeQty ?? 1));
+      if (editingTrade.lots !== undefined) {
+        setLots(String(editingTrade.lots));
+        setLotSize(String(editingTrade.lotSize ?? editingTrade.sizeQty ?? 1));
+      } else {
+        setLots("1");
+        setLotSize(String(editingTrade.sizeQty ?? 1));
+      }
       setEntryPrice(editingTrade.entryPrice?.toString() ?? "");
       setExitPrice(editingTrade.exitPrice?.toString() ?? "");
       setStopLoss(editingTrade.stopLoss?.toString() ?? "");
@@ -370,6 +386,8 @@ function AddTradeForm({
     if (!instrument) {
       setInstrument(instruments[0]);
     }
+    if (!lots) setLots("1");
+    if (!lotSize) setLotSize("1");
   }, [editingTrade, instruments, instrument, today]);
 
   useEffect(() => {
@@ -411,13 +429,17 @@ function AddTradeForm({
       return;
     }
 
-    const qtyValue = Number(sizeQty);
+    const lotsValue = Number(lots);
+    const lotSizeValue = Number(lotSize);
+    const qtyValue = lotsValue * lotSizeValue;
     const entryValue = Number(entryPrice);
     const exitValue = Number(exitPrice);
     const stopValue = Number(stopLoss);
     const targetValue = Number(targetPrice);
 
     if (
+      !Number.isFinite(lotsValue) ||
+      !Number.isFinite(lotSizeValue) ||
       !Number.isFinite(qtyValue) ||
       !Number.isFinite(entryValue) ||
       !Number.isFinite(exitValue) ||
@@ -425,6 +447,10 @@ function AddTradeForm({
       !Number.isFinite(targetValue)
     ) {
       setError("Numeric fields must be valid numbers.");
+      return;
+    }
+    if (lotsValue <= 0 || lotSizeValue <= 0) {
+      setError("Lots and lot size must be greater than 0.");
       return;
     }
 
@@ -438,6 +464,8 @@ function AddTradeForm({
       strategy: strategyChoice || "Unspecified",
       direction,
       sizeQty: qtyValue,
+      lots: lotsValue,
+      lotSize: lotSizeValue,
       entryPrice: entryValue,
       exitPrice: exitValue,
       stopLoss: stopValue,
@@ -467,6 +495,8 @@ function AddTradeForm({
       setExitPrice("");
       setStopLoss("");
       setTargetPrice("");
+      setLots("1");
+      setLotSize("1");
       setExitReasonChoice("");
       setExitReasonCustom("");
       setChartUrl("");
@@ -594,15 +624,28 @@ function AddTradeForm({
           }
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
-          <option value="Long">Long</option>
-          <option value="Short">Short</option>
+          <option value="Long">Call (Buy)</option>
+          <option value="Short">Put (Buy)</option>
         </select>
         <input
-          placeholder="Size (Qty.)"
-          value={sizeQty}
-          onChange={(event) => setSizeQty(event.target.value)}
+          placeholder="Lots"
+          value={lots}
+          onChange={(event) => setLots(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           required
+        />
+        <input
+          placeholder="Lot size"
+          value={lotSize}
+          onChange={(event) => setLotSize(event.target.value)}
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          required
+        />
+        <input
+          placeholder="Qty (Auto)"
+          value={`${Number(lots || 0) * Number(lotSize || 0)}`}
+          readOnly
+          className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-white"
         />
         <input
           placeholder="Entry Price"
@@ -677,10 +720,12 @@ function AddTradeForm({
 
 export default function ClientDashboard({
   view = "overview",
-  editStrategyId
+  editStrategyId,
+  presetInstrument
 }: {
   view?: DashboardView;
   editStrategyId?: string;
+  presetInstrument?: string;
 }) {
   const router = useRouter();
   const [tradeList, setTradeList] = useState<Trade[]>(() =>
@@ -945,6 +990,13 @@ export default function ClientDashboard({
       setEditingTrade(null);
     }
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "journal") return;
+    if (presetInstrument && presetInstrument !== globalInstrument) {
+      setGlobalInstrument(presetInstrument);
+    }
+  }, [view, presetInstrument, globalInstrument]);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -1325,11 +1377,6 @@ export default function ClientDashboard({
 
   function handleEditTrade(trade: Trade) {
     setEditingTrade(trade);
-    requestAnimationFrame(() => {
-      document
-        .getElementById("trade-form")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   }
 
   async function handlePasswordUpdate() {
@@ -2414,6 +2461,42 @@ export default function ClientDashboard({
               id="journal"
               className="mx-auto max-w-6xl space-y-6 px-6 py-8"
             >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="section-title">Trade journal</h2>
+                <p className="section-lead">
+                  {presetInstrument
+                    ? `Filtered to ${presetInstrument}`
+                    : "Add, edit, and review trades with full context."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Link
+                  href="/dashboard/journal/nifty"
+                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
+                >
+                  Nifty
+                </Link>
+                <Link
+                  href="/dashboard/journal/bnifty"
+                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
+                >
+                  B.Nifty
+                </Link>
+                <Link
+                  href="/dashboard/journal/sensex"
+                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
+                >
+                  Sensex
+                </Link>
+                <Link
+                  href="/dashboard/journal"
+                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
+                >
+                  All
+                </Link>
+              </div>
+            </div>
             <AddTradeForm
               instruments={instruments}
               strategies={strategies}

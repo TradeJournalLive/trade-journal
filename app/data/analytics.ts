@@ -65,8 +65,7 @@ function toDateTime(date: string, time: string) {
 
 export function deriveTrades(trades: Trade[]): DerivedTrade[] {
   return trades.map((trade) => {
-    const direction = trade.direction === "Long" ? 1 : -1;
-    const grossPl = (trade.exitPrice - trade.entryPrice) * trade.sizeQty * direction;
+    const grossPl = (trade.exitPrice - trade.entryPrice) * trade.sizeQty;
     const netPl = grossPl; // no fees in v1
     const risk = Math.abs(trade.entryPrice - trade.stopLoss) * trade.sizeQty;
     const reward = Math.abs(trade.targetPrice - trade.entryPrice) * trade.sizeQty;

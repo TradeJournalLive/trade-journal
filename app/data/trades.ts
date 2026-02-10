@@ -10,6 +10,8 @@ export type Trade = {
   strategy: string;
   direction: Direction;
   sizeQty: number;
+  lots?: number;
+  lotSize?: number;
   entryPrice: number;
   exitPrice: number;
   stopLoss: number;
@@ -30,6 +32,8 @@ export const trades: Trade[] = [
     strategy: "Breakout A+",
     direction: "Long",
     sizeQty: 40,
+    lots: 1,
+    lotSize: 40,
     entryPrice: 178.4,
     exitPrice: 183.2,
     stopLoss: 176.8,
@@ -47,6 +51,8 @@ export const trades: Trade[] = [
     strategy: "VWAP Fade",
     direction: "Short",
     sizeQty: 25,
+    lots: 1,
+    lotSize: 25,
     entryPrice: 242.1,
     exitPrice: 234.8,
     stopLoss: 245.2,
@@ -64,6 +70,8 @@ export const trades: Trade[] = [
     strategy: "Range Reversal",
     direction: "Long",
     sizeQty: 2,
+    lots: 1,
+    lotSize: 2,
     entryPrice: 16220,
     exitPrice: 16080,
     stopLoss: 16120,
@@ -81,6 +89,8 @@ export const trades: Trade[] = [
     strategy: "Earnings Trend",
     direction: "Long",
     sizeQty: 30,
+    lots: 1,
+    lotSize: 30,
     entryPrice: 404.2,
     exitPrice: 412.7,
     stopLoss: 401.8,
@@ -98,6 +108,8 @@ export const trades: Trade[] = [
     strategy: "ORB 30",
     direction: "Long",
     sizeQty: 60,
+    lots: 1,
+    lotSize: 60,
     entryPrice: 2484,
     exitPrice: 2510,
     stopLoss: 2466,
@@ -115,6 +127,8 @@ export const trades: Trade[] = [
     strategy: "Supply Fade",
     direction: "Short",
     sizeQty: 1,
+    lots: 1,
+    lotSize: 1,
     entryPrice: 34820,
     exitPrice: 34610,
     stopLoss: 34910,
@@ -132,6 +146,8 @@ export const trades: Trade[] = [
     strategy: "Breakout A+",
     direction: "Long",
     sizeQty: 80,
+    lots: 1,
+    lotSize: 80,
     entryPrice: 1528,
     exitPrice: 1512,
     stopLoss: 1515,
@@ -149,6 +165,8 @@ export const trades: Trade[] = [
     strategy: "Gap Fade",
     direction: "Short",
     sizeQty: 35,
+    lots: 1,
+    lotSize: 35,
     entryPrice: 186.4,
     exitPrice: 181.9,
     stopLoss: 188.2,
@@ -166,6 +184,8 @@ export const trades: Trade[] = [
     strategy: "Trend Pullback",
     direction: "Long",
     sizeQty: 3,
+    lots: 1,
+    lotSize: 3,
     entryPrice: 16410,
     exitPrice: 16560,
     stopLoss: 16340,
@@ -183,6 +203,8 @@ export const trades: Trade[] = [
     strategy: "VWAP Reclaim",
     direction: "Long",
     sizeQty: 18,
+    lots: 1,
+    lotSize: 18,
     entryPrice: 229.3,
     exitPrice: 236.4,
     stopLoss: 226.8,

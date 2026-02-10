@@ -12,6 +12,10 @@ function formatMinutes(minutes: number) {
   return `${hrs}h ${mins}m`;
 }
 
+function formatDirectionLabel(direction: Trade["direction"]) {
+  return direction === "Short" ? "Put (Buy)" : "Call (Buy)";
+}
+
 export default function TradeJournal({
   trades,
   currency,
@@ -147,9 +151,9 @@ export default function TradeJournal({
           onChange={(event) => setDirection(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
-          <option value="all">All directions</option>
-          <option value="Long">Long</option>
-          <option value="Short">Short</option>
+          <option value="all">All sides</option>
+          <option value="Long">Call (Buy)</option>
+          <option value="Short">Put (Buy)</option>
         </select>
 
         <select
@@ -210,7 +214,7 @@ export default function TradeJournal({
                   </button>
                 )}
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
-                  {trade.direction}
+                  {formatDirectionLabel(trade.direction)}
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
                   {trade.winLoss}
@@ -248,6 +252,12 @@ export default function TradeJournal({
                   <div className="flex items-center justify-between">
                     <span className="text-muted">Market</span>
                     <span>{trade.market}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Lots</span>
+                    <span>
+                      {trade.lots ?? 1} × {trade.lotSize ?? trade.sizeQty}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted">Qty</span>
