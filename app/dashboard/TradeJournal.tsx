@@ -309,16 +309,22 @@ export default function TradeJournal({
                     href={trade.chartUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:text-white"
                   >
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-[10px] text-white">
+                      ↗
+                    </span>
                     Show trade
                   </a>
                 ) : (
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted opacity-60"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted opacity-60"
                     disabled
                   >
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-teal-300 to-blue-400 text-[10px] text-white">
+                      ↗
+                    </span>
                     Show trade
                   </button>
                 )}
@@ -378,7 +384,7 @@ export default function TradeJournal({
                   </div>
                   {trade.remarks && (
                     <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
-                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/10 text-[10px] text-primary">
+                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[10px] text-white">
                         ✎
                       </span>
                       <span>{trade.remarks}</span>
