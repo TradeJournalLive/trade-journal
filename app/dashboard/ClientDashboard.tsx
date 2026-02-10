@@ -86,7 +86,8 @@ type DashboardView =
   | "behavior"
   | "setup"
   | "journal"
-  | "profile";
+  | "profile"
+  | "setup-edit";
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
@@ -592,9 +593,11 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
 }
 
 export default function ClientDashboard({
-  view = "overview"
+  view = "overview",
+  editStrategyId
 }: {
   view?: DashboardView;
+  editStrategyId?: string;
 }) {
   const router = useRouter();
   const [tradeList, setTradeList] = useState<Trade[]>(() =>
@@ -621,11 +624,9 @@ export default function ClientDashboard({
   const [strategyNameInput, setStrategyNameInput] = useState("");
   const [strategyRulesInput, setStrategyRulesInput] = useState("");
   const [strategyStatus, setStrategyStatus] = useState("");
-  const [editingStrategyId, setEditingStrategyId] = useState<string | null>(
-    null
-  );
-  const [editingStrategyName, setEditingStrategyName] = useState("");
-  const [editingStrategyRules, setEditingStrategyRules] = useState("");
+  const [strategyEditName, setStrategyEditName] = useState("");
+  const [strategyEditRules, setStrategyEditRules] = useState("");
+  const [strategyEditStatus, setStrategyEditStatus] = useState("");
   const [activeSection, setActiveSection] =
     useState<DashboardView>("overview");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -827,8 +828,9 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
+    const navTarget = view === "setup-edit" ? "setup" : view;
     if (view !== "overview") {
-      setActiveSection(view);
+      setActiveSection(navTarget);
       return;
     }
 
@@ -1315,54 +1317,52 @@ export default function ClientDashboard({
     setTimeout(() => setStrategyStatus(""), 1500);
   }
 
-  function beginEditStrategy(strategy: StrategyDefinition) {
-    setEditingStrategyId(strategy.id);
-    setEditingStrategyName(strategy.name);
-    setEditingStrategyRules(strategy.rules);
-    setStrategyStatus("");
+  function handleRemoveStrategy(id: string) {
+    setStrategies((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function handleSaveStrategy() {
-    if (!editingStrategyId) return;
-    const name = editingStrategyName.trim();
-    const rules = editingStrategyRules.trim();
+  const strategyBeingEdited = useMemo(() => {
+    if (!editStrategyId) return null;
+    return strategies.find((strategy) => strategy.id === editStrategyId) ?? null;
+  }, [editStrategyId, strategies]);
+
+  useEffect(() => {
+    if (view !== "setup-edit") return;
+    if (strategyBeingEdited) {
+      setStrategyEditName(strategyBeingEdited.name);
+      setStrategyEditRules(strategyBeingEdited.rules);
+    } else {
+      setStrategyEditName("");
+      setStrategyEditRules("");
+    }
+    setStrategyEditStatus("");
+  }, [view, strategyBeingEdited]);
+
+  function handleUpdateStrategy() {
+    if (!editStrategyId) return;
+    const name = strategyEditName.trim();
+    const rules = strategyEditRules.trim();
     if (!name) {
-      setStrategyStatus("Strategy name is required.");
+      setStrategyEditStatus("Strategy name is required.");
       return;
     }
     if (
       strategies.some(
         (item) =>
-          item.id !== editingStrategyId &&
+          item.id !== editStrategyId &&
           item.name.toLowerCase() === name.toLowerCase()
       )
     ) {
-      setStrategyStatus("Strategy already exists.");
+      setStrategyEditStatus("Strategy already exists.");
       return;
     }
     setStrategies((prev) =>
       prev.map((item) =>
-        item.id === editingStrategyId ? { ...item, name, rules } : item
+        item.id === editStrategyId ? { ...item, name, rules } : item
       )
     );
-    setEditingStrategyId(null);
-    setEditingStrategyName("");
-    setEditingStrategyRules("");
-    setStrategyStatus("Strategy updated.");
-    setTimeout(() => setStrategyStatus(""), 1500);
-  }
-
-  function handleCancelEdit() {
-    setEditingStrategyId(null);
-    setEditingStrategyName("");
-    setEditingStrategyRules("");
-  }
-
-  function handleRemoveStrategy(id: string) {
-    setStrategies((prev) => prev.filter((item) => item.id !== id));
-    if (editingStrategyId === id) {
-      handleCancelEdit();
-    }
+    setStrategyEditStatus("Strategy updated.");
+    setTimeout(() => setStrategyEditStatus(""), 1500);
   }
 
   const navItems = [
@@ -2093,88 +2093,40 @@ export default function ClientDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {strategies.map((strategy) => {
-                          const isEditing = editingStrategyId === strategy.id;
-                          return (
-                            <tr
-                              key={strategy.id}
-                              className="border-t border-white/5"
-                            >
-                              <td className="px-3 py-3 align-top">
-                                {isEditing ? (
-                                  <input
-                                    value={editingStrategyName}
-                                    onChange={(event) =>
-                                      setEditingStrategyName(event.target.value)
-                                    }
-                                    className="w-full rounded-md border border-white/10 bg-ink px-2 py-1 text-xs text-white"
-                                  />
-                                ) : (
-                                  <div className="font-semibold">
-                                    {strategy.name}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 align-top">
-                                {isEditing ? (
-                                  <textarea
-                                    value={editingStrategyRules}
-                                    onChange={(event) =>
-                                      setEditingStrategyRules(event.target.value)
-                                    }
-                                    rows={2}
-                                    className="w-full rounded-md border border-white/10 bg-ink px-2 py-1 text-xs text-white"
-                                  />
-                                ) : (
-                                  <div className="text-muted">
-                                    {strategy.rules || "—"}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 text-right align-top">
-                                <div className="flex items-center justify-end gap-2">
-                                  {isEditing ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="rounded-full bg-primary px-3 py-1 text-[10px] font-semibold"
-                                        onClick={handleSaveStrategy}
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted"
-                                        onClick={handleCancelEdit}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
-                                        onClick={() => beginEditStrategy(strategy)}
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
-                                        onClick={() =>
-                                          handleRemoveStrategy(strategy.id)
-                                        }
-                                      >
-                                        Remove
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {strategies.map((strategy) => (
+                          <tr
+                            key={strategy.id}
+                            className="border-t border-white/5"
+                          >
+                            <td className="px-3 py-3 align-top">
+                              <div className="font-semibold">
+                                {strategy.name}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className="text-muted">
+                                {strategy.rules || "—"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-right align-top">
+                              <div className="flex items-center justify-end gap-2">
+                                <Link
+                                  href={`/dashboard/setup/strategy/${strategy.id}`}
+                                  className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                >
+                                  Edit
+                                </Link>
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                  onClick={() => handleRemoveStrategy(strategy.id)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -2279,6 +2231,81 @@ export default function ClientDashboard({
                 <div className="text-xs text-muted">
                   Data source: {dataSourceLabel}
                 </div>
+              </div>
+            </section>
+          )}
+
+          {view === "setup-edit" && (
+            <section
+              id="setup-edit"
+              className="mx-auto max-w-4xl space-y-6 px-6 py-8"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="section-title">Edit strategy</h2>
+                  <p className="section-lead">
+                    Update the playbook with more detailed notes.
+                  </p>
+                </div>
+                <Link
+                  href="/dashboard/setup"
+                  className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+                >
+                  Back to setup
+                </Link>
+              </div>
+
+              <div className="card space-y-4">
+                {!strategyBeingEdited ? (
+                  <div className="text-sm text-muted">
+                    Strategy not found. Go back and choose a valid strategy.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-3">
+                      <label className="text-xs text-muted">
+                        Strategy name
+                        <input
+                          value={strategyEditName}
+                          onChange={(event) =>
+                            setStrategyEditName(event.target.value)
+                          }
+                          className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                        />
+                      </label>
+                      <label className="text-xs text-muted">
+                        Rules / checklist
+                        <textarea
+                          value={strategyEditRules}
+                          onChange={(event) =>
+                            setStrategyEditRules(event.target.value)
+                          }
+                          rows={6}
+                          className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        className="rounded-full bg-primary px-5 py-2 text-xs font-semibold"
+                        onClick={handleUpdateStrategy}
+                      >
+                        Save changes
+                      </button>
+                      <Link
+                        href="/dashboard/setup"
+                        className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+                      >
+                        Cancel
+                      </Link>
+                      {strategyEditStatus && (
+                        <span className="text-xs text-muted">
+                          {strategyEditStatus}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           )}
