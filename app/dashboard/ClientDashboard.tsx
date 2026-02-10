@@ -1510,6 +1510,47 @@ export default function ClientDashboard({
     setEditingTrade(trade);
   }
 
+  async function handleDeleteTrades(tradeIds: string[]) {
+    if (!tradeIds.length) return;
+    if (!window.confirm("Delete selected trade(s)? This cannot be undone.")) {
+      return;
+    }
+    if (dataSource === "supabase") {
+      if (!supabase) return;
+      if (!session) return;
+      const { error } = await supabase
+        .from("trades")
+        .delete()
+        .eq("user_id", session.user.id)
+        .in("trade_id", tradeIds);
+      if (error) {
+        setImportStatus(`Supabase delete failed: ${error.message}`);
+        return;
+      }
+      const { data, error: fetchError } = await supabase
+        .from("trades")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .is("team_id", null)
+        .order("date", { ascending: false })
+        .order("entry_time", { ascending: false });
+      if (fetchError) {
+        setImportStatus(`Supabase fetch failed: ${fetchError.message}`);
+        return;
+      }
+      if (data) {
+        setTradeList(data.map((row) => fromSupabaseRow(row)));
+      }
+      setImportStatus(`Deleted ${tradeIds.length} trade(s).`);
+      return;
+    }
+
+    setTradeList((prev) =>
+      prev.filter((trade) => !tradeIds.includes(trade.tradeId))
+    );
+    setImportStatus(`Deleted ${tradeIds.length} trade(s).`);
+  }
+
   async function handlePasswordUpdate() {
     setProfileStatus("");
     if (!supabase) {
@@ -2983,6 +3024,7 @@ export default function ClientDashboard({
               trades={filteredTrades}
               currency={currency}
               onEdit={handleEditTrade}
+              onDelete={handleDeleteTrades}
             />
           </section>
           )}

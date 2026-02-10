@@ -19,11 +19,13 @@ function formatDirectionLabel(direction: Trade["direction"]) {
 export default function TradeJournal({
   trades,
   currency,
-  onEdit
+  onEdit,
+  onDelete
 }: {
   trades: Trade[];
   currency: "INR" | "USD";
   onEdit?: (trade: Trade) => void;
+  onDelete?: (tradeIds: string[]) => void;
 }) {
   const derived = useMemo(() => deriveTrades(trades), [trades]);
   const instruments = useMemo(
@@ -46,6 +48,8 @@ export default function TradeJournal({
   const [result, setResult] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const locale = currency === "INR" ? "en-IN" : "en-US";
   const money = useMemo(
@@ -80,6 +84,37 @@ export default function TradeJournal({
     if (endDate && trade.date > endDate) return false;
     return true;
   });
+
+  const selectedCount = selectedIds.size;
+  const allSelected =
+    filtered.length > 0 && selectedIds.size === filtered.length;
+
+  function toggleSelect(tradeId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tradeId)) {
+        next.delete(tradeId);
+      } else {
+        next.add(tradeId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(() => {
+      if (allSelected) return new Set();
+      return new Set(filtered.map((trade) => trade.tradeId));
+    });
+  }
+
+  function handleDeleteSelected() {
+    if (!onDelete || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    onDelete(ids);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }
 
   return (
     <div className="card">
@@ -182,6 +217,46 @@ export default function TradeJournal({
         />
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3 text-muted">
+          <span>{filtered.length} trades</span>
+          {selectedCount > 0 && (
+            <span className="text-primary">{selectedCount} selected</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+            onClick={() => {
+              setSelectMode((prev) => !prev);
+              setSelectedIds(new Set());
+            }}
+          >
+            {selectMode ? "Cancel selection" : "Select trades"}
+          </button>
+          {selectMode && (
+            <>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+                onClick={toggleSelectAll}
+              >
+                {allSelected ? "Clear all" : "Select all"}
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-negative/90 px-3 py-1 text-xs font-semibold text-white"
+                onClick={handleDeleteSelected}
+                disabled={selectedCount === 0}
+              >
+                Delete selected
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
       <div className="mt-6 space-y-4">
         {filtered.length === 0 && (
           <div className="rounded-xl border border-white/10 bg-panel/30 p-6 text-sm text-muted">
@@ -196,6 +271,13 @@ export default function TradeJournal({
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(trade.tradeId)}
+                    onChange={() => toggleSelect(trade.tradeId)}
+                  />
+                )}
                 <span className="text-sm font-semibold text-white">
                   {trade.tradeId}
                 </span>
@@ -211,6 +293,15 @@ export default function TradeJournal({
                     className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
                   >
                     Edit
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete([trade.tradeId])}
+                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-negative hover:text-white"
+                  >
+                    Delete
                   </button>
                 )}
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
@@ -268,8 +359,11 @@ export default function TradeJournal({
                     <span>{trade.platform}</span>
                   </div>
                   {trade.remarks && (
-                    <div className="text-muted text-[11px] mt-2">
-                      {trade.remarks}
+                    <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
+                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/10 text-[10px] text-primary">
+                        ✎
+                      </span>
+                      <span>{trade.remarks}</span>
                     </div>
                   )}
                 </div>
