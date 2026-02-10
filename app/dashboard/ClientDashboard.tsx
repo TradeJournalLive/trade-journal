@@ -830,7 +830,7 @@ export default function ClientDashboard({
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [replaceOnImport, setReplaceOnImport] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [currency, setCurrency] = useState<"INR" | "USD">("INR");
   const [globalMarket, setGlobalMarket] = useState("all");
   const [globalInstrument, setGlobalInstrument] = useState("all");

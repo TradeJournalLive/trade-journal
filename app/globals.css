@@ -3,6 +3,21 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
+  --color-ink: 246 248 251;
+  --color-panel: 255 255 255;
+  --color-elevate: 240 244 249;
+  --color-primary: 22 37 64;
+  --color-positive: 20 184 166;
+  --color-negative: 239 68 68;
+  --color-muted: 71 85 105;
+  --color-text: 15 23 42;
+  --color-border: 148 163 184;
+  --color-chip: 30 41 59;
+  --color-warm: 245 158 11;
+}
+
+html.dark {
   color-scheme: dark;
   --color-ink: 9 12 18;
   --color-panel: 16 23 42;
@@ -14,20 +29,7 @@
   --color-text: 226 232 240;
   --color-border: 148 163 184;
   --color-chip: 148 163 184;
-}
-
-html.light {
-  color-scheme: light;
-  --color-ink: 248 250 252;
-  --color-panel: 255 255 255;
-  --color-elevate: 241 245 249;
-  --color-primary: 37 99 235;
-  --color-positive: 22 163 74;
-  --color-negative: 239 68 68;
-  --color-muted: 51 65 85;
-  --color-text: 15 23 42;
-  --color-border: 148 163 184;
-  --color-chip: 30 41 59;
+  --color-warm: 251 191 36;
 }
 
 body {
@@ -50,11 +52,12 @@ body {
 }
 
 .card {
-  @apply rounded-2xl p-6 shadow-soft;
+  @apply rounded-2xl p-6;
   background-color: rgb(var(--color-panel));
   border: 1px solid rgb(var(--color-border) / 0.1);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
 }
 
 .kpi {
@@ -63,6 +66,7 @@ body {
   border: 1px solid rgb(var(--color-border) / 0.1);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
 }
 
 .badge {
@@ -98,21 +102,22 @@ body {
   background-size: 48px 48px;
 }
 
-.bg-candles {
+html.dark .bg-grid {
+  opacity: 0.6;
+}
+
+html.dark .bg-candles {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='640' height='320' viewBox='0 0 640 320' fill='none'><g stroke='rgba(255,255,255,0.18)' stroke-width='2'><line x1='80' y1='40' x2='80' y2='280'/><rect x='68' y='110' width='24' height='60' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='160' y1='30' x2='160' y2='260'/><rect x='148' y='90' width='24' height='90' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='240' y1='60' x2='240' y2='300'/><rect x='228' y='160' width='24' height='50' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='320' y1='40' x2='320' y2='280'/><rect x='308' y='130' width='24' height='70' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='400' y1='30' x2='400' y2='260'/><rect x='388' y='100' width='24' height='80' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='480' y1='70' x2='480' y2='300'/><rect x='468' y='180' width='24' height='55' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/><line x1='560' y1='40' x2='560' y2='280'/><rect x='548' y='120' width='24' height='70' rx='3' fill='rgba(255,255,255,0.06)' stroke='rgba(255,255,255,0.18)'/></g><path d='M40 220 L120 160 L200 190 L280 120 L360 150 L440 110 L520 140 L600 90' stroke='rgba(56,189,248,0.4)' stroke-width='2' fill='none'/></svg>");
+  mix-blend-mode: screen;
+  opacity: 0.3;
+}
+
+.bg-candles {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='640' height='320' viewBox='0 0 640 320' fill='none'><g stroke='rgba(15,23,42,0.18)' stroke-width='2'><line x1='80' y1='40' x2='80' y2='280'/><rect x='68' y='110' width='24' height='60' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='160' y1='30' x2='160' y2='260'/><rect x='148' y='90' width='24' height='90' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='240' y1='60' x2='240' y2='300'/><rect x='228' y='160' width='24' height='50' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='320' y1='40' x2='320' y2='280'/><rect x='308' y='130' width='24' height='70' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='400' y1='30' x2='400' y2='260'/><rect x='388' y='100' width='24' height='80' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='480' y1='70' x2='480' y2='300'/><rect x='468' y='180' width='24' height='55' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='560' y1='40' x2='560' y2='280'/><rect x='548' y='120' width='24' height='70' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/></g><path d='M40 220 L120 160 L200 190 L280 120 L360 150 L440 110 L520 140 L600 90' stroke='rgba(37,99,235,0.35)' stroke-width='2' fill='none'/></svg>");
   background-size: 640px 320px;
   background-repeat: repeat;
-  mix-blend-mode: screen;
-}
-
-html.light .bg-grid {
-  opacity: 0.35;
-}
-
-html.light .bg-candles {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='640' height='320' viewBox='0 0 640 320' fill='none'><g stroke='rgba(15,23,42,0.18)' stroke-width='2'><line x1='80' y1='40' x2='80' y2='280'/><rect x='68' y='110' width='24' height='60' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='160' y1='30' x2='160' y2='260'/><rect x='148' y='90' width='24' height='90' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='240' y1='60' x2='240' y2='300'/><rect x='228' y='160' width='24' height='50' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='320' y1='40' x2='320' y2='280'/><rect x='308' y='130' width='24' height='70' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='400' y1='30' x2='400' y2='260'/><rect x='388' y='100' width='24' height='80' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='480' y1='70' x2='480' y2='300'/><rect x='468' y='180' width='24' height='55' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/><line x1='560' y1='40' x2='560' y2='280'/><rect x='548' y='120' width='24' height='70' rx='3' fill='rgba(15,23,42,0.05)' stroke='rgba(15,23,42,0.18)'/></g><path d='M40 220 L120 160 L200 190 L280 120 L360 150 L440 110 L520 140 L600 90' stroke='rgba(37,99,235,0.35)' stroke-width='2' fill='none'/></svg>");
   mix-blend-mode: multiply;
-  opacity: 0.3;
+  opacity: 0.2;
 }
 
 .card::before,
@@ -146,4 +151,8 @@ html.light .bg-candles {
   );
   opacity: 0.8;
   pointer-events: none;
+}
+
+.bg-primary {
+  color: white;
 }
