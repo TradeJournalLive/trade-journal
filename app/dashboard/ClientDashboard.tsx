@@ -1756,7 +1756,7 @@ export default function ClientDashboard({
   }
 
   const navItems = [
-    { label: "Overview", href: "/dashboard", id: "overview" },
+    { label: "Overview", href: "/dashboard#overview", id: "overview" },
     { label: "Performance", href: "/dashboard#performance", id: "performance" },
     { label: "Strategy", href: "/dashboard#strategy", id: "strategy" },
     { label: "Day-wise", href: "/dashboard#day", id: "day" },
@@ -1800,7 +1800,7 @@ export default function ClientDashboard({
       </div>
       <div className="relative flex items-start">
         <aside className="hidden h-screen w-60 flex-col border-r border-white/5 bg-panel/40 p-6 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href="/dashboard#overview" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
               TJ
             </div>
@@ -1835,7 +1835,7 @@ export default function ClientDashboard({
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Link
-                  href="/dashboard"
+                  href="/dashboard#overview"
                   className="rounded-full border border-white/10 px-4 py-2 text-muted"
                 >
                   Home
