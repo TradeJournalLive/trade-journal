@@ -388,41 +388,40 @@ function AddTradeForm({
   instruments,
   strategies
 }: AddTradeFormProps) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [tradeId, setTradeId] = useState(createTradeId());
-  const [date, setDate] = useState(today);
-  const [instrument, setInstrument] = useState(instruments[0]?.name ?? "");
-  const [market, setMarket] = useState("Equity");
-  const [entryTime, setEntryTime] = useState("09:30");
-  const [exitTime, setExitTime] = useState("10:30");
-  const [strategyChoice, setStrategyChoice] = useState(
-    strategies[0]?.name ?? "Unspecified"
-  );
-  const [direction, setDirection] = useState<Trade["direction"]>("Long");
-  const [lots, setLots] = useState("1");
+  const [tradeId, setTradeId] = useState("");
+  const [date, setDate] = useState("");
+  const [instrument, setInstrument] = useState("");
+  const [market, setMarket] = useState("");
+  const [entryTime, setEntryTime] = useState("");
+  const [exitTime, setExitTime] = useState("");
+  const [strategyChoice, setStrategyChoice] = useState("");
+  const [direction, setDirection] = useState<Trade["direction"] | "">("");
+  const [lots, setLots] = useState("");
   const [entryPrice, setEntryPrice] = useState("");
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [exitReasonChoice, setExitReasonChoice] = useState("");
   const [exitReasonCustom, setExitReasonCustom] = useState("");
-  const [platform, setPlatform] = useState("Web");
+  const [platform, setPlatform] = useState("");
   const [chartUrl, setChartUrl] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const isEditing = Boolean(editingTrade);
+  const wasEditingRef = useRef(false);
 
   useEffect(() => {
     if (editingTrade) {
+      wasEditingRef.current = true;
       setTradeId(editingTrade.tradeId);
-      setDate(editingTrade.date || today);
-      setInstrument(editingTrade.instrument || instruments[0]?.name || "");
-      setMarket(editingTrade.market || "Equity");
-      setEntryTime(editingTrade.entryTime || "09:30");
-      setExitTime(editingTrade.exitTime || "10:30");
-      setStrategyChoice(editingTrade.strategy || "Unspecified");
-      setDirection(editingTrade.direction || "Long");
+      setDate(editingTrade.date || "");
+      setInstrument(editingTrade.instrument || "");
+      setMarket(editingTrade.market || "");
+      setEntryTime(editingTrade.entryTime || "");
+      setExitTime(editingTrade.exitTime || "");
+      setStrategyChoice(editingTrade.strategy || "");
+      setDirection(editingTrade.direction || "");
       const resolvedLotSize =
         instruments.find((item) => item.name === editingTrade.instrument)
           ?.lotSize ??
@@ -452,42 +451,42 @@ function AddTradeForm({
         setExitReasonChoice("");
         setExitReasonCustom("");
       }
-      setPlatform(editingTrade.platform || "Web");
+      setPlatform(editingTrade.platform || "");
       setChartUrl(editingTrade.chartUrl || "");
       return;
     }
 
-    if (!instruments.length) {
-      if (!instrument) {
-        setInstrument("");
-      }
-      return;
+    if (wasEditingRef.current) {
+      wasEditingRef.current = false;
+      setTradeId("");
+      setDate("");
+      setInstrument("");
+      setMarket("");
+      setEntryTime("");
+      setExitTime("");
+      setStrategyChoice("");
+      setDirection("");
+      setLots("");
+      setEntryPrice("");
+      setExitPrice("");
+      setStopLoss("");
+      setTargetPrice("");
+      setExitReasonChoice("");
+      setExitReasonCustom("");
+      setPlatform("");
+      setChartUrl("");
     }
-    if (!instrument) {
-      setInstrument(instruments[0]?.name ?? "");
-    }
-    if (!lots) setLots("1");
-  }, [editingTrade, instruments, instrument, today]);
-
-  useEffect(() => {
-    if (isEditing) return;
-    if (!strategies.length) {
-      setStrategyChoice("Unspecified");
-      return;
-    }
-    if (!strategies.find((strategy) => strategy.name === strategyChoice)) {
-      setStrategyChoice(strategies[0].name);
-    }
-  }, [isEditing, strategies, strategyChoice]);
+  }, [editingTrade, instruments]);
 
   const instrumentValue = instrument.trim();
   const selectedLotSize =
-    instruments.find((item) => item.name === instrumentValue)?.lotSize ?? 1;
+    instruments.find((item) => item.name === instrumentValue)?.lotSize ?? 0;
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
     setSuccess("");
 
+    const tradeIdValue = tradeId || createTradeId();
     const exitReasonValue =
       exitReasonChoice === "Custom"
         ? exitReasonCustom.trim()
@@ -495,11 +494,15 @@ function AddTradeForm({
     const chartUrlValue = normalizeUrl(chartUrl);
 
     if (
-      !tradeId ||
+      !tradeIdValue ||
       !date ||
       !instrumentValue ||
+      !market ||
       !entryTime ||
       !exitTime ||
+      !strategyChoice ||
+      !direction ||
+      !lots ||
       !entryPrice ||
       !exitPrice ||
       !stopLoss ||
@@ -533,12 +536,12 @@ function AddTradeForm({
       return;
     }
     if (!Number.isFinite(selectedLotSize) || selectedLotSize <= 0) {
-      setError("Lot size is not set. Update it in Instruments.");
+      setError("Select instrument with a valid lot size.");
       return;
     }
 
     const trade: Trade = {
-      tradeId,
+      tradeId: tradeIdValue,
       date,
       instrument: instrumentValue,
       market,
@@ -571,16 +574,21 @@ function AddTradeForm({
         onCancelEdit();
         return;
       }
-      setTradeId(createTradeId());
-      setInstrument(instruments[0]?.name ?? "");
-      setStrategyChoice(strategies[0]?.name ?? "Unspecified");
+      setTradeId("");
+      setInstrument("");
+      setMarket("");
+      setEntryTime("");
+      setExitTime("");
+      setStrategyChoice("");
+      setDirection("");
       setEntryPrice("");
       setExitPrice("");
       setStopLoss("");
       setTargetPrice("");
-      setLots("1");
+      setLots("");
       setExitReasonChoice("");
       setExitReasonCustom("");
+      setPlatform("");
       setChartUrl("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
@@ -663,6 +671,9 @@ function AddTradeForm({
           onChange={(event) => setMarket(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
+          <option value="" disabled>
+            Select market
+          </option>
           <option value="Equity">Equity</option>
           <option value="F&O">F&O</option>
           <option value="Crypto">Crypto</option>
@@ -687,17 +698,14 @@ function AddTradeForm({
           onChange={(event) => setStrategyChoice(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
-          {strategies.length === 0 && (
-            <option value="Unspecified">Unspecified</option>
-          )}
+          <option value="" disabled>
+            Select strategy
+          </option>
           {strategies.map((strategy) => (
             <option key={strategy.id} value={strategy.name}>
               {strategy.name}
             </option>
           ))}
-          {strategies.length > 0 && (
-            <option value="Unspecified">Unspecified</option>
-          )}
         </select>
         <select
           value={direction}
@@ -706,6 +714,9 @@ function AddTradeForm({
           }
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
+          <option value="" disabled>
+            Select side
+          </option>
           <option value="Long">Call (Buy)</option>
           <option value="Short">Put (Buy)</option>
         </select>
@@ -718,7 +729,11 @@ function AddTradeForm({
         />
         <input
           placeholder="Qty (Auto)"
-          value={`${Number(lots || 0) * (selectedLotSize || 0)}`}
+          value={
+            instrumentValue
+              ? `${Number(lots || 0) * (selectedLotSize || 0)}`
+              : ""
+          }
           readOnly
           className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-white"
         />
@@ -746,7 +761,9 @@ function AddTradeForm({
       </div>
 
       <p className="mt-2 text-[10px] text-muted">
-        1 lot = {selectedLotSize} qty (set in Instruments)
+        {instrumentValue
+          ? `1 lot = ${selectedLotSize} qty (set in Instruments)`
+          : "Select an instrument to load its lot size"}
       </p>
 
       <div className="mt-3 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
