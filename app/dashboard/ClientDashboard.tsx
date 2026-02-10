@@ -70,13 +70,23 @@ const REQUIRED_HEADERS = [
   "Platform"
 ];
 
-const DEFAULT_INSTRUMENTS = ["Nifty", "B.Nifty", "Sensex"];
-
 type StrategyDefinition = {
   id: string;
   name: string;
   rules: string;
 };
+
+type InstrumentDefinition = {
+  id: string;
+  name: string;
+  lotSize: number;
+};
+
+const DEFAULT_INSTRUMENTS: InstrumentDefinition[] = [
+  { id: "inst-nifty", name: "Nifty", lotSize: 1 },
+  { id: "inst-bnifty", name: "B.Nifty", lotSize: 1 },
+  { id: "inst-sensex", name: "Sensex", lotSize: 1 }
+];
 
 type DashboardView =
   | "overview"
@@ -85,6 +95,7 @@ type DashboardView =
   | "day"
   | "behavior"
   | "setup"
+  | "instruments"
   | "journal"
   | "profile"
   | "setup-edit";
@@ -101,6 +112,72 @@ function getDateRange(trades: Trade[]) {
 
 function normalizeHeader(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeInstrumentName(value: string) {
+  return value.trim();
+}
+
+function buildInstrumentId(name: string) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `INST-${slug}-${Date.now()}`;
+}
+
+function normalizeInstrumentList(data: unknown): InstrumentDefinition[] {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((item) => {
+      if (typeof item === "string") {
+        const name = normalizeInstrumentName(item);
+        if (!name) return null;
+        return { id: buildInstrumentId(name), name, lotSize: 1 };
+      }
+      if (typeof item === "object" && item) {
+        const record = item as { id?: string; name?: string; lotSize?: number };
+        const name = normalizeInstrumentName(String(record.name ?? ""));
+        if (!name) return null;
+        const lotSize =
+          typeof record.lotSize === "number" && Number.isFinite(record.lotSize)
+            ? record.lotSize
+            : 1;
+        return {
+          id: record.id ?? buildInstrumentId(name),
+          name,
+          lotSize
+        };
+      }
+      return null;
+    })
+    .filter((item): item is InstrumentDefinition => Boolean(item));
+}
+
+function mergeInstrumentDefaults(
+  list: InstrumentDefinition[]
+): InstrumentDefinition[] {
+  const map = new Map<string, InstrumentDefinition>();
+  list.forEach((item) => {
+    map.set(item.name.toLowerCase(), item);
+  });
+
+  const merged = DEFAULT_INSTRUMENTS.map((def) => {
+    const existing = map.get(def.name.toLowerCase());
+    if (!existing) return def;
+    map.delete(def.name.toLowerCase());
+    return {
+      id: existing.id ?? def.id,
+      name: existing.name,
+      lotSize:
+        Number.isFinite(existing.lotSize) && existing.lotSize > 0
+          ? existing.lotSize
+          : def.lotSize
+    };
+  });
+
+  map.forEach((item) => {
+    merged.push(item);
+  });
+
+  return merged;
 }
 
 function toCsvValue(value: string | number | null) {
@@ -299,7 +376,7 @@ type AddTradeFormProps = {
   onUpdate: (trade: Trade) => Promise<string | null> | string | null;
   onCancelEdit: () => void;
   editingTrade: Trade | null;
-  instruments: string[];
+  instruments: InstrumentDefinition[];
   strategies: StrategyDefinition[];
 };
 
@@ -314,7 +391,7 @@ function AddTradeForm({
   const today = new Date().toISOString().slice(0, 10);
   const [tradeId, setTradeId] = useState(createTradeId());
   const [date, setDate] = useState(today);
-  const [instrument, setInstrument] = useState(instruments[0] ?? "");
+  const [instrument, setInstrument] = useState(instruments[0]?.name ?? "");
   const [market, setMarket] = useState("Equity");
   const [entryTime, setEntryTime] = useState("09:30");
   const [exitTime, setExitTime] = useState("10:30");
@@ -384,11 +461,19 @@ function AddTradeForm({
       return;
     }
     if (!instrument) {
-      setInstrument(instruments[0]);
+      setInstrument(instruments[0]?.name ?? "");
     }
     if (!lots) setLots("1");
     if (!lotSize) setLotSize("1");
   }, [editingTrade, instruments, instrument, today]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    const match = instruments.find((item) => item.name === instrument);
+    if (match && Number.isFinite(match.lotSize)) {
+      setLotSize(String(match.lotSize));
+    }
+  }, [instrument, instruments, isEditing]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -489,7 +574,7 @@ function AddTradeForm({
         return;
       }
       setTradeId(createTradeId());
-      setInstrument(instruments[0] ?? "");
+      setInstrument(instruments[0]?.name ?? "");
       setStrategyChoice(strategies[0]?.name ?? "Unspecified");
       setEntryPrice("");
       setExitPrice("");
@@ -572,7 +657,7 @@ function AddTradeForm({
           />
           <datalist id="instrument-options">
             {instruments.map((item) => (
-              <option key={item} value={item} />
+              <option key={item.id} value={item.name} />
             ))}
           </datalist>
         </div>
@@ -747,8 +832,14 @@ export default function ClientDashboard({
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const lastUserIdRef = useRef<string | null>(null);
-  const [instruments, setInstruments] = useState<string[]>(DEFAULT_INSTRUMENTS);
-  const [instrumentInput, setInstrumentInput] = useState("");
+  const [instruments, setInstruments] =
+    useState<InstrumentDefinition[]>(DEFAULT_INSTRUMENTS);
+  const [instrumentNameInput, setInstrumentNameInput] = useState("");
+  const [instrumentLotSizeInput, setInstrumentLotSizeInput] = useState("1");
+  const [instrumentEditId, setInstrumentEditId] = useState<string | null>(null);
+  const [instrumentEditName, setInstrumentEditName] = useState("");
+  const [instrumentEditLotSize, setInstrumentEditLotSize] = useState("");
+  const [instrumentStatus, setInstrumentStatus] = useState("");
   const [strategies, setStrategies] = useState<StrategyDefinition[]>([]);
   const [strategyNameInput, setStrategyNameInput] = useState("");
   const [strategyRulesInput, setStrategyRulesInput] = useState("");
@@ -884,12 +975,10 @@ export default function ClientDashboard({
       return;
     }
     try {
-      const parsed = JSON.parse(stored) as string[];
-      if (Array.isArray(parsed) && parsed.length) {
-        const merged = Array.from(
-          new Set([...DEFAULT_INSTRUMENTS, ...parsed])
-        );
-        setInstruments(merged);
+      const parsed = JSON.parse(stored);
+      const normalized = normalizeInstrumentList(parsed);
+      if (normalized.length) {
+        setInstruments(mergeInstrumentDefaults(normalized));
       } else {
         setInstruments(DEFAULT_INSTRUMENTS);
       }
@@ -1298,6 +1387,8 @@ export default function ClientDashboard({
         strategy,
         direction,
         sizeQty,
+        lots: 1,
+        lotSize: sizeQty,
         entryPrice,
         exitPrice,
         stopLoss,
@@ -1421,19 +1512,91 @@ export default function ClientDashboard({
   }
 
   function handleAddInstrument() {
-    const name = instrumentInput.trim();
-    if (!name) return;
+    const name = normalizeInstrumentName(instrumentNameInput);
+    const lotSizeValue = Number(instrumentLotSizeInput);
+    if (!name) {
+      setInstrumentStatus("Instrument name is required.");
+      return;
+    }
+    if (!Number.isFinite(lotSizeValue) || lotSizeValue <= 0) {
+      setInstrumentStatus("Lot size must be a positive number.");
+      return;
+    }
     setInstruments((prev) => {
-      if (prev.some((item) => item.toLowerCase() === name.toLowerCase())) {
+      if (prev.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
         return prev;
       }
-      return [...prev, name];
+      return [
+        {
+          id: buildInstrumentId(name),
+          name,
+          lotSize: lotSizeValue
+        },
+        ...prev
+      ];
     });
-    setInstrumentInput("");
+    setInstrumentNameInput("");
+    setInstrumentLotSizeInput("1");
+    setInstrumentStatus("Instrument added.");
+    setTimeout(() => setInstrumentStatus(""), 1500);
   }
 
-  function handleRemoveInstrument(name: string) {
-    setInstruments((prev) => prev.filter((item) => item !== name));
+  function handleRemoveInstrument(id: string) {
+    setInstruments((prev) => prev.filter((item) => item.id !== id));
+    if (instrumentEditId === id) {
+      setInstrumentEditId(null);
+      setInstrumentEditName("");
+      setInstrumentEditLotSize("");
+    }
+  }
+
+  function beginEditInstrument(item: InstrumentDefinition) {
+    setInstrumentEditId(item.id);
+    setInstrumentEditName(item.name);
+    setInstrumentEditLotSize(String(item.lotSize));
+    setInstrumentStatus("");
+  }
+
+  function handleUpdateInstrument() {
+    if (!instrumentEditId) return;
+    const name = normalizeInstrumentName(instrumentEditName);
+    const lotSizeValue = Number(instrumentEditLotSize);
+    if (!name) {
+      setInstrumentStatus("Instrument name is required.");
+      return;
+    }
+    if (!Number.isFinite(lotSizeValue) || lotSizeValue <= 0) {
+      setInstrumentStatus("Lot size must be a positive number.");
+      return;
+    }
+    if (
+      instruments.some(
+        (item) =>
+          item.id !== instrumentEditId &&
+          item.name.toLowerCase() === name.toLowerCase()
+      )
+    ) {
+      setInstrumentStatus("Instrument already exists.");
+      return;
+    }
+    setInstruments((prev) =>
+      prev.map((item) =>
+        item.id === instrumentEditId
+          ? { ...item, name, lotSize: lotSizeValue }
+          : item
+      )
+    );
+    setInstrumentStatus("Instrument updated.");
+    setInstrumentEditId(null);
+    setInstrumentEditName("");
+    setInstrumentEditLotSize("");
+    setTimeout(() => setInstrumentStatus(""), 1500);
+  }
+
+  function cancelEditInstrument() {
+    setInstrumentEditId(null);
+    setInstrumentEditName("");
+    setInstrumentEditLotSize("");
   }
 
   function handleAddStrategy() {
@@ -1517,6 +1680,7 @@ export default function ClientDashboard({
     { label: "Strategy", href: "/dashboard#strategy", id: "strategy" },
     { label: "Day-wise", href: "/dashboard#day", id: "day" },
     { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
+    { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
@@ -2142,51 +2306,11 @@ export default function ClientDashboard({
             <div>
               <h2 className="section-title">Setup</h2>
               <p className="section-lead">
-                Maintain your instrument list and strategy playbook.
+                Maintain your strategy playbook.
               </p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="card space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold">Instruments</h3>
-                  <p className="text-sm text-muted">
-                    Default: Nifty, B.Nifty, Sensex. Add your own names below.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <input
-                    placeholder="Add instrument"
-                    value={instrumentInput}
-                    onChange={(event) => setInstrumentInput(event.target.value)}
-                    className="flex-1 rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                  />
-                  <button
-                    className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
-                    onClick={handleAddInstrument}
-                  >
-                    Add
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {instruments.map((item) => (
-                    <span
-                      key={item}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1"
-                    >
-                      {item}
-                      <button
-                        className="text-[10px] text-muted hover:text-white"
-                        onClick={() => handleRemoveInstrument(item)}
-                        aria-label={`Remove ${item}`}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
+            <div className="grid gap-6">
               <div className="card space-y-4">
                 <div>
                   <h3 className="text-lg font-semibold">Strategies</h3>
@@ -2376,6 +2500,169 @@ export default function ClientDashboard({
                 </div>
                 <div className="text-xs text-muted">
                   Data source: {dataSourceLabel}
+                </div>
+              </div>
+          </section>
+          )}
+
+          {view === "instruments" && (
+            <section
+              id="instruments"
+              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">Instruments</h2>
+                <p className="section-lead">
+                  Maintain instrument names and their current lot size.
+                </p>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="card space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Add instrument</h3>
+                    <p className="text-sm text-muted">
+                      Lot size is used to auto-calculate quantity in trades.
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    <input
+                      placeholder="Instrument name"
+                      value={instrumentNameInput}
+                      onChange={(event) =>
+                        setInstrumentNameInput(event.target.value)
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      placeholder="Lot size"
+                      value={instrumentLotSizeInput}
+                      onChange={(event) =>
+                        setInstrumentLotSizeInput(event.target.value)
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <button
+                      className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                      onClick={handleAddInstrument}
+                    >
+                      Add instrument
+                    </button>
+                    {instrumentStatus && (
+                      <span className="text-xs text-muted">
+                        {instrumentStatus}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Edit instrument</h3>
+                    <p className="text-sm text-muted">
+                      Select an instrument from the list to update its lot size.
+                    </p>
+                  </div>
+                  {instrumentEditId ? (
+                    <div className="grid gap-3">
+                      <input
+                        placeholder="Instrument name"
+                        value={instrumentEditName}
+                        onChange={(event) =>
+                          setInstrumentEditName(event.target.value)
+                        }
+                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                      />
+                      <input
+                        placeholder="Lot size"
+                        value={instrumentEditLotSize}
+                        onChange={(event) =>
+                          setInstrumentEditLotSize(event.target.value)
+                        }
+                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                          onClick={handleUpdateInstrument}
+                        >
+                          Save changes
+                        </button>
+                        <button
+                          className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+                          onClick={cancelEditInstrument}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {instrumentStatus && (
+                        <span className="text-xs text-muted">
+                          {instrumentStatus}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">
+                      Pick an instrument below to edit.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Instrument list</h3>
+                  <span className="text-xs text-muted">
+                    {instruments.length} instruments
+                  </span>
+                </div>
+                <div className="mt-4 overflow-hidden rounded-lg border border-white/10">
+                  <table className="w-full text-xs">
+                    <thead className="bg-white/5 text-muted">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Instrument
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Lot size
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {instruments.map((item) => (
+                        <tr
+                          key={item.id}
+                          className="border-t border-white/5"
+                        >
+                          <td className="px-3 py-3 font-semibold">
+                            {item.name}
+                          </td>
+                          <td className="px-3 py-3 text-muted">
+                            {item.lotSize}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                onClick={() => beginEditInstrument(item)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                onClick={() => handleRemoveInstrument(item.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </section>
