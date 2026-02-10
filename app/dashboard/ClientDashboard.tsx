@@ -129,6 +129,12 @@ function normalizeTime(value: string) {
   return `${hours}:${minutes}`;
 }
 
+function createTradeId() {
+  const timePart = Date.now().toString(36).slice(-4).toUpperCase();
+  const randomPart = Math.random().toString(36).slice(2, 5).toUpperCase();
+  return `T-${timePart}${randomPart}`;
+}
+
 function parseNumber(value: string) {
   const cleaned = value.replace(/,/g, "").trim();
   if (!cleaned) return null;
@@ -277,7 +283,7 @@ type AddTradeFormProps = {
 
 function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const today = new Date().toISOString().slice(0, 10);
-  const [tradeId, setTradeId] = useState(`T-${Date.now()}`);
+  const [tradeId, setTradeId] = useState(createTradeId());
   const [date, setDate] = useState(today);
   const [instrument, setInstrument] = useState(instruments[0] ?? "");
   const [market, setMarket] = useState("Equity");
@@ -292,7 +298,8 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
-  const [exitReason, setExitReason] = useState("Trailing SL");
+  const [exitReasonChoice, setExitReasonChoice] = useState("");
+  const [exitReasonCustom, setExitReasonCustom] = useState("");
   const [platform, setPlatform] = useState("Web");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -321,12 +328,15 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   }, [strategies, strategyChoice]);
 
   const instrumentValue = instrument.trim();
-  const exitReasonValue = exitReason.trim() || "Trailing SL";
-
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
     setSuccess("");
+
+    const exitReasonValue =
+      exitReasonChoice === "Custom"
+        ? exitReasonCustom.trim()
+        : exitReasonChoice;
 
     if (
       !tradeId ||
@@ -337,7 +347,8 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
       !entryPrice ||
       !exitPrice ||
       !stopLoss ||
-      !targetPrice
+      !targetPrice ||
+      !exitReasonValue
     ) {
       setError("Please fill all required fields.");
       return;
@@ -385,14 +396,15 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
         setError(response);
         return;
       }
-      setTradeId(`T-${Date.now()}`);
+      setTradeId(createTradeId());
       setInstrument(instruments[0] ?? "");
       setStrategyChoice(strategies[0]?.name ?? "Unspecified");
       setEntryPrice("");
       setExitPrice("");
       setStopLoss("");
       setTargetPrice("");
-      setExitReason("Trailing SL");
+      setExitReasonChoice("");
+      setExitReasonCustom("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -545,19 +557,28 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           required
         />
-        <div>
-          <input
-            list="exit-reason-options"
-            placeholder="Exit Reason"
-            value={exitReason}
-            onChange={(event) => setExitReason(event.target.value)}
+        <div className="flex flex-col gap-2">
+          <select
+            value={exitReasonChoice}
+            onChange={(event) => setExitReasonChoice(event.target.value)}
             className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-          />
-          <datalist id="exit-reason-options">
-            <option value="Trailing SL" />
-            <option value="SL" />
-            <option value="Target" />
-          </datalist>
+          >
+            <option value="" disabled>
+              Exit reason
+            </option>
+            <option value="Trailing SL">Trailing SL</option>
+            <option value="SL">SL</option>
+            <option value="Target">Target</option>
+            <option value="Custom">Custom</option>
+          </select>
+          {exitReasonChoice === "Custom" && (
+            <input
+              placeholder="Custom reason"
+              value={exitReasonCustom}
+              onChange={(event) => setExitReasonCustom(event.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            />
+          )}
         </div>
         <input
           placeholder="Platform"
@@ -600,6 +621,11 @@ export default function ClientDashboard({
   const [strategyNameInput, setStrategyNameInput] = useState("");
   const [strategyRulesInput, setStrategyRulesInput] = useState("");
   const [strategyStatus, setStrategyStatus] = useState("");
+  const [editingStrategyId, setEditingStrategyId] = useState<string | null>(
+    null
+  );
+  const [editingStrategyName, setEditingStrategyName] = useState("");
+  const [editingStrategyRules, setEditingStrategyRules] = useState("");
   const [activeSection, setActiveSection] =
     useState<DashboardView>("overview");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -1269,7 +1295,9 @@ export default function ClientDashboard({
       setStrategyStatus("Strategy name is required.");
       return;
     }
-    if (strategies.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+    if (
+      strategies.some((item) => item.name.toLowerCase() === name.toLowerCase())
+    ) {
       setStrategyStatus("Strategy already exists.");
       return;
     }
@@ -1287,8 +1315,54 @@ export default function ClientDashboard({
     setTimeout(() => setStrategyStatus(""), 1500);
   }
 
+  function beginEditStrategy(strategy: StrategyDefinition) {
+    setEditingStrategyId(strategy.id);
+    setEditingStrategyName(strategy.name);
+    setEditingStrategyRules(strategy.rules);
+    setStrategyStatus("");
+  }
+
+  function handleSaveStrategy() {
+    if (!editingStrategyId) return;
+    const name = editingStrategyName.trim();
+    const rules = editingStrategyRules.trim();
+    if (!name) {
+      setStrategyStatus("Strategy name is required.");
+      return;
+    }
+    if (
+      strategies.some(
+        (item) =>
+          item.id !== editingStrategyId &&
+          item.name.toLowerCase() === name.toLowerCase()
+      )
+    ) {
+      setStrategyStatus("Strategy already exists.");
+      return;
+    }
+    setStrategies((prev) =>
+      prev.map((item) =>
+        item.id === editingStrategyId ? { ...item, name, rules } : item
+      )
+    );
+    setEditingStrategyId(null);
+    setEditingStrategyName("");
+    setEditingStrategyRules("");
+    setStrategyStatus("Strategy updated.");
+    setTimeout(() => setStrategyStatus(""), 1500);
+  }
+
+  function handleCancelEdit() {
+    setEditingStrategyId(null);
+    setEditingStrategyName("");
+    setEditingStrategyRules("");
+  }
+
   function handleRemoveStrategy(id: string) {
     setStrategies((prev) => prev.filter((item) => item.id !== id));
+    if (editingStrategyId === id) {
+      handleCancelEdit();
+    }
   }
 
   const navItems = [
@@ -2002,25 +2076,109 @@ export default function ClientDashboard({
                 {strategies.length === 0 && (
                   <p className="text-xs text-muted">No strategies added yet.</p>
                 )}
-                {strategies.map((strategy) => (
-                  <div
-                    key={strategy.id}
-                    className="flex items-start justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs"
-                  >
-                    <div>
-                      <div className="font-semibold">{strategy.name}</div>
-                      {strategy.rules && (
-                        <div className="text-muted">{strategy.rules}</div>
-                      )}
-                    </div>
-                    <button
-                      className="text-[10px] text-muted hover:text-white"
-                      onClick={() => handleRemoveStrategy(strategy.id)}
-                    >
-                      Remove
-                    </button>
+                {strategies.length > 0 && (
+                  <div className="overflow-hidden rounded-lg border border-white/10">
+                    <table className="w-full text-xs">
+                      <thead className="bg-white/5 text-muted">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">
+                            Strategy
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            Rules
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {strategies.map((strategy) => {
+                          const isEditing = editingStrategyId === strategy.id;
+                          return (
+                            <tr
+                              key={strategy.id}
+                              className="border-t border-white/5"
+                            >
+                              <td className="px-3 py-3 align-top">
+                                {isEditing ? (
+                                  <input
+                                    value={editingStrategyName}
+                                    onChange={(event) =>
+                                      setEditingStrategyName(event.target.value)
+                                    }
+                                    className="w-full rounded-md border border-white/10 bg-ink px-2 py-1 text-xs text-white"
+                                  />
+                                ) : (
+                                  <div className="font-semibold">
+                                    {strategy.name}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                {isEditing ? (
+                                  <textarea
+                                    value={editingStrategyRules}
+                                    onChange={(event) =>
+                                      setEditingStrategyRules(event.target.value)
+                                    }
+                                    rows={2}
+                                    className="w-full rounded-md border border-white/10 bg-ink px-2 py-1 text-xs text-white"
+                                  />
+                                ) : (
+                                  <div className="text-muted">
+                                    {strategy.rules || "—"}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-right align-top">
+                                <div className="flex items-center justify-end gap-2">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="rounded-full bg-primary px-3 py-1 text-[10px] font-semibold"
+                                        onClick={handleSaveStrategy}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted"
+                                        onClick={handleCancelEdit}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                        onClick={() => beginEditStrategy(strategy)}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                        onClick={() =>
+                                          handleRemoveStrategy(strategy.id)
+                                        }
+                                      >
+                                        Remove
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </section>
