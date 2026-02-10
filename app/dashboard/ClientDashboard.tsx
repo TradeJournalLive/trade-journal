@@ -130,6 +130,13 @@ function normalizeTime(value: string) {
   return `${hours}:${minutes}`;
 }
 
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 function createTradeId() {
   const timePart = Date.now().toString(36).slice(-4).toUpperCase();
   const randomPart = Math.random().toString(36).slice(2, 5).toUpperCase();
@@ -210,7 +217,8 @@ function toSupabaseRow(trade: Trade, userId: string) {
     stop_loss: trade.stopLoss,
     target_price: trade.targetPrice,
     exit_reason: trade.exitReason,
-    platform: trade.platform
+    platform: trade.platform,
+    chart_url: trade.chartUrl ?? null
   };
 }
 
@@ -232,7 +240,8 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     stopLoss: Number(row.stop_loss ?? 0),
     targetPrice: Number(row.target_price ?? 0),
     exitReason: String(row.exit_reason ?? "Manual"),
-    platform: String(row.platform ?? "Web")
+    platform: String(row.platform ?? "Web"),
+    chartUrl: row.chart_url ? String(row.chart_url) : undefined
   };
 }
 
@@ -302,6 +311,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const [exitReasonChoice, setExitReasonChoice] = useState("");
   const [exitReasonCustom, setExitReasonCustom] = useState("");
   const [platform, setPlatform] = useState("Web");
+  const [chartUrl, setChartUrl] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -338,6 +348,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
       exitReasonChoice === "Custom"
         ? exitReasonCustom.trim()
         : exitReasonChoice;
+    const chartUrlValue = normalizeUrl(chartUrl);
 
     if (
       !tradeId ||
@@ -387,7 +398,8 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
       stopLoss: stopValue,
       targetPrice: targetValue,
       exitReason: exitReasonValue,
-      platform
+      platform,
+      chartUrl: chartUrlValue || undefined
     };
 
     setSaving(true);
@@ -406,6 +418,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
       setTargetPrice("");
       setExitReasonChoice("");
       setExitReasonCustom("");
+      setChartUrl("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -585,6 +598,12 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
           placeholder="Platform"
           value={platform}
           onChange={(event) => setPlatform(event.target.value)}
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        />
+        <input
+          placeholder="Chart link (optional)"
+          value={chartUrl}
+          onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
       </div>

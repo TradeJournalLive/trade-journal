@@ -201,6 +201,7 @@ export default function TradeJournal({
               <th className="pb-2">Win/Loss</th>
               <th className="pb-2">Exit Reason</th>
               <th className="pb-2">Platform</th>
+              <th className="pb-2">Chart</th>
               <th className="pb-2">R:R</th>
               <th className="pb-2">Trade Duration</th>
               <th className="pb-2">Total Investment</th>
@@ -238,6 +239,20 @@ export default function TradeJournal({
                 <td className="py-2 text-muted">{trade.winLoss}</td>
                 <td className="py-2 text-muted">{trade.exitReason}</td>
                 <td className="py-2 text-muted">{trade.platform}</td>
+                <td className="py-2 text-muted">
+                  {trade.chartUrl ? (
+                    <a
+                      href={trade.chartUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="py-2 text-muted">
                   {trade.rr ? trade.rr.toFixed(2) : "—"}
                 </td>

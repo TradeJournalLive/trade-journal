@@ -16,6 +16,7 @@ export type Trade = {
   targetPrice: number;
   exitReason: string;
   platform: string;
+  chartUrl?: string;
 };
 
 export const trades: Trade[] = [
