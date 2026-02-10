@@ -14,10 +14,12 @@ function formatMinutes(minutes: number) {
 
 export default function TradeJournal({
   trades,
-  currency
+  currency,
+  onEdit
 }: {
   trades: Trade[];
   currency: "INR" | "USD";
+  onEdit?: (trade: Trade) => void;
 }) {
   const derived = useMemo(() => deriveTrades(trades), [trades]);
   const instruments = useMemo(
@@ -198,6 +200,15 @@ export default function TradeJournal({
                 <span>· {trade.entryTime} → {trade.exitTime}</span>
               </div>
               <div className="flex items-center gap-2">
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(trade)}
+                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                  >
+                    Edit
+                  </button>
+                )}
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
                   {trade.direction}
                 </span>

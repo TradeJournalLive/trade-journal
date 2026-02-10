@@ -287,11 +287,21 @@ function buildTemplateCsv() {
 
 type AddTradeFormProps = {
   onAdd: (trade: Trade) => Promise<string | null> | string | null;
+  onUpdate: (trade: Trade) => Promise<string | null> | string | null;
+  onCancelEdit: () => void;
+  editingTrade: Trade | null;
   instruments: string[];
   strategies: StrategyDefinition[];
 };
 
-function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
+function AddTradeForm({
+  onAdd,
+  onUpdate,
+  onCancelEdit,
+  editingTrade,
+  instruments,
+  strategies
+}: AddTradeFormProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [tradeId, setTradeId] = useState(createTradeId());
   const [date, setDate] = useState(today);
@@ -315,8 +325,42 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+  const isEditing = Boolean(editingTrade);
 
   useEffect(() => {
+    if (editingTrade) {
+      setTradeId(editingTrade.tradeId);
+      setDate(editingTrade.date || today);
+      setInstrument(editingTrade.instrument || instruments[0] || "");
+      setMarket(editingTrade.market || "Equity");
+      setEntryTime(editingTrade.entryTime || "09:30");
+      setExitTime(editingTrade.exitTime || "10:30");
+      setStrategyChoice(editingTrade.strategy || "Unspecified");
+      setDirection(editingTrade.direction || "Long");
+      setSizeQty(String(editingTrade.sizeQty ?? 1));
+      setEntryPrice(editingTrade.entryPrice?.toString() ?? "");
+      setExitPrice(editingTrade.exitPrice?.toString() ?? "");
+      setStopLoss(editingTrade.stopLoss?.toString() ?? "");
+      setTargetPrice(editingTrade.targetPrice?.toString() ?? "");
+      if (
+        editingTrade.exitReason === "Trailing SL" ||
+        editingTrade.exitReason === "SL" ||
+        editingTrade.exitReason === "Target"
+      ) {
+        setExitReasonChoice(editingTrade.exitReason);
+        setExitReasonCustom("");
+      } else if (editingTrade.exitReason) {
+        setExitReasonChoice("Custom");
+        setExitReasonCustom(editingTrade.exitReason);
+      } else {
+        setExitReasonChoice("");
+        setExitReasonCustom("");
+      }
+      setPlatform(editingTrade.platform || "Web");
+      setChartUrl(editingTrade.chartUrl || "");
+      return;
+    }
+
     if (!instruments.length) {
       if (!instrument) {
         setInstrument("");
@@ -326,9 +370,10 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
     if (!instrument) {
       setInstrument(instruments[0]);
     }
-  }, [instruments, instrument]);
+  }, [editingTrade, instruments, instrument, today]);
 
   useEffect(() => {
+    if (isEditing) return;
     if (!strategies.length) {
       setStrategyChoice("Unspecified");
       return;
@@ -336,7 +381,7 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
     if (!strategies.find((strategy) => strategy.name === strategyChoice)) {
       setStrategyChoice(strategies[0].name);
     }
-  }, [strategies, strategyChoice]);
+  }, [isEditing, strategies, strategyChoice]);
 
   const instrumentValue = instrument.trim();
   async function handleSubmit(event: React.FormEvent) {
@@ -404,9 +449,15 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
 
     setSaving(true);
     try {
-      const response = await onAdd(trade);
+      const response = isEditing ? await onUpdate(trade) : await onAdd(trade);
       if (response) {
         setError(response);
+        return;
+      }
+      if (isEditing) {
+        setSuccess("Trade updated.");
+        setTimeout(() => setSuccess(""), 2000);
+        onCancelEdit();
         return;
       }
       setTradeId(createTradeId());
@@ -429,21 +480,34 @@ function AddTradeForm({ onAdd, instruments, strategies }: AddTradeFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card">
+    <form id="trade-form" onSubmit={handleSubmit} className="card">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold">Add trade</h3>
+          <h3 className="text-lg font-semibold">
+            {isEditing ? "Edit trade" : "Add trade"}
+          </h3>
           <p className="text-sm text-muted">
             Enter trade inputs — analytics update instantly.
           </p>
         </div>
-        <button
-          type="submit"
-          className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "Save trade"}
-        </button>
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <button
+              type="button"
+              className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+              onClick={onCancelEdit}
+            >
+              Cancel edit
+            </button>
+          )}
+          <button
+            type="submit"
+            className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+            disabled={saving}
+          >
+            {saving ? "Saving..." : isEditing ? "Update trade" : "Save trade"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="mt-3 text-xs text-negative">{error}</p>}
@@ -622,6 +686,7 @@ export default function ClientDashboard({
   const [tradeList, setTradeList] = useState<Trade[]>(() =>
     isSupabaseConfigured ? [] : seedTrades
   );
+  const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -873,6 +938,12 @@ export default function ClientDashboard({
 
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "journal") {
+      setEditingTrade(null);
+    }
   }, [view]);
 
   useEffect(() => {
@@ -1250,6 +1321,15 @@ export default function ClientDashboard({
     setSession(null);
     setTradeList([]);
     router.replace("/sign-in");
+  }
+
+  function handleEditTrade(trade: Trade) {
+    setEditingTrade(trade);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("trade-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function handlePasswordUpdate() {
@@ -2337,6 +2417,8 @@ export default function ClientDashboard({
             <AddTradeForm
               instruments={instruments}
               strategies={strategies}
+              editingTrade={editingTrade}
+              onCancelEdit={() => setEditingTrade(null)}
               onAdd={async (trade) => {
                 if (dataSource === "supabase") {
                   if (!supabase) return "Supabase is not configured.";
@@ -2365,6 +2447,42 @@ export default function ClientDashboard({
                   return null;
                 }
                 setTradeList((prev) => [trade, ...prev]);
+                return null;
+              }}
+              onUpdate={async (trade) => {
+                if (dataSource === "supabase") {
+                  if (!supabase) return "Supabase is not configured.";
+                  if (!session) return "Please sign in to save trades.";
+                  const { error } = await supabase
+                    .from("trades")
+                    .update(toSupabaseRow(trade, session.user.id))
+                    .eq("user_id", session.user.id)
+                    .eq("trade_id", trade.tradeId);
+                  if (error) {
+                    setImportStatus(`Supabase update failed: ${error.message}`);
+                    return `Supabase error: ${error.message}`;
+                  }
+                  const { data, error: fetchError } = await supabase
+                    .from("trades")
+                    .select("*")
+                    .eq("user_id", session.user.id)
+                    .is("team_id", null)
+                    .order("date", { ascending: false })
+                    .order("entry_time", { ascending: false });
+                  if (fetchError) {
+                    setImportStatus(`Supabase fetch failed: ${fetchError.message}`);
+                    return `Supabase fetch error: ${fetchError.message}`;
+                  }
+                  if (data) {
+                    setTradeList(data.map((row) => fromSupabaseRow(row)));
+                  }
+                  return null;
+                }
+                setTradeList((prev) =>
+                  prev.map((item) =>
+                    item.tradeId === trade.tradeId ? trade : item
+                  )
+                );
                 return null;
               }}
             />
@@ -2451,7 +2569,11 @@ export default function ClientDashboard({
               </div>
             </div>
 
-            <TradeJournal trades={filteredTrades} currency={currency} />
+            <TradeJournal
+              trades={filteredTrades}
+              currency={currency}
+              onEdit={handleEditTrade}
+            />
           </section>
           )}
         </div>
