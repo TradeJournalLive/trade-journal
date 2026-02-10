@@ -156,3 +156,7 @@ html.dark .bg-candles {
 .bg-primary {
   color: white;
 }
+
+.text-on-primary {
+  color: #ffffff !important;
+}

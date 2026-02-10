@@ -142,13 +142,13 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Link
             href="/sign-up"
-            className="rounded-full border border-white/10 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-900"
+            className="rounded-full border border-white/10 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary"
           >
             Sign up
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-on-primary shadow-soft"
           >
             Open demo
           </Link>
@@ -168,7 +168,7 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/dashboard"
-              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-soft"
+              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-on-primary shadow-soft"
             >
               Start free
             </Link>
@@ -233,6 +233,37 @@ export default function Home() {
                 <span className={`font-semibold ${item.tone}`}>
                   {item.value}
                 </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Momentum",
+                value: "+12.4%",
+                bg: "bg-[linear-gradient(135deg,rgba(20,184,166,0.25),rgba(14,116,144,0.05))]"
+              },
+              {
+                label: "Risk guard",
+                value: "1.4R",
+                bg: "bg-[linear-gradient(135deg,rgba(245,158,11,0.25),rgba(245,158,11,0.05))]"
+              },
+              {
+                label: "Focus",
+                value: "78%",
+                bg: "bg-[linear-gradient(135deg,rgba(37,99,235,0.2),rgba(22,37,64,0.05))]"
+              }
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-xl border border-white/10 px-4 py-3 ${item.bg}`}
+              >
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  {item.label}
+                </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {item.value}
+                </div>
               </div>
             ))}
           </div>
@@ -359,7 +390,7 @@ export default function Home() {
             </div>
             <Link
               href="/dashboard"
-              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft"
+              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-soft"
             >
               Launch demo
             </Link>
