@@ -400,7 +400,6 @@ function AddTradeForm({
   );
   const [direction, setDirection] = useState<Trade["direction"]>("Long");
   const [lots, setLots] = useState("1");
-  const [lotSize, setLotSize] = useState("1");
   const [entryPrice, setEntryPrice] = useState("");
   const [exitPrice, setExitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
@@ -424,13 +423,17 @@ function AddTradeForm({
       setExitTime(editingTrade.exitTime || "10:30");
       setStrategyChoice(editingTrade.strategy || "Unspecified");
       setDirection(editingTrade.direction || "Long");
-      if (editingTrade.lots !== undefined) {
-        setLots(String(editingTrade.lots));
-        setLotSize(String(editingTrade.lotSize ?? editingTrade.sizeQty ?? 1));
-      } else {
-        setLots("1");
-        setLotSize(String(editingTrade.sizeQty ?? 1));
-      }
+      const resolvedLotSize =
+        instruments.find((item) => item.name === editingTrade.instrument)
+          ?.lotSize ??
+        editingTrade.lotSize ??
+        1;
+      const derivedLots =
+        editingTrade.lots ??
+        (resolvedLotSize > 0
+          ? editingTrade.sizeQty / resolvedLotSize
+          : 1);
+      setLots(String(Number.isFinite(derivedLots) ? derivedLots : 1));
       setEntryPrice(editingTrade.entryPrice?.toString() ?? "");
       setExitPrice(editingTrade.exitPrice?.toString() ?? "");
       setStopLoss(editingTrade.stopLoss?.toString() ?? "");
@@ -464,16 +467,7 @@ function AddTradeForm({
       setInstrument(instruments[0]?.name ?? "");
     }
     if (!lots) setLots("1");
-    if (!lotSize) setLotSize("1");
   }, [editingTrade, instruments, instrument, today]);
-
-  useEffect(() => {
-    if (isEditing) return;
-    const match = instruments.find((item) => item.name === instrument);
-    if (match && Number.isFinite(match.lotSize)) {
-      setLotSize(String(match.lotSize));
-    }
-  }, [instrument, instruments, isEditing]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -487,6 +481,8 @@ function AddTradeForm({
   }, [isEditing, strategies, strategyChoice]);
 
   const instrumentValue = instrument.trim();
+  const selectedLotSize =
+    instruments.find((item) => item.name === instrumentValue)?.lotSize ?? 1;
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
@@ -515,8 +511,7 @@ function AddTradeForm({
     }
 
     const lotsValue = Number(lots);
-    const lotSizeValue = Number(lotSize);
-    const qtyValue = lotsValue * lotSizeValue;
+    const qtyValue = lotsValue * selectedLotSize;
     const entryValue = Number(entryPrice);
     const exitValue = Number(exitPrice);
     const stopValue = Number(stopLoss);
@@ -524,7 +519,6 @@ function AddTradeForm({
 
     if (
       !Number.isFinite(lotsValue) ||
-      !Number.isFinite(lotSizeValue) ||
       !Number.isFinite(qtyValue) ||
       !Number.isFinite(entryValue) ||
       !Number.isFinite(exitValue) ||
@@ -534,8 +528,12 @@ function AddTradeForm({
       setError("Numeric fields must be valid numbers.");
       return;
     }
-    if (lotsValue <= 0 || lotSizeValue <= 0) {
-      setError("Lots and lot size must be greater than 0.");
+    if (lotsValue <= 0) {
+      setError("Lots must be greater than 0.");
+      return;
+    }
+    if (!Number.isFinite(selectedLotSize) || selectedLotSize <= 0) {
+      setError("Lot size is not set. Update it in Instruments.");
       return;
     }
 
@@ -550,7 +548,7 @@ function AddTradeForm({
       direction,
       sizeQty: qtyValue,
       lots: lotsValue,
-      lotSize: lotSizeValue,
+      lotSize: selectedLotSize,
       entryPrice: entryValue,
       exitPrice: exitValue,
       stopLoss: stopValue,
@@ -581,7 +579,6 @@ function AddTradeForm({
       setStopLoss("");
       setTargetPrice("");
       setLots("1");
-      setLotSize("1");
       setExitReasonChoice("");
       setExitReasonCustom("");
       setChartUrl("");
@@ -720,15 +717,8 @@ function AddTradeForm({
           required
         />
         <input
-          placeholder="Lot size"
-          value={lotSize}
-          onChange={(event) => setLotSize(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-          required
-        />
-        <input
           placeholder="Qty (Auto)"
-          value={`${Number(lots || 0) * Number(lotSize || 0)}`}
+          value={`${Number(lots || 0) * (selectedLotSize || 0)}`}
           readOnly
           className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-white"
         />
@@ -754,6 +744,10 @@ function AddTradeForm({
           required
         />
       </div>
+
+      <p className="mt-2 text-[10px] text-muted">
+        1 lot = {selectedLotSize} qty (set in Instruments)
+      </p>
 
       <div className="mt-3 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
         <input
@@ -2522,7 +2516,7 @@ export default function ClientDashboard({
                   <div>
                     <h3 className="text-lg font-semibold">Add instrument</h3>
                     <p className="text-sm text-muted">
-                      Lot size is used to auto-calculate quantity in trades.
+                      Set how many quantity equals 1 lot.
                     </p>
                   </div>
                   <div className="grid gap-3">
@@ -2534,13 +2528,13 @@ export default function ClientDashboard({
                       }
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                     />
-                    <input
-                      placeholder="Lot size"
-                      value={instrumentLotSizeInput}
-                      onChange={(event) =>
-                        setInstrumentLotSizeInput(event.target.value)
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                      <input
+                        placeholder="1 lot = qty"
+                        value={instrumentLotSizeInput}
+                        onChange={(event) =>
+                          setInstrumentLotSizeInput(event.target.value)
+                        }
+                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                     />
                     <button
                       className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold"
@@ -2574,7 +2568,7 @@ export default function ClientDashboard({
                         className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                       />
                       <input
-                        placeholder="Lot size"
+                        placeholder="1 lot = qty"
                         value={instrumentEditLotSize}
                         onChange={(event) =>
                           setInstrumentEditLotSize(event.target.value)
@@ -2624,7 +2618,7 @@ export default function ClientDashboard({
                           Instrument
                         </th>
                         <th className="px-3 py-2 text-left font-medium">
-                          Lot size
+                          1 lot = qty
                         </th>
                         <th className="px-3 py-2 text-right font-medium">
                           Actions
