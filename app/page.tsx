@@ -27,6 +27,62 @@ const features = [
   }
 ];
 
+const featureIcons = [
+  <svg
+    key="log"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-primary"
+  >
+    <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" />
+    <path d="M8 9h8M8 13h6" stroke="currentColor" strokeWidth="1.5" />
+  </svg>,
+  <svg
+    key="expect"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-[rgb(var(--color-positive))]"
+  >
+    <path d="M5 14l4-4 4 4 6-6" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M19 8h-4" stroke="currentColor" strokeWidth="1.5" />
+  </svg>,
+  <svg
+    key="curve"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-primary"
+  >
+    <path d="M4 16c4-6 8-2 12-8 2-3 4-3 4-3" stroke="currentColor" strokeWidth="1.5" />
+  </svg>,
+  <svg
+    key="strategy"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-[rgb(var(--color-warm))]"
+  >
+    <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="16" cy="16" r="3" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M10.5 10.5l3 3" stroke="currentColor" strokeWidth="1.5" />
+  </svg>,
+  <svg
+    key="risk"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-primary"
+  >
+    <path d="M12 4l8 14H4l8-14z" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M12 10v4M12 18h.01" stroke="currentColor" strokeWidth="1.5" />
+  </svg>,
+  <svg
+    key="filter"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="h-4 w-4 text-[rgb(var(--color-positive))]"
+  >
+    <path d="M4 7h16M7 12h10M10 17h4" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+];
+
 const faq = [
   {
     q: "Do I need to connect a broker?",
@@ -86,7 +142,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Link
             href="/sign-up"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold"
+            className="rounded-full border border-white/10 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-900"
           >
             Sign up
           </Link>
@@ -123,10 +179,24 @@ export default function Home() {
               View dashboard
             </Link>
           </div>
-          <div className="flex items-center gap-6 text-xs text-muted">
-            <span>CSV / Sheets import</span>
-            <span>Strategy tags</span>
-            <span>Equity curve</span>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "CSV + Sheets", value: "Fast import" },
+              { label: "Strategy tags", value: "Playbook ready" },
+              { label: "Equity curve", value: "Trend view" }
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-white/10 bg-white/70 px-4 py-3"
+              >
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  {item.label}
+                </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {item.value}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
         <div className="card relative">
@@ -149,6 +219,22 @@ export default function Home() {
               <div className="text-xs text-muted">Expectancy</div>
               <div className="text-2xl font-semibold">0.42R</div>
             </div>
+          </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {[
+              { label: "Risk drift", value: "-0.6R", tone: "text-negative" },
+              { label: "Discipline", value: "82%", tone: "text-positive" }
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-elevate/70 px-4 py-3 text-sm"
+              >
+                <span className="text-muted">{item.label}</span>
+                <span className={`font-semibold ${item.tone}`}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -192,9 +278,14 @@ export default function Home() {
           </p>
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => (
+          {features.map((feature, index) => (
             <div className="card" key={feature.title}>
-              <h3 className="text-lg font-semibold">{feature.title}</h3>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-elevate">
+                  {featureIcons[index % featureIcons.length]}
+                </div>
+                <h3 className="text-lg font-semibold">{feature.title}</h3>
+              </div>
               <p className="mt-2 text-sm text-muted">{feature.description}</p>
             </div>
           ))}
