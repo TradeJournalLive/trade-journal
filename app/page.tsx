@@ -54,8 +54,9 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-ink text-white">
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-1/2 top-[-20%] h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
-        <div className="absolute right-[10%] top-[20%] h-[420px] w-[420px] rounded-full bg-white/5 blur-[90px]" />
+        <div className="absolute left-1/2 top-[-20%] h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/15 blur-[140px]" />
+        <div className="absolute right-[10%] top-[10%] h-[420px] w-[420px] rounded-full bg-white/5 blur-[90px]" />
+        <div className="absolute left-[8%] bottom-[5%] h-[360px] w-[360px] rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[120px]" />
       </div>
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
@@ -66,19 +67,19 @@ export default function Home() {
           <span className="text-lg font-semibold tracking-tight">Trade Journal</span>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted">
-          <Link href="#how" className="hover:text-white">
+          <Link href="#how" className="hover:text-ink">
             How it works
           </Link>
-          <Link href="#features" className="hover:text-white">
+          <Link href="#features" className="hover:text-ink">
             Features
           </Link>
-          <Link href="#dashboard" className="hover:text-white">
+          <Link href="#dashboard" className="hover:text-ink">
             Dashboard
           </Link>
-          <Link href="#pricing" className="hover:text-white">
+          <Link href="#pricing" className="hover:text-ink">
             Pricing
           </Link>
-          <Link href="/sign-in" className="hover:text-white">
+          <Link href="/sign-in" className="hover:text-ink">
             Sign in
           </Link>
         </div>
@@ -91,7 +92,7 @@ export default function Home() {
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-soft"
           >
             Open demo
           </Link>
@@ -111,13 +112,13 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/dashboard"
-              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white"
+              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-soft"
             >
               Start free
             </Link>
             <Link
               href="#dashboard"
-              className="rounded-full border border-white/10 px-6 py-3 text-sm font-semibold"
+              className="rounded-full border border-white/10 bg-white/70 px-6 py-3 text-sm font-semibold text-slate-900"
             >
               View dashboard
             </Link>
@@ -128,7 +129,9 @@ export default function Home() {
             <span>Equity curve</span>
           </div>
         </div>
-        <div className="card">
+        <div className="card relative">
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[40px]" />
+          <div className="absolute -left-8 bottom-6 h-24 w-24 rounded-full bg-primary/10 blur-[40px]" />
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted">Overview</span>
             <span className="text-sm text-positive">+4.8% this month</span>
@@ -212,7 +215,27 @@ export default function Home() {
                 <span className="text-xs text-muted">Equity curve</span>
                 <span className="text-positive text-sm">+12.4% YTD</span>
               </div>
-              <div className="h-48 rounded-xl bg-elevate border border-white/5" />
+              <div className="relative h-48 overflow-hidden rounded-xl bg-elevate border border-white/5">
+                <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(15,23,42,0.08)_0%,rgba(15,23,42,0.0)_60%)]" />
+                <svg
+                  className="absolute inset-0 h-full w-full"
+                  viewBox="0 0 400 200"
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <linearGradient id="curve" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="rgb(22,37,64)" />
+                      <stop offset="100%" stopColor="rgb(20,184,166)" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M0 150 C60 120 120 160 180 110 C240 60 300 120 360 80 L400 70"
+                    fill="none"
+                    stroke="url(#curve)"
+                    strokeWidth="3"
+                  />
+                </svg>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="kpi">
                   <div className="text-xs text-muted">Strategy alpha</div>
@@ -245,7 +268,7 @@ export default function Home() {
             </div>
             <Link
               href="/dashboard"
-              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900"
+              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-soft"
             >
               Launch demo
             </Link>
@@ -277,7 +300,7 @@ export default function Home() {
                   ? "Advanced filters + exports"
                   : "Team-level insights"}
               </p>
-              <button className="mt-6 w-full rounded-full bg-elevate py-2 text-sm font-semibold">
+              <button className="mt-6 w-full rounded-full bg-primary/10 text-primary py-2 text-sm font-semibold">
                 Coming soon
               </button>
             </div>
