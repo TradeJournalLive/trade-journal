@@ -176,94 +176,155 @@ export default function TradeJournal({
         />
       </div>
 
-      <div className="mt-6 overflow-x-auto">
-        <table className="min-w-[1600px] text-left text-xs whitespace-nowrap">
-          <thead className="text-muted">
-            <tr>
-              <th className="pb-2">Trade ID</th>
-              <th className="pb-2">Date</th>
-              <th className="pb-2">Day</th>
-              <th className="pb-2">Instrument</th>
-              <th className="pb-2">Market</th>
-              <th className="pb-2">Entry Time</th>
-              <th className="pb-2">Exit Time</th>
-              <th className="pb-2">Strategy</th>
-              <th className="pb-2">Direction</th>
-              <th className="pb-2">Size (Qty.)</th>
-              <th className="pb-2">Entry Price</th>
-              <th className="pb-2">Exit Price</th>
-              <th className="pb-2">Stop Loss</th>
-              <th className="pb-2">Target Price</th>
-              <th className="pb-2">Risk</th>
-              <th className="pb-2">Reward</th>
-              <th className="pb-2">Risk-Reward</th>
-              <th className="pb-2">P/L</th>
-              <th className="pb-2">Win/Loss</th>
-              <th className="pb-2">Exit Reason</th>
-              <th className="pb-2">Platform</th>
-              <th className="pb-2">Chart</th>
-              <th className="pb-2">R:R</th>
-              <th className="pb-2">Trade Duration</th>
-              <th className="pb-2">Total Investment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((trade) => (
-              <tr key={trade.tradeId} className="border-t border-white/5">
-                <td className="py-2 text-muted">{trade.tradeId}</td>
-                <td className="py-2 text-muted">{trade.date}</td>
-                <td className="py-2 text-muted">{trade.day}</td>
-                <td className="py-2">{trade.instrument}</td>
-                <td className="py-2 text-muted">{trade.market}</td>
-                <td className="py-2 text-muted">{trade.entryTime}</td>
-                <td className="py-2 text-muted">{trade.exitTime}</td>
-                <td className="py-2 text-muted">{trade.strategy}</td>
-                <td className="py-2 text-muted">{trade.direction}</td>
-                <td className="py-2">{trade.sizeQty}</td>
-                <td className="py-2">{trade.entryPrice}</td>
-                <td className="py-2">{trade.exitPrice}</td>
-                <td className="py-2">{trade.stopLoss}</td>
-                <td className="py-2">{trade.targetPrice}</td>
-                <td className="py-2">{money.format(trade.risk)}</td>
-                <td className="py-2">{money.format(trade.reward)}</td>
-                <td className="py-2 text-muted">
-                  {trade.riskReward ? `1:${trade.riskReward.toFixed(2)}` : "—"}
-                </td>
-                <td
-                  className={`py-2 ${
+      <div className="mt-6 space-y-4">
+        {filtered.length === 0 && (
+          <div className="rounded-xl border border-white/10 bg-panel/30 p-6 text-sm text-muted">
+            No trades match the selected filters.
+          </div>
+        )}
+
+        {filtered.map((trade) => (
+          <div
+            key={trade.tradeId}
+            className="rounded-xl border border-white/10 bg-panel/30 p-5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+                <span className="text-sm font-semibold text-white">
+                  {trade.tradeId}
+                </span>
+                <span>{trade.date}</span>
+                <span>· {trade.day}</span>
+                <span>· {trade.entryTime} → {trade.exitTime}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
+                  {trade.direction}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
+                  {trade.winLoss}
+                </span>
+                <span
+                  className={`text-sm font-semibold ${
                     trade.pl >= 0 ? "text-positive" : "text-negative"
                   }`}
                 >
                   {signedMoney.format(trade.pl)}
-                </td>
-                <td className="py-2 text-muted">{trade.winLoss}</td>
-                <td className="py-2 text-muted">{trade.exitReason}</td>
-                <td className="py-2 text-muted">{trade.platform}</td>
-                <td className="py-2 text-muted">
-                  {trade.chartUrl ? (
-                    <a
-                      href={trade.chartUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      View
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="py-2 text-muted">
-                  {trade.rr ? trade.rr.toFixed(2) : "—"}
-                </td>
-                <td className="py-2 text-muted">
-                  {formatMinutes(trade.tradeDuration)}
-                </td>
-                <td className="py-2">{money.format(trade.totalInvestment)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+                {trade.chartUrl && (
+                  <a
+                    href={trade.chartUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    Chart
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 text-xs md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  Instrument
+                </div>
+                <div className="grid gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Symbol</span>
+                    <span className="font-semibold">{trade.instrument}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Market</span>
+                    <span>{trade.market}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Qty</span>
+                    <span>{trade.sizeQty}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Platform</span>
+                    <span>{trade.platform}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  Strategy
+                </div>
+                <div className="grid gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Name</span>
+                    <span className="font-semibold">{trade.strategy}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Exit</span>
+                    <span>{trade.exitReason}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Duration</span>
+                    <span>{formatMinutes(trade.tradeDuration)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Invested</span>
+                    <span>{money.format(trade.totalInvestment)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  Prices
+                </div>
+                <div className="grid gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Entry</span>
+                    <span>{trade.entryPrice}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Exit</span>
+                    <span>{trade.exitPrice}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Stop</span>
+                    <span>{trade.stopLoss}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Target</span>
+                    <span>{trade.targetPrice}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">
+                  Risk &amp; Reward
+                </div>
+                <div className="grid gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Risk</span>
+                    <span>{money.format(trade.risk)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Reward</span>
+                    <span>{money.format(trade.reward)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">R:R</span>
+                    <span>
+                      {trade.riskReward ? `1:${trade.riskReward.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">RR</span>
+                    <span>{trade.rr ? trade.rr.toFixed(2) : "—"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
