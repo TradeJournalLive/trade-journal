@@ -49,7 +49,10 @@ const CSV_HEADERS = [
   "Platform",
   "R:R",
   "Trade Duration",
-  "Total Investment"
+  "Total Investment",
+  "Trigger Emotion",
+  "Behavioral State",
+  "Mindset Notes"
 ];
 
 const REQUIRED_HEADERS = [
@@ -105,6 +108,37 @@ type DashboardNavId = DashboardView | DashboardSection;
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+const EMOTION_NEGATIVE = new Set([
+  "fomo",
+  "fear",
+  "fearful",
+  "anxious",
+  "frustrated",
+  "hesitant"
+]);
+const EMOTION_POSITIVE = new Set(["calm", "focused", "confident"]);
+const STATE_DISCIPLINED = new Set(["disciplined", "patient", "neutral"]);
+const STATE_IMPULSIVE = new Set(["impulsive", "distracted", "fatigued"]);
+
+function classifyAlignment(emotionTag?: string, emotionalState?: string) {
+  const emotion = emotionTag?.trim().toLowerCase() ?? "";
+  const state = emotionalState?.trim().toLowerCase() ?? "";
+  if (!emotion || !state) return "Unspecified";
+
+  const isNegative = EMOTION_NEGATIVE.has(emotion);
+  const isPositive = EMOTION_POSITIVE.has(emotion);
+  const isDisciplined = STATE_DISCIPLINED.has(state);
+  const isImpulsive = STATE_IMPULSIVE.has(state);
+
+  if (isNegative && isDisciplined) return "Process-driven";
+  if (isNegative && isImpulsive) return "Emotion-driven";
+  if (isPositive && isDisciplined) return "Aligned";
+  if (isPositive && isImpulsive) return "Emotion-driven";
+  if (isDisciplined) return "Aligned";
+  if (isImpulsive) return "Emotion-driven";
+  return "Unspecified";
 }
 
 function getDateRange(trades: Trade[]) {
@@ -371,7 +405,10 @@ function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
       trade.platform,
       trade.rr ? trade.rr.toFixed(2) : "",
       trade.tradeDuration,
-      trade.totalInvestment.toFixed(2)
+      trade.totalInvestment.toFixed(2),
+      trade.emotionTag ?? "",
+      trade.emotionalState ?? "",
+      trade.mindsetNotes ?? ""
     ]
       .map((value) => toCsvValue(value))
       .join(",")
@@ -883,7 +920,7 @@ function AddTradeForm({
           <div>
             <input
               list="emotion-tag-options"
-              placeholder="Emotion tag"
+              placeholder="Trigger emotion"
               value={emotionTag}
               onChange={(event) => setEmotionTag(event.target.value)}
               className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
@@ -901,13 +938,13 @@ function AddTradeForm({
           </div>
           <div>
             <input
-              list="emotional-state-options"
-              placeholder="Emotional state"
+              list="behavior-state-options"
+              placeholder="Behavioral state"
               value={emotionalState}
               onChange={(event) => setEmotionalState(event.target.value)}
               className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
             />
-            <datalist id="emotional-state-options">
+            <datalist id="behavior-state-options">
               <option value="Disciplined" />
               <option value="Patient" />
               <option value="Neutral" />
@@ -922,6 +959,9 @@ function AddTradeForm({
             onChange={(event) => setMindsetNotes(event.target.value)}
             className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           />
+        </div>
+        <div className="mt-3 text-[11px] text-muted">
+          Trigger emotion = what you felt. Behavioral state = how you acted. If both match, flag it.
         </div>
       </div>
 
@@ -1435,6 +1475,17 @@ export default function ClientDashboard({
     emotionStats.some((row) => row.label !== "Unspecified") ||
     mindsetStats.some((row) => row.label !== "Unspecified");
 
+  const alignmentStats = useMemo(() => {
+    const map = new Map<string, number>();
+    derived.forEach((trade) => {
+      const label = classifyAlignment(trade.emotionTag, trade.emotionalState);
+      map.set(label, (map.get(label) ?? 0) + 1);
+    });
+    return [...map.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [derived]);
+
   const lowRRCount = derived.filter(
     (trade) => trade.rr !== null && trade.rr < 1
   ).length;
@@ -1668,6 +1719,9 @@ export default function ClientDashboard({
       const targetPrice = parseNumber(getCell(row, "Target Price"));
       const exitReason = getCell(row, "Exit Reason").trim() || "Manual";
       const platform = getCell(row, "Platform").trim() || "Web";
+      const emotionTag = getCell(row, "Trigger Emotion").trim();
+      const emotionalState = getCell(row, "Behavioral State").trim();
+      const mindsetNotes = getCell(row, "Mindset Notes").trim();
 
       if (
         !date ||
@@ -1701,7 +1755,10 @@ export default function ClientDashboard({
         stopLoss,
         targetPrice,
         exitReason,
-        platform
+        platform,
+        emotionTag: emotionTag || undefined,
+        emotionalState: emotionalState || undefined,
+        mindsetNotes: mindsetNotes || undefined
       });
     });
 
@@ -2819,6 +2876,22 @@ export default function ClientDashboard({
                               </span>
                             </div>
                           ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Emotion–behavior alignment
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {alignmentStats.slice(0, 3).map((row) => (
+                          <div
+                            key={row.label}
+                            className="flex items-center justify-between"
+                          >
+                            <span className="text-muted">{row.label}</span>
+                            <span>{row.count}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

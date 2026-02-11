@@ -16,6 +16,30 @@ function formatDirectionLabel(direction: Trade["direction"]) {
   return direction === "Short" ? "Put (Buy)" : "Call (Buy)";
 }
 
+function getAlignmentLabel(trade: Trade) {
+  const emotion = trade.emotionTag?.trim().toLowerCase() ?? "";
+  const state = trade.emotionalState?.trim().toLowerCase() ?? "";
+  if (!emotion || !state) return "Unspecified";
+
+  const negative = ["fomo", "fear", "fearful", "anxious", "frustrated", "hesitant"];
+  const positive = ["calm", "focused", "confident"];
+  const disciplined = ["disciplined", "patient", "neutral"];
+  const impulsive = ["impulsive", "distracted", "fatigued"];
+
+  const isNegative = negative.includes(emotion);
+  const isPositive = positive.includes(emotion);
+  const isDisciplined = disciplined.includes(state);
+  const isImpulsive = impulsive.includes(state);
+
+  if (isNegative && isDisciplined) return "Process-driven";
+  if (isNegative && isImpulsive) return "Emotion-driven";
+  if (isPositive && isDisciplined) return "Aligned";
+  if (isPositive && isImpulsive) return "Emotion-driven";
+  if (isDisciplined) return "Aligned";
+  if (isImpulsive) return "Emotion-driven";
+  return "Unspecified";
+}
+
 export default function TradeJournal({
   trades,
   currency,
@@ -416,6 +440,24 @@ export default function TradeJournal({
                     <div className="flex items-center justify-between">
                       <span className="text-muted">State</span>
                       <span>{trade.emotionalState}</span>
+                    </div>
+                  )}
+                  {trade.emotionTag && trade.emotionalState && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Alignment</span>
+                      <span
+                        className={
+                          getAlignmentLabel(trade) === "Aligned"
+                            ? "text-positive"
+                            : getAlignmentLabel(trade) === "Process-driven"
+                            ? "text-primary"
+                            : getAlignmentLabel(trade) === "Emotion-driven"
+                            ? "text-negative"
+                            : ""
+                        }
+                      >
+                        {getAlignmentLabel(trade)}
+                      </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
