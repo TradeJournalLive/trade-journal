@@ -333,7 +333,7 @@ export default function TradeJournal({
                     href={trade.chartUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:border-primary/60 hover:bg-primary hover:text-white"
                   >
                     <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-[10px] text-white">
                       ↗
