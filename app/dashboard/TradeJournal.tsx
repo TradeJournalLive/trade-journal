@@ -522,6 +522,10 @@ export default function TradeJournal({
                       {trade.riskReward ? `1:${trade.riskReward.toFixed(2)}` : "—"}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Brokerage</span>
+                    <span>{money.format(trade.brokerage ?? 0)}</span>
+                  </div>
                 </div>
               </div>
             </div>

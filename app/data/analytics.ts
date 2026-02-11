@@ -10,6 +10,7 @@ export type DerivedTrade = Trade & {
   rr: number | null;
   pl: number;
   grossPl: number;
+  brokerage: number;
   netPl: number;
   winLoss: TradeResult;
   tradeDuration: number; // minutes
@@ -54,6 +55,8 @@ export type GroupStat = {
 };
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const BROKERAGE_PER_SIDE = 30;
+const BROKERAGE_PER_LOT = BROKERAGE_PER_SIDE * 2;
 
 function toDate(date: string) {
   return new Date(`${date}T00:00:00`);
@@ -66,7 +69,16 @@ function toDateTime(date: string, time: string) {
 export function deriveTrades(trades: Trade[]): DerivedTrade[] {
   return trades.map((trade) => {
     const grossPl = (trade.exitPrice - trade.entryPrice) * trade.sizeQty;
-    const netPl = grossPl; // no fees in v1
+    const inferredLots =
+      typeof trade.lots === "number" && Number.isFinite(trade.lots)
+        ? trade.lots
+        : trade.lotSize
+          ? trade.sizeQty / trade.lotSize
+          : 1;
+    const lotsForCost =
+      Number.isFinite(inferredLots) && inferredLots > 0 ? inferredLots : 1;
+    const brokerage = lotsForCost * BROKERAGE_PER_LOT;
+    const netPl = grossPl - brokerage;
     const risk = Math.abs(trade.entryPrice - trade.stopLoss) * trade.sizeQty;
     const reward = Math.abs(trade.targetPrice - trade.entryPrice) * trade.sizeQty;
     const riskReward = risk > 0 ? reward / risk : null;
@@ -88,6 +100,7 @@ export function deriveTrades(trades: Trade[]): DerivedTrade[] {
       rr,
       pl: netPl,
       grossPl,
+      brokerage,
       netPl,
       winLoss,
       tradeDuration,
