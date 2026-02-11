@@ -20,6 +20,9 @@ export type Trade = {
   platform: string;
   chartUrl?: string;
   remarks?: string;
+  emotionTag?: string;
+  emotionalState?: string;
+  mindsetNotes?: string;
 };
 
 export const trades: Trade[] = [
@@ -40,7 +43,10 @@ export const trades: Trade[] = [
     stopLoss: 176.8,
     targetPrice: 184.0,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Focused",
+    emotionalState: "Disciplined",
+    mindsetNotes: "Waited for confirmation."
   },
   {
     tradeId: "T-1002",
@@ -59,7 +65,9 @@ export const trades: Trade[] = [
     stopLoss: 245.2,
     targetPrice: 232.0,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Calm",
+    emotionalState: "Patient"
   },
   {
     tradeId: "T-1003",
@@ -78,7 +86,9 @@ export const trades: Trade[] = [
     stopLoss: 16120,
     targetPrice: 16340,
     exitReason: "Stop Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Hesitant",
+    emotionalState: "Uncertain"
   },
   {
     tradeId: "T-1004",
@@ -97,7 +107,9 @@ export const trades: Trade[] = [
     stopLoss: 401.8,
     targetPrice: 414.0,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Confident",
+    emotionalState: "Disciplined"
   },
   {
     tradeId: "T-1005",
@@ -116,7 +128,9 @@ export const trades: Trade[] = [
     stopLoss: 2466,
     targetPrice: 2525,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Focused",
+    emotionalState: "Patient"
   },
   {
     tradeId: "T-1006",
@@ -135,7 +149,9 @@ export const trades: Trade[] = [
     stopLoss: 34910,
     targetPrice: 34480,
     exitReason: "Manual Exit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Anxious",
+    emotionalState: "Impulsive"
   },
   {
     tradeId: "T-1007",
@@ -154,7 +170,9 @@ export const trades: Trade[] = [
     stopLoss: 1515,
     targetPrice: 1550,
     exitReason: "Stop Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Frustrated",
+    emotionalState: "Impulsive"
   },
   {
     tradeId: "T-1008",
@@ -173,7 +191,9 @@ export const trades: Trade[] = [
     stopLoss: 188.2,
     targetPrice: 181.0,
     exitReason: "Early Exit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "FOMO",
+    emotionalState: "Distracted"
   },
   {
     tradeId: "T-1009",
@@ -192,7 +212,9 @@ export const trades: Trade[] = [
     stopLoss: 16340,
     targetPrice: 16610,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Calm",
+    emotionalState: "Disciplined"
   },
   {
     tradeId: "T-1010",
@@ -211,6 +233,8 @@ export const trades: Trade[] = [
     stopLoss: 226.8,
     targetPrice: 238.5,
     exitReason: "Target Hit",
-    platform: "Web"
+    platform: "Web",
+    emotionTag: "Confident",
+    emotionalState: "Focused"
   }
 ];

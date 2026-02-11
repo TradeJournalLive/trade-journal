@@ -406,6 +406,18 @@ export default function TradeJournal({
                     <span className="text-muted">Exit</span>
                     <span>{trade.exitReason}</span>
                   </div>
+                  {trade.emotionTag && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Emotion</span>
+                      <span>{trade.emotionTag}</span>
+                    </div>
+                  )}
+                  {trade.emotionalState && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">State</span>
+                      <span>{trade.emotionalState}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-muted">Duration</span>
                     <span>{formatMinutes(trade.tradeDuration)}</span>
@@ -414,6 +426,14 @@ export default function TradeJournal({
                     <span className="text-muted">Invested</span>
                     <span>{money.format(trade.totalInvestment)}</span>
                   </div>
+                  {trade.mindsetNotes && (
+                    <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
+                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-[10px] text-white">
+                        ✦
+                      </span>
+                      <span>{trade.mindsetNotes}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

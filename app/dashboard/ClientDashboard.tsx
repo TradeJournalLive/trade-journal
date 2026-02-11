@@ -301,7 +301,10 @@ function toSupabaseRow(trade: Trade, userId: string) {
     exit_reason: trade.exitReason,
     platform: trade.platform,
     chart_url: trade.chartUrl ?? null,
-    remarks: trade.remarks ?? null
+    remarks: trade.remarks ?? null,
+    emotion_tag: trade.emotionTag ?? null,
+    emotional_state: trade.emotionalState ?? null,
+    mindset_notes: trade.mindsetNotes ?? null
   };
 }
 
@@ -332,7 +335,12 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     exitReason: String(row.exit_reason ?? "Manual"),
     platform: String(row.platform ?? "Web"),
     chartUrl: row.chart_url ? String(row.chart_url) : undefined,
-    remarks: row.remarks ? String(row.remarks) : undefined
+    remarks: row.remarks ? String(row.remarks) : undefined,
+    emotionTag: row.emotion_tag ? String(row.emotion_tag) : undefined,
+    emotionalState: row.emotional_state
+      ? String(row.emotional_state)
+      : undefined,
+    mindsetNotes: row.mindset_notes ? String(row.mindset_notes) : undefined
   };
 }
 
@@ -413,6 +421,9 @@ function AddTradeForm({
   const [platform, setPlatform] = useState("");
   const [chartUrl, setChartUrl] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [emotionTag, setEmotionTag] = useState("");
+  const [emotionalState, setEmotionalState] = useState("");
+  const [mindsetNotes, setMindsetNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -462,6 +473,9 @@ function AddTradeForm({
       setPlatform(editingTrade.platform || "");
       setChartUrl(editingTrade.chartUrl || "");
       setRemarks(editingTrade.remarks || "");
+      setEmotionTag(editingTrade.emotionTag || "");
+      setEmotionalState(editingTrade.emotionalState || "");
+      setMindsetNotes(editingTrade.mindsetNotes || "");
       return;
     }
 
@@ -485,6 +499,9 @@ function AddTradeForm({
       setPlatform("");
       setChartUrl("");
       setRemarks("");
+      setEmotionTag("");
+      setEmotionalState("");
+      setMindsetNotes("");
     }
   }, [editingTrade, instruments]);
 
@@ -579,7 +596,10 @@ function AddTradeForm({
       exitReason: exitReasonValue,
       platform,
       chartUrl: chartUrlValue || undefined,
-      remarks: remarks.trim() || undefined
+      remarks: remarks.trim() || undefined,
+      emotionTag: emotionTag.trim() || undefined,
+      emotionalState: emotionalState.trim() || undefined,
+      mindsetNotes: mindsetNotes.trim() || undefined
     };
 
     setSaving(true);
@@ -612,6 +632,9 @@ function AddTradeForm({
       setPlatform("");
       setChartUrl("");
       setRemarks("");
+      setEmotionTag("");
+      setEmotionalState("");
+      setMindsetNotes("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -831,6 +854,75 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
+      </div>
+
+      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 3a5 5 0 0 1 5 5c0 2-1.2 3.6-2.4 4.7-.8.7-1.3 1.6-1.3 2.6v.7h-2.6v-.7c0-1-.5-1.9-1.3-2.6C7.2 11.6 6 10 6 8a5 5 0 0 1 6-5Z" />
+              <path d="M9 21h6" />
+            </svg>
+          </span>
+          <div>
+            <div className="text-sm font-semibold">Psychology tracking</div>
+            <div className="text-xs text-muted">
+              Identify patterns in your behavior and market performance.
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 text-xs md:grid-cols-3">
+          <div>
+            <input
+              list="emotion-tag-options"
+              placeholder="Emotion tag"
+              value={emotionTag}
+              onChange={(event) => setEmotionTag(event.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            />
+            <datalist id="emotion-tag-options">
+              <option value="Calm" />
+              <option value="Focused" />
+              <option value="Confident" />
+              <option value="Anxious" />
+              <option value="FOMO" />
+              <option value="Hesitant" />
+              <option value="Frustrated" />
+              <option value="Fearful" />
+            </datalist>
+          </div>
+          <div>
+            <input
+              list="emotional-state-options"
+              placeholder="Emotional state"
+              value={emotionalState}
+              onChange={(event) => setEmotionalState(event.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            />
+            <datalist id="emotional-state-options">
+              <option value="Disciplined" />
+              <option value="Patient" />
+              <option value="Neutral" />
+              <option value="Impulsive" />
+              <option value="Distracted" />
+              <option value="Fatigued" />
+            </datalist>
+          </div>
+          <input
+            placeholder="Mindset notes (optional)"
+            value={mindsetNotes}
+            onChange={(event) => setMindsetNotes(event.target.value)}
+            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          />
+        </div>
       </div>
 
       <div className="mt-3">
@@ -1298,6 +1390,50 @@ export default function ClientDashboard({
     });
     return [...map.entries()].map(([label, value]) => ({ label, value }));
   }, [derived]);
+
+  const emotionStats = useMemo(() => {
+    const map = new Map<string, { wins: number; total: number; totalPl: number }>();
+    derived.forEach((trade) => {
+      const key = trade.emotionTag?.trim() || "Unspecified";
+      const current = map.get(key) ?? { wins: 0, total: 0, totalPl: 0 };
+      current.total += 1;
+      if (trade.pl > 0) current.wins += 1;
+      current.totalPl += trade.pl;
+      map.set(key, current);
+    });
+    return [...map.entries()]
+      .map(([label, value]) => ({
+        label,
+        trades: value.total,
+        winRate: value.total ? value.wins / value.total : 0,
+        totalPl: value.totalPl
+      }))
+      .sort((a, b) => b.totalPl - a.totalPl);
+  }, [derived]);
+
+  const mindsetStats = useMemo(() => {
+    const map = new Map<string, { wins: number; total: number; totalPl: number }>();
+    derived.forEach((trade) => {
+      const key = trade.emotionalState?.trim() || "Unspecified";
+      const current = map.get(key) ?? { wins: 0, total: 0, totalPl: 0 };
+      current.total += 1;
+      if (trade.pl > 0) current.wins += 1;
+      current.totalPl += trade.pl;
+      map.set(key, current);
+    });
+    return [...map.entries()]
+      .map(([label, value]) => ({
+        label,
+        trades: value.total,
+        winRate: value.total ? value.wins / value.total : 0,
+        totalPl: value.totalPl
+      }))
+      .sort((a, b) => b.totalPl - a.totalPl);
+  }, [derived]);
+
+  const hasPsychologyData =
+    emotionStats.some((row) => row.label !== "Unspecified") ||
+    mindsetStats.some((row) => row.label !== "Unspecified");
 
   const lowRRCount = derived.filter(
     (trade) => trade.rr !== null && trade.rr < 1
@@ -2621,7 +2757,7 @@ export default function ClientDashboard({
               </p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
               <div className="card">
                 <h3 className="text-sm text-muted">Exit reasons</h3>
                 <div className="mt-4 space-y-2 text-sm">
@@ -2632,6 +2768,61 @@ export default function ClientDashboard({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="card">
+                <h3 className="text-sm text-muted">Psychology tracking</h3>
+                {!hasPsychologyData && (
+                  <div className="mt-4 text-sm text-muted">
+                    Tag emotions and mindset in trades to unlock insights.
+                  </div>
+                )}
+                {hasPsychologyData && (
+                  <div className="mt-4 space-y-4 text-sm">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Emotion tags
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {emotionStats
+                          .filter((row) => row.label !== "Unspecified")
+                          .slice(0, 3)
+                          .map((row) => (
+                            <div
+                              key={row.label}
+                              className="flex items-center justify-between"
+                            >
+                              <span className="text-muted">{row.label}</span>
+                              <span>
+                                {formatPercent(row.winRate)} · {row.trades}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Mindset state
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {mindsetStats
+                          .filter((row) => row.label !== "Unspecified")
+                          .slice(0, 3)
+                          .map((row) => (
+                            <div
+                              key={row.label}
+                              className="flex items-center justify-between"
+                            >
+                              <span className="text-muted">{row.label}</span>
+                              <span>
+                                {formatPercent(row.winRate)} · {row.trades}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="card">
