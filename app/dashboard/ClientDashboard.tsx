@@ -2309,12 +2309,8 @@ export default function ClientDashboard({
                       </span>
                       <div>
                         <h3 className="text-base font-semibold">AI summarizer</h3>
-                        <p className="text-xs text-muted">Fast insights, zero cost</p>
                       </div>
                     </div>
-                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-muted">
-                      Free
-                    </span>
                   </div>
 
                   <div className="mt-5 grid gap-4">
