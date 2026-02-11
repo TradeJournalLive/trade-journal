@@ -455,6 +455,8 @@ function AddTradeForm({
   const [targetPrice, setTargetPrice] = useState("");
   const [exitReasonChoice, setExitReasonChoice] = useState("");
   const [exitReasonCustom, setExitReasonCustom] = useState("");
+  const [platformChoice, setPlatformChoice] = useState("");
+  const [platformCustom, setPlatformCustom] = useState("");
   const [platform, setPlatform] = useState("");
   const [chartUrl, setChartUrl] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -507,7 +509,22 @@ function AddTradeForm({
         setExitReasonChoice("");
         setExitReasonCustom("");
       }
-      setPlatform(editingTrade.platform || "");
+      const storedPlatform = editingTrade.platform || "";
+      if (
+        storedPlatform === "Backtest" ||
+        storedPlatform === "Frontpage" ||
+        storedPlatform === "Fyers"
+      ) {
+        setPlatformChoice(storedPlatform);
+        setPlatformCustom("");
+      } else if (storedPlatform) {
+        setPlatformChoice("Custom");
+        setPlatformCustom(storedPlatform);
+      } else {
+        setPlatformChoice("");
+        setPlatformCustom("");
+      }
+      setPlatform(storedPlatform);
       setChartUrl(editingTrade.chartUrl || "");
       setRemarks(editingTrade.remarks || "");
       setEmotionTag(editingTrade.emotionTag || "");
@@ -534,6 +551,10 @@ function AddTradeForm({
       setExitReasonChoice("");
       setExitReasonCustom("");
       setPlatform("");
+      setPlatformChoice("");
+      setPlatformCustom("");
+      setPlatformChoice("");
+      setPlatformCustom("");
       setChartUrl("");
       setRemarks("");
       setEmotionTag("");
@@ -565,6 +586,10 @@ function AddTradeForm({
       exitReasonChoice === "Custom"
         ? exitReasonCustom.trim()
         : exitReasonChoice;
+    const platformValue =
+      platformChoice === "Custom"
+        ? platformCustom.trim()
+        : platformChoice;
     const chartUrlValue = normalizeUrl(chartUrl);
 
     if (
@@ -581,7 +606,8 @@ function AddTradeForm({
       !exitPrice ||
       !stopLoss ||
       !targetPrice ||
-      !exitReasonValue
+      !exitReasonValue ||
+      !platformValue
     ) {
       setError("Please fill all required fields.");
       return;
@@ -631,7 +657,7 @@ function AddTradeForm({
       stopLoss: stopValue,
       targetPrice: targetValue,
       exitReason: exitReasonValue,
-      platform,
+      platform: platformValue,
       chartUrl: chartUrlValue || undefined,
       remarks: remarks.trim() || undefined,
       emotionTag: emotionTag.trim() || undefined,
@@ -667,6 +693,8 @@ function AddTradeForm({
       setExitReasonChoice("");
       setExitReasonCustom("");
       setPlatform("");
+      setPlatformChoice("");
+      setPlatformCustom("");
       setChartUrl("");
       setRemarks("");
       setEmotionTag("");
@@ -879,12 +907,34 @@ function AddTradeForm({
             />
           )}
         </div>
-        <input
-          placeholder="Platform"
-          value={platform}
-          onChange={(event) => setPlatform(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
+        <div className="flex flex-col gap-2">
+          <select
+            value={platformChoice}
+            onChange={(event) => {
+              setPlatformChoice(event.target.value);
+              if (event.target.value !== "Custom") {
+                setPlatformCustom("");
+              }
+            }}
+            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          >
+            <option value="" disabled>
+              Select platform
+            </option>
+            <option value="Backtest">Backtest</option>
+            <option value="Frontpage">Frontpage</option>
+            <option value="Fyers">Fyers</option>
+            <option value="Custom">Custom</option>
+          </select>
+          {platformChoice === "Custom" && (
+            <input
+              placeholder="Custom platform"
+              value={platformCustom}
+              onChange={(event) => setPlatformCustom(event.target.value)}
+              className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            />
+          )}
+        </div>
         <input
           placeholder="Chart link (optional)"
           value={chartUrl}
