@@ -2291,49 +2291,115 @@ export default function ClientDashboard({
                   </div>
                 </div>
 
-                <div className="card">
+                <div id="ai-summary" className="card scroll-mt-24">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm text-muted">AI summarizer</h3>
-                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-muted">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 3v4M5.6 5.6l2.8 2.8M3 12h4M5.6 18.4l2.8-2.8M12 17v4M18.4 18.4l-2.8-2.8M17 12h4M18.4 5.6l-2.8 2.8" />
+                        </svg>
+                      </span>
+                      <div>
+                        <h3 className="text-base font-semibold">AI summarizer</h3>
+                        <p className="text-xs text-muted">Fast insights, zero cost</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-muted">
                       Free
                     </span>
                   </div>
-                  <div className="mt-4 space-y-4 text-sm">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Performance
+
+                  <div className="mt-5 grid gap-4">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-500/15 text-teal-500">
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 12h4l3-6 4 12 2-6h5" />
+                          </svg>
+                        </span>
+                        <div className="text-sm font-semibold">Performance</div>
                       </div>
-                      <div className="mt-2 space-y-2 text-sm">
+                      <ul className="mt-3 space-y-2 text-sm text-muted">
                         {aiSummary.performance.map((item, index) => (
-                          <div key={`${item}-${index}`} className="text-muted">
-                            {item}
-                          </div>
+                          <li key={`${item}-${index}`} className="flex items-start gap-2">
+                            <span className="mt-1 h-2 w-2 rounded-full bg-teal-500/80" />
+                            <span>{item}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Strategy
+
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M4 6h7l2 3h7v9H4z" />
+                            <path d="M8 6l1.5-3h5L16 6" />
+                          </svg>
+                        </span>
+                        <div className="text-sm font-semibold">Strategy</div>
                       </div>
-                      <div className="mt-2 space-y-2 text-sm">
+                      <ul className="mt-3 space-y-2 text-sm text-muted">
                         {aiSummary.strategy.map((item, index) => (
-                          <div key={`${item}-${index}`} className="text-muted">
-                            {item}
-                          </div>
+                          <li key={`${item}-${index}`} className="flex items-start gap-2">
+                            <span className="mt-1 h-2 w-2 rounded-full bg-sky-500/80" />
+                            <span>{item}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Behavior
+
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 4v7" />
+                            <path d="m7 12 5 4 5-4" />
+                            <path d="M4 20h16" />
+                          </svg>
+                        </span>
+                        <div className="text-sm font-semibold">Behavior</div>
                       </div>
-                      <div className="mt-2 space-y-2 text-sm">
+                      <ul className="mt-3 space-y-2 text-sm text-muted">
                         {aiSummary.behavior.map((item, index) => (
-                          <div key={`${item}-${index}`} className="text-muted">
-                            {item}
-                          </div>
+                          <li key={`${item}-${index}`} className="flex items-start gap-2">
+                            <span className="mt-1 h-2 w-2 rounded-full bg-amber-500/80" />
+                            <span>{item}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   </div>
                 </div>
