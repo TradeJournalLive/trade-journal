@@ -1316,6 +1316,110 @@ export default function ClientDashboard({
   const bestDay = [...dayStats].sort((a, b) => b.totalPl - a.totalPl)[0];
   const worstDay = [...dayStats].sort((a, b) => a.totalPl - b.totalPl)[0];
 
+  const aiSummary = useMemo(() => {
+    const performance: string[] = [];
+    const strategy: string[] = [];
+    const behavior: string[] = [];
+
+    if (summary.totalTrades === 0) {
+      performance.push("Log a few trades to generate deeper insights.");
+    } else {
+      performance.push(
+        `Win rate ${formatPercent(summary.winRate)} with expectancy ${expectancyLabel}.`
+      );
+      if (summary.profitFactor !== null) {
+        performance.push(`Profit factor ${summary.profitFactor.toFixed(2)}.`);
+      }
+      if (summary.avgRR !== null && summary.avgRR < 1) {
+        performance.push("Average R:R below 1 — tighten exits or targets.");
+      }
+      if (summary.maxDrawdown !== 0) {
+        performance.push(
+          `Max drawdown ${signedMoney2.format(summary.maxDrawdown)}.`
+        );
+      }
+    }
+
+    if (monthBreakdown.length >= 2) {
+      const last = monthBreakdown[monthBreakdown.length - 1];
+      const prev = monthBreakdown[monthBreakdown.length - 2];
+      const delta = last.value - prev.value;
+      performance.push(
+        `Latest month ${delta >= 0 ? "up" : "down"} ${signedMoney0.format(
+          Math.abs(delta)
+        )} vs prior.`
+      );
+    }
+
+    if (bestStrategy) {
+      strategy.push(
+        `Best: ${bestStrategy.name} (${signedMoney2.format(
+          bestStrategy.totalPl
+        )}).`
+      );
+    }
+    if (worstStrategy && worstStrategy !== bestStrategy) {
+      strategy.push(
+        `Weakest: ${worstStrategy.name} (${signedMoney2.format(
+          worstStrategy.totalPl
+        )}).`
+      );
+    }
+    if (strategyStats.length) {
+      const topWin = [...strategyStats].sort(
+        (a, b) => b.winRate - a.winRate
+      )[0];
+      if (topWin) {
+        strategy.push(
+          `Top win rate: ${topWin.name} (${formatPercent(topWin.winRate)}).`
+        );
+      }
+    }
+    if (bestDay) {
+      strategy.push(`Best day: ${bestDay.day}.`);
+    }
+
+    if (!strategy.length) {
+      strategy.push("Add strategy tags to compare playbooks.");
+    }
+
+    if (lowRRCount > 0) {
+      behavior.push(`Low R:R trades: ${lowRRCount}.`);
+    }
+    if (earlyExitCount > 0) {
+      behavior.push(`Early exits: ${earlyExitCount}.`);
+    }
+    if (stopHits || targetHits) {
+      behavior.push(`Stop hits ${stopHits} vs targets ${targetHits}.`);
+    }
+    if (overtradeList.length) {
+      behavior.push(
+        `Overtrading on ${overtradeList[0][0]} (${overtradeList[0][1]} trades).`
+      );
+    }
+    if (!behavior.length) {
+      behavior.push("Execution looks consistent. Keep tracking.");
+    }
+
+    return { performance, strategy, behavior };
+  }, [
+    summary,
+    expectancyLabel,
+    formatPercent,
+    signedMoney2,
+    signedMoney0,
+    monthBreakdown,
+    bestStrategy,
+    worstStrategy,
+    strategyStats,
+    bestDay,
+    lowRRCount,
+    earlyExitCount,
+    stopHits,
+    targetHits,
+    overtradeList
+  ]);
+
   const kpis = [
     { label: "Overall P/L", value: signedMoney0.format(summary.totalPl) },
     { label: "Total trades", value: summary.totalTrades.toString() },
@@ -1328,6 +1432,22 @@ export default function ClientDashboard({
     { label: "Profit factor", value: profitFactorLabel },
     { label: "Max drawdown", value: signedMoney2.format(summary.maxDrawdown) }
   ];
+
+  const sectionNavIds: DashboardView[] = [
+    "overview",
+    "performance",
+    "strategy",
+    "day",
+    "behavior"
+  ];
+
+  const handleSectionNav = (id: DashboardView) => {
+    setActiveSection(id);
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.replaceState(null, "", `/dashboard#${id}`);
+  };
 
   function downloadCsv(csv: string, filename: string) {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1766,6 +1886,8 @@ export default function ClientDashboard({
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
 
+  const isOverviewView = view === "overview";
+
   const profileInitial =
     session?.user?.email?.charAt(0).toUpperCase() ?? "U";
 
@@ -1800,26 +1922,52 @@ export default function ClientDashboard({
       </div>
       <div className="relative flex items-start">
         <aside className="hidden h-screen w-60 flex-col border-r border-white/5 bg-panel/40 p-6 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto">
-          <Link href="/dashboard#overview" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
-              TJ
-            </div>
-            <span className="text-lg font-semibold">Trade Journal</span>
-          </Link>
+          {isOverviewView ? (
+            <button
+              type="button"
+              onClick={() => handleSectionNav("overview")}
+              className="flex items-center gap-3 text-left"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
+                TJ
+              </div>
+              <span className="text-lg font-semibold">Trade Journal</span>
+            </button>
+          ) : (
+            <Link href="/dashboard#overview" className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
+                TJ
+              </div>
+              <span className="text-lg font-semibold">Trade Journal</span>
+            </Link>
+          )}
           <nav className="mt-10 grid gap-1 text-sm">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`w-full rounded-lg px-3 py-2 text-left transition ${
-                  activeSection === item.id
-                    ? "bg-primary/10 text-white"
-                    : "text-muted hover:bg-primary/10 hover:text-white"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const isSection = sectionNavIds.includes(item.id as DashboardView);
+              const isActive = activeSection === item.id;
+              const classes = `w-full rounded-lg px-3 py-2 text-left transition ${
+                isActive
+                  ? "bg-primary/10 text-white"
+                  : "text-muted hover:bg-primary/10 hover:text-white"
+              }`;
+              if (isOverviewView && isSection) {
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => handleSectionNav(item.id as DashboardView)}
+                    className={classes}
+                  >
+                    {item.label}
+                  </button>
+                );
+              }
+              return (
+                <Link key={item.label} href={item.href} className={classes}>
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
           <div className="mt-auto text-xs text-muted">
             Data source: {dataSourceLabel}
@@ -1834,12 +1982,22 @@ export default function ClientDashboard({
                 <p className="text-xs text-muted">Review period: {dateRange}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Link
-                  href="/dashboard#overview"
-                  className="rounded-full border border-white/10 px-4 py-2 text-muted"
-                >
-                  Home
-                </Link>
+                {isOverviewView ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSectionNav("overview")}
+                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
+                  >
+                    Home
+                  </button>
+                ) : (
+                  <Link
+                    href="/dashboard#overview"
+                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
+                  >
+                    Home
+                  </Link>
+                )}
                 <input
                   type="date"
                   value={globalStartDate}
@@ -2015,19 +2173,36 @@ export default function ClientDashboard({
             </div>
             <div className="lg:hidden border-t border-white/5">
               <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-xs sm:px-6">
-                {navItems.map((item) => (
-                  <Link
-                    key={`mobile-${item.label}`}
-                    href={item.href}
-                    className={`rounded-full px-3 py-1 whitespace-nowrap ${
-                      activeSection === item.id
-                        ? "bg-primary/15 text-white"
-                        : "text-muted hover:bg-primary/10 hover:text-white"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+                {navItems.map((item) => {
+                  const isSection = sectionNavIds.includes(item.id as DashboardView);
+                  const isActive = activeSection === item.id;
+                  const classes = `rounded-full px-3 py-1 whitespace-nowrap ${
+                    isActive
+                      ? "bg-primary/15 text-white"
+                      : "text-muted hover:bg-primary/10 hover:text-white"
+                  }`;
+                  if (isOverviewView && isSection) {
+                    return (
+                      <button
+                        key={`mobile-${item.label}`}
+                        type="button"
+                        onClick={() => handleSectionNav(item.id as DashboardView)}
+                        className={classes}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={`mobile-${item.label}`}
+                      href={item.href}
+                      className={classes}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </header>
@@ -2101,6 +2276,53 @@ export default function ClientDashboard({
                   </div>
                   <div className="mt-2 text-xs text-muted">
                     Max profit {signedMoney2.format(summary.maxProfitTrade)} · Max loss {signedMoney2.format(summary.maxLossTrade)}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm text-muted">AI summarizer</h3>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-muted">
+                      Free
+                    </span>
+                  </div>
+                  <div className="mt-4 space-y-4 text-sm">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Performance
+                      </div>
+                      <div className="mt-2 space-y-2 text-sm">
+                        {aiSummary.performance.map((item, index) => (
+                          <div key={`${item}-${index}`} className="text-muted">
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Strategy
+                      </div>
+                      <div className="mt-2 space-y-2 text-sm">
+                        {aiSummary.strategy.map((item, index) => (
+                          <div key={`${item}-${index}`} className="text-muted">
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Behavior
+                      </div>
+                      <div className="mt-2 space-y-2 text-sm">
+                        {aiSummary.behavior.map((item, index) => (
+                          <div key={`${item}-${index}`} className="text-muted">
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
