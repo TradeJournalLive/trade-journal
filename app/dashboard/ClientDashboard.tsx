@@ -100,6 +100,9 @@ type DashboardView =
   | "profile"
   | "setup-edit";
 
+type DashboardSection = "overview" | "performance" | "strategy" | "day" | "behavior" | "ai-summary";
+type DashboardNavId = DashboardView | DashboardSection;
+
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -888,7 +891,7 @@ export default function ClientDashboard({
   const [strategyEditRules, setStrategyEditRules] = useState("");
   const [strategyEditStatus, setStrategyEditStatus] = useState("");
   const [activeSection, setActiveSection] =
-    useState<DashboardView>("overview");
+    useState<DashboardNavId>("overview");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [passwordNext, setPasswordNext] = useState("");
@@ -1093,7 +1096,14 @@ export default function ClientDashboard({
     }
 
     setActiveSection("overview");
-    const sectionIds = ["overview", "performance", "strategy", "day", "behavior"];
+    const sectionIds: DashboardSection[] = [
+      "overview",
+      "performance",
+      "strategy",
+      "day",
+      "behavior",
+      "ai-summary"
+    ];
     const sections = sectionIds
       .map((id) => document.getElementById(id))
       .filter((section): section is HTMLElement => Boolean(section));
@@ -1103,7 +1113,7 @@ export default function ClientDashboard({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setActiveSection(entry.target.id as DashboardView);
+            setActiveSection(entry.target.id as DashboardSection);
           }
         });
       },
@@ -1433,15 +1443,16 @@ export default function ClientDashboard({
     { label: "Max drawdown", value: signedMoney2.format(summary.maxDrawdown) }
   ];
 
-  const sectionNavIds: DashboardView[] = [
+  const sectionNavIds: DashboardSection[] = [
     "overview",
     "performance",
     "strategy",
     "day",
-    "behavior"
+    "behavior",
+    "ai-summary"
   ];
 
-  const handleSectionNav = (id: DashboardView) => {
+  const handleSectionNav = (id: DashboardSection) => {
     setActiveSection(id);
     const target = document.getElementById(id);
     if (!target) return;
@@ -1881,6 +1892,7 @@ export default function ClientDashboard({
     { label: "Strategy", href: "/dashboard#strategy", id: "strategy" },
     { label: "Day-wise", href: "/dashboard#day", id: "day" },
     { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
+    { label: "AI Summary", href: "/dashboard#ai-summary", id: "ai-summary" },
     { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
@@ -1943,7 +1955,7 @@ export default function ClientDashboard({
           )}
           <nav className="mt-10 grid gap-1 text-sm">
             {navItems.map((item) => {
-              const isSection = sectionNavIds.includes(item.id as DashboardView);
+              const isSection = sectionNavIds.includes(item.id as DashboardSection);
               const isActive = activeSection === item.id;
               const classes = `w-full rounded-lg px-3 py-2 text-left transition ${
                 isActive
@@ -1955,7 +1967,7 @@ export default function ClientDashboard({
                   <button
                     key={item.label}
                     type="button"
-                    onClick={() => handleSectionNav(item.id as DashboardView)}
+                    onClick={() => handleSectionNav(item.id as DashboardSection)}
                     className={classes}
                   >
                     {item.label}
@@ -2174,7 +2186,7 @@ export default function ClientDashboard({
             <div className="lg:hidden border-t border-white/5">
               <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-xs sm:px-6">
                 {navItems.map((item) => {
-                  const isSection = sectionNavIds.includes(item.id as DashboardView);
+                  const isSection = sectionNavIds.includes(item.id as DashboardSection);
                   const isActive = activeSection === item.id;
                   const classes = `rounded-full px-3 py-1 whitespace-nowrap ${
                     isActive
@@ -2186,7 +2198,7 @@ export default function ClientDashboard({
                       <button
                         key={`mobile-${item.label}`}
                         type="button"
-                        onClick={() => handleSectionNav(item.id as DashboardView)}
+                        onClick={() => handleSectionNav(item.id as DashboardSection)}
                         className={classes}
                       >
                         {item.label}
@@ -2256,7 +2268,7 @@ export default function ClientDashboard({
               </div>
 
               <div className="space-y-6">
-                <div className="card">
+                <div id="ai-summary" className="card scroll-mt-24">
                   <h3 className="text-sm text-muted">Win/Loss mix</h3>
                   <div className="mt-4 flex items-center justify-between">
                     <div className="text-3xl font-semibold">
