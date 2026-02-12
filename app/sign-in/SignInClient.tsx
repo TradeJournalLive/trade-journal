@@ -144,7 +144,7 @@ export default function SignInClient() {
               {error && <p className="text-xs text-negative">{error}</p>}
               <button
                 type="submit"
-                className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-white"
+                className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-on-primary"
                 disabled={loading}
               >
                 {loading ? "Signing in..." : "Sign in"}

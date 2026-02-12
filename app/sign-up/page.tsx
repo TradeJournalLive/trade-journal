@@ -128,7 +128,7 @@ export default function SignUpPage() {
               {success && <p className="text-xs text-positive">{success}</p>}
               <button
                 type="submit"
-                className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-white"
+                className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-on-primary"
                 disabled={loading}
               >
                 {loading ? "Creating..." : "Create account"}
