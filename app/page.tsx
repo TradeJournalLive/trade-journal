@@ -123,26 +123,26 @@ export default function Home() {
           <span className="text-lg font-semibold tracking-tight">Trade Journal</span>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted">
-          <Link href="#how" className="hover:text-ink">
+          <Link href="#how" className="hover:text-primary">
             How it works
           </Link>
-          <Link href="#features" className="hover:text-ink">
+          <Link href="#features" className="hover:text-primary">
             Features
           </Link>
-          <Link href="#dashboard" className="hover:text-ink">
+          <Link href="#dashboard" className="hover:text-primary">
             Dashboard
           </Link>
-          <Link href="#pricing" className="hover:text-ink">
+          <Link href="#pricing" className="hover:text-primary">
             Pricing
           </Link>
-          <Link href="/sign-in" className="hover:text-ink">
+          <Link href="/sign-in" className="hover:text-primary">
             Sign in
           </Link>
         </div>
         <div className="flex items-center gap-3">
           <Link
             href="/sign-up"
-            className="rounded-full border border-white/10 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary"
+            className="rounded-full border border-white/10 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/20"
           >
             Sign up
           </Link>
