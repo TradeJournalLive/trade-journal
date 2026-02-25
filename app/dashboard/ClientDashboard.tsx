@@ -1420,6 +1420,23 @@ export default function ClientDashboard({
   const monthWinRate = useMemo(() => winRateByMonth(derived), [derived]);
   const dateRange = useMemo(() => getDateRange(filteredTrades), [filteredTrades]);
   const dayStats = useMemo(() => dayOfWeekStats(derived), [derived]);
+  const safeRiskStats = useMemo(() => {
+    const build = (type: "Safe" | "Risky") => {
+      const trades = derived.filter((trade) => trade.tradeType === type);
+      const wins = trades.filter((trade) => trade.pl > 0).length;
+      const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
+      return {
+        type,
+        count: trades.length,
+        winRate: trades.length ? wins / trades.length : 0,
+        totalPl
+      };
+    };
+    return {
+      safe: build("Safe"),
+      risky: build("Risky")
+    };
+  }, [derived]);
 
   const strategyStats = useMemo(
     () =>
@@ -2516,6 +2533,45 @@ export default function ClientDashboard({
               ))}
             </div>
 
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="card">
+                <h3 className="text-sm text-muted">Safe trades</h3>
+                <div className="mt-2 text-2xl font-semibold">
+                  {safeRiskStats.safe.count}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Win rate {formatPercent(safeRiskStats.safe.winRate)}
+                </div>
+                <div
+                  className={`mt-2 text-sm font-semibold ${
+                    safeRiskStats.safe.totalPl >= 0
+                      ? "text-positive"
+                      : "text-negative"
+                  }`}
+                >
+                  {signedMoney2.format(safeRiskStats.safe.totalPl)}
+                </div>
+              </div>
+              <div className="card">
+                <h3 className="text-sm text-muted">Risky trades</h3>
+                <div className="mt-2 text-2xl font-semibold">
+                  {safeRiskStats.risky.count}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Win rate {formatPercent(safeRiskStats.risky.winRate)}
+                </div>
+                <div
+                  className={`mt-2 text-sm font-semibold ${
+                    safeRiskStats.risky.totalPl >= 0
+                      ? "text-positive"
+                      : "text-negative"
+                  }`}
+                >
+                  {signedMoney2.format(safeRiskStats.risky.totalPl)}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
               <div className="card">
                 <div className="flex items-center justify-between">
@@ -2974,6 +3030,27 @@ export default function ClientDashboard({
                             <span>{row.count}</span>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-muted">
+                        Safe vs risky split
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted">Safe</span>
+                          <span>
+                            {formatPercent(safeRiskStats.safe.winRate)} ·{" "}
+                            {signedMoney2.format(safeRiskStats.safe.totalPl)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted">Risky</span>
+                          <span>
+                            {formatPercent(safeRiskStats.risky.winRate)} ·{" "}
+                            {signedMoney2.format(safeRiskStats.risky.totalPl)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
