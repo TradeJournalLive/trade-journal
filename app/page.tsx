@@ -163,7 +163,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Link
             href="/sign-up"
-            className="rounded-full border border-white/10 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/20"
+            className="rounded-full bg-[linear-gradient(135deg,#1d4ed8,#2563eb)] px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
           >
             Sign up
           </Link>
@@ -197,7 +197,7 @@ export default function Home() {
             </Link>
             <Link
               href="#dashboard"
-              className="rounded-full border border-blue-200 bg-white px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-blue-50"
+              className="rounded-full bg-[linear-gradient(135deg,#0f766e,#14b8a6)] px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
             >
               View dashboard
             </Link>
@@ -452,7 +452,7 @@ export default function Home() {
                   ? "Advanced analytics + export workflow"
                   : "Shared workspace + team-level insights"}
               </p>
-              <button className="mt-6 w-full rounded-full bg-primary/10 text-primary py-2 text-sm font-semibold">
+              <button className="mt-6 w-full rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] py-2 text-sm font-semibold text-white">
                 Coming soon
               </button>
             </div>
