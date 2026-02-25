@@ -2,28 +2,28 @@ import Link from "next/link";
 
 const features = [
   {
-    title: "Structured trade log",
-    description: "Capture every entry with strategy, risk, and outcome tags."
+    title: "India-first trade log",
+    description: "Capture Nifty, Bank Nifty, Sensex and stock trades with clean structure."
   },
   {
     title: "Win rate & expectancy",
-    description: "See what your edge really looks like by setup."
+    description: "Measure your real edge by setup, timeframe, and instrument."
   },
   {
     title: "Equity curve",
-    description: "Track growth, drawdowns, and streaks over time."
+    description: "Track account growth, drawdowns, and recovery phases clearly."
   },
   {
     title: "Strategy analytics",
-    description: "Benchmark performance across playbooks."
+    description: "Benchmark option buying and intraday playbooks side by side."
   },
   {
-    title: "Risk-reward clarity",
-    description: "Reveal average R:R and consistency of execution."
+    title: "Psychology tracking",
+    description: "Tag trigger emotion and behavioral state to reduce emotional mistakes."
   },
   {
     title: "Filters & export",
-    description: "Slice by date, symbol, or strategy. Export anytime."
+    description: "Filter by date, strategy, market, and export reports in seconds."
   }
 ];
 
@@ -85,24 +85,45 @@ const featureIcons = [
 
 const faq = [
   {
-    q: "Do I need to connect a broker?",
-    a: "No. Add trades manually or import CSV/Google Sheets in v1."
+    q: "Do I need broker integration to start?",
+    a: "No. You can start with manual entries immediately and keep your workflow simple."
   },
   {
     q: "How is P&L calculated?",
-    a: "P&L is based on entry/exit prices, qty, side, and optional fees."
+    a: "Net P&L is calculated from entry/exit and quantity after brokerage deduction."
   },
   {
     q: "Can I track multiple strategies?",
-    a: "Yes. Tag each trade and view strategy-wise performance."
+    a: "Yes. Each trade can be tagged and reviewed strategy-wise with win rate and expectancy."
   },
   {
-    q: "Will there be mobile access?",
-    a: "The UI is fully responsive and works on mobile browsers."
+    q: "Does this support Indian markets?",
+    a: "Yes. The platform is optimized for Indian traders and INR-first workflows."
   },
   {
-    q: "Is there a free plan?",
-    a: "Yes. A free tier is available with core journaling features."
+    q: "Is my data private?",
+    a: "Yes. Your trades are private to your account with authentication and row-level access control."
+  }
+];
+
+const testimonials = [
+  {
+    name: "Index Options Trader",
+    role: "NSE Derivatives",
+    quote:
+      "I stopped guessing and started tracking. My weekly review now shows exactly where discipline breaks."
+  },
+  {
+    name: "Working Professional",
+    role: "Part-time Swing Trader",
+    quote:
+      "The strategy and day-wise breakdown made my weak days obvious. I trade less now, but much better."
+  },
+  {
+    name: "Price Action Learner",
+    role: "Equity Intraday",
+    quote:
+      "Emotion tags changed my process. I can clearly see where FOMO is costing me money."
   }
 ];
 
@@ -159,11 +180,11 @@ export default function Home() {
         <div className="space-y-6">
           <span className="badge">Trading journal</span>
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
-            Trade with intention. Review with clarity.
+            India-first trading journal for serious review.
           </h1>
           <p className="text-muted text-lg">
-            PulseJournal is a minimal, analytics-first trading journal that
-            surfaces what matters: edge, risk, and consistency.
+            Built for traders tracking NSE/BSE performance. Log faster, review
+            deeper, and improve decision quality with data-driven insights.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
@@ -181,9 +202,9 @@ export default function Home() {
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { label: "CSV + Sheets", value: "Fast import" },
-              { label: "Strategy tags", value: "Playbook ready" },
-              { label: "Equity curve", value: "Trend view" }
+              { label: "Indian markets", value: "Nifty, B.Nifty, Sensex" },
+              { label: "Execution quality", value: "Psychology tagged" },
+              { label: "Review cycle", value: "Daily / Weekly / Monthly" }
             ].map((item) => (
               <div
                 key={item.label}
@@ -209,7 +230,7 @@ export default function Home() {
           <div className="mt-6 grid gap-4">
             <div className="kpi">
               <div className="text-xs text-muted">Net P&L</div>
-              <div className="text-2xl font-semibold">$4,320</div>
+              <div className="text-2xl font-semibold">Rs 38,420</div>
             </div>
             <div className="kpi">
               <div className="text-xs text-muted">Win rate</div>
@@ -281,21 +302,41 @@ export default function Home() {
           {[
             {
               title: "Log trades",
-              desc: "Add each trade with entry, exit, size, and tags."
+              desc: "Record entry, exit, lots, setup, and execution notes in under a minute."
             },
             {
-              title: "Tag strategy",
-              desc: "Attach playbooks, timeframes, and risk levels."
+              title: "Tag behavior",
+              desc: "Track trigger emotion and behavioral state for every trade."
             },
             {
               title: "Review edge",
-              desc: "Analyze win rate, expectancy, and drawdowns."
+              desc: "Use strategy, day-wise, and risk analytics to improve consistency."
             }
           ].map((step, index) => (
             <div className="card" key={step.title}>
               <div className="text-sm text-muted">Step {index + 1}</div>
               <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
               <p className="mt-2 text-sm text-muted">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-20">
+        <div className="mb-10">
+          <h2 className="section-title">Trusted by focused traders</h2>
+          <p className="section-lead">
+            Practical journaling feedback from Indian trading workflows.
+          </p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {testimonials.map((item) => (
+            <div className="card" key={item.name}>
+              <p className="text-sm leading-6 text-muted">"{item.quote}"</p>
+              <div className="mt-5 border-t border-white/10 pt-4">
+                <div className="text-sm font-semibold">{item.name}</div>
+                <div className="text-xs text-muted">{item.role}</div>
+              </div>
             </div>
           ))}
         </div>
@@ -401,7 +442,9 @@ export default function Home() {
       <section id="pricing" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-10">
           <h2 className="section-title">Simple pricing</h2>
-          <p className="section-lead">Start free, upgrade when you scale.</p>
+          <p className="section-lead">
+            INR-first pricing for individual and growing trading desks.
+          </p>
         </div>
         <div className="grid gap-6 md:grid-cols-3">
           {["Free", "Pro", "Team"].map((tier, idx) => (
@@ -413,14 +456,14 @@ export default function Home() {
                 )}
               </div>
               <div className="mt-4 text-3xl font-semibold">
-                {idx === 0 ? "$0" : idx === 1 ? "$19" : "$49"}
+                {idx === 0 ? "Rs 0" : idx === 1 ? "Rs 499" : "Rs 1,499"}
               </div>
               <p className="mt-2 text-sm text-muted">
                 {idx === 0
-                  ? "Core journaling and analytics"
+                  ? "Core journaling and review analytics"
                   : idx === 1
-                  ? "Advanced filters + exports"
-                  : "Team-level insights"}
+                  ? "Advanced analytics + export workflow"
+                  : "Shared workspace + team-level insights"}
               </p>
               <button className="mt-6 w-full rounded-full bg-primary/10 text-primary py-2 text-sm font-semibold">
                 Coming soon
@@ -451,14 +494,14 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-6 px-6 text-sm text-muted">
           <div>
             <div className="text-white font-semibold">Trade Journal</div>
-            <div className="text-xs">Minimal trading analytics</div>
+            <div className="text-xs">Built for disciplined Indian traders</div>
           </div>
           <div className="flex gap-6">
             <span>Product</span>
             <span>Company</span>
             <span>Legal</span>
           </div>
-          <div className="text-xs">© 2026 PulseJournal</div>
+          <div className="text-xs">Educational journal. Not investment advice.</div>
         </div>
       </footer>
     </main>
