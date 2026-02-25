@@ -129,11 +129,11 @@ const testimonials = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-ink text-white">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_20%_12%,rgba(59,130,246,0.18),transparent_35%),radial-gradient(circle_at_82%_14%,rgba(16,185,129,0.16),transparent_32%),radial-gradient(circle_at_35%_85%,rgba(245,158,11,0.14),transparent_38%),rgb(var(--color-ink))] text-white">
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-1/2 top-[-20%] h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/15 blur-[140px]" />
-        <div className="absolute right-[10%] top-[10%] h-[420px] w-[420px] rounded-full bg-white/5 blur-[90px]" />
-        <div className="absolute left-[8%] bottom-[5%] h-[360px] w-[360px] rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[120px]" />
+        <div className="absolute left-1/2 top-[-20%] h-[620px] w-[620px] -translate-x-1/2 rounded-full bg-primary/20 blur-[150px]" />
+        <div className="absolute right-[10%] top-[10%] h-[420px] w-[420px] rounded-full bg-[rgba(16,185,129,0.16)] blur-[90px]" />
+        <div className="absolute left-[8%] bottom-[5%] h-[360px] w-[360px] rounded-full bg-[rgba(245,158,11,0.18)] blur-[120px]" />
       </div>
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
@@ -169,7 +169,7 @@ export default function Home() {
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-on-primary shadow-soft"
+            className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-5 py-2 text-sm font-semibold text-on-primary shadow-soft"
           >
             Open demo
           </Link>
@@ -178,9 +178,11 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
-          <span className="badge">Trading journal</span>
+          <span className="inline-flex items-center rounded-full bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
+            Trade smarter, not harder
+          </span>
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
-            India-first trading journal for serious review.
+            India's high-clarity journal for disciplined traders.
           </h1>
           <p className="text-muted text-lg">
             Built for traders tracking NSE/BSE performance. Log faster, review
@@ -189,13 +191,13 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/dashboard"
-              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-on-primary shadow-soft"
+              className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-6 py-3 text-sm font-semibold text-white shadow-soft"
             >
               Start free
             </Link>
             <Link
               href="#dashboard"
-              className="rounded-full border border-white/10 bg-white/70 px-6 py-3 text-sm font-semibold text-slate-900"
+              className="rounded-full border border-blue-200 bg-white px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-blue-50"
             >
               View dashboard
             </Link>
@@ -220,73 +222,58 @@ export default function Home() {
             ))}
           </div>
         </div>
-        <div className="card relative">
-          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[40px]" />
-          <div className="absolute -left-8 bottom-6 h-24 w-24 rounded-full bg-primary/10 blur-[40px]" />
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted">Overview</span>
-            <span className="text-sm text-positive">+4.8% this month</span>
-          </div>
-          <div className="mt-6 grid gap-4">
-            <div className="kpi">
-              <div className="text-xs text-muted">Net P&L</div>
-              <div className="text-2xl font-semibold">Rs 38,420</div>
+        <div className="hero-float card relative border border-blue-200/50 bg-[linear-gradient(155deg,rgba(238,242,255,0.95),rgba(236,253,245,0.85))]">
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[rgba(59,130,246,0.2)] blur-[42px]" />
+          <div className="absolute -left-8 bottom-6 h-24 w-24 rounded-full bg-[rgba(16,185,129,0.18)] blur-[38px]" />
+          <div className="rounded-2xl border border-white/70 bg-white/75 p-5">
+            <div className="flex items-center gap-3">
+              <span className="hero-dot h-4 w-4 rounded-full bg-amber-400" />
+              <span className="hero-dot h-4 w-4 rounded-full bg-pink-500 [animation-delay:0.3s]" />
+              <span className="hero-dot h-4 w-4 rounded-full bg-emerald-500 [animation-delay:0.6s]" />
             </div>
-            <div className="kpi">
-              <div className="text-xs text-muted">Win rate</div>
-              <div className="text-2xl font-semibold">58%</div>
-            </div>
-            <div className="kpi">
-              <div className="text-xs text-muted">Expectancy</div>
-              <div className="text-2xl font-semibold">0.42R</div>
-            </div>
-          </div>
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {[
-              { label: "Risk drift", value: "-0.6R", tone: "text-negative" },
-              { label: "Discipline", value: "82%", tone: "text-positive" }
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-elevate/70 px-4 py-3 text-sm"
+            <div className="mt-6 h-40 rounded-xl border border-blue-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.75),rgba(255,255,255,0.95))] p-4">
+              <svg
+                viewBox="0 0 340 130"
+                className="h-full w-full"
+                preserveAspectRatio="none"
               >
-                <span className="text-muted">{item.label}</span>
-                <span className={`font-semibold ${item.tone}`}>
-                  {item.value}
-                </span>
-              </div>
-            ))}
+                <path
+                  d="M0 98 L38 62 L76 74 L112 48 L148 82 L184 36 L220 68 L256 30 L302 56 L340 44"
+                  fill="none"
+                  stroke="#4f46e5"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="hero-line"
+                />
+              </svg>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-semibold">
+              <div className="rounded-xl bg-[linear-gradient(135deg,#4f46e5,#6366f1)] px-2 py-3 text-white">Win Rate</div>
+              <div className="rounded-xl bg-[linear-gradient(135deg,#2563eb,#3b82f6)] px-2 py-3 text-white">P/L</div>
+              <div className="rounded-xl bg-[linear-gradient(135deg,#10b981,#14b8a6)] px-2 py-3 text-white">Trades</div>
+            </div>
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {[
-              {
-                label: "Momentum",
-                value: "+12.4%",
-                bg: "bg-[linear-gradient(135deg,rgba(20,184,166,0.25),rgba(14,116,144,0.05))]"
-              },
-              {
-                label: "Risk guard",
-                value: "1.4R",
-                bg: "bg-[linear-gradient(135deg,rgba(245,158,11,0.25),rgba(245,158,11,0.05))]"
-              },
-              {
-                label: "Focus",
-                value: "78%",
-                bg: "bg-[linear-gradient(135deg,rgba(37,99,235,0.2),rgba(22,37,64,0.05))]"
-              }
-            ].map((item) => (
-              <div
-                key={item.label}
-                className={`rounded-xl border border-white/10 px-4 py-3 ${item.bg}`}
-              >
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  {item.label}
-                </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {item.value}
-                </div>
-              </div>
-            ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pb-14">
+        <div className="grid gap-4 md:grid-cols-4">
+          <div className="card border border-blue-200/50 bg-[linear-gradient(145deg,rgba(239,246,255,0.95),rgba(255,255,255,0.92))]">
+            <div className="text-3xl font-semibold text-blue-600">160k+</div>
+            <div className="mt-1 text-sm text-muted">Trades logged and reviewed</div>
+          </div>
+          <div className="card border border-emerald-200/50 bg-[linear-gradient(145deg,rgba(236,253,245,0.95),rgba(255,255,255,0.92))]">
+            <div className="text-3xl font-semibold text-emerald-600">2.5x</div>
+            <div className="mt-1 text-sm text-muted">Better discipline over time</div>
+          </div>
+          <div className="card border border-rose-200/50 bg-[linear-gradient(145deg,rgba(255,241,242,0.95),rgba(255,255,255,0.92))]">
+            <div className="text-3xl font-semibold text-rose-500">-63%</div>
+            <div className="mt-1 text-sm text-muted">Emotion-driven mistakes</div>
+          </div>
+          <div className="card border border-amber-200/50 bg-[linear-gradient(145deg,rgba(255,251,235,0.95),rgba(255,255,255,0.92))]">
+            <div className="text-3xl font-semibold text-amber-500">6k+</div>
+            <div className="mt-1 text-sm text-muted">Active Indian users</div>
           </div>
         </div>
       </section>
