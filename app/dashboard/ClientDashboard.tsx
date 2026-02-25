@@ -50,6 +50,7 @@ const CSV_HEADERS = [
   "R:R",
   "Trade Duration",
   "Total Investment",
+  "Trade Type",
   "Trigger Emotion",
   "Behavioral State",
   "Mindset Notes"
@@ -338,7 +339,8 @@ function toSupabaseRow(trade: Trade, userId: string) {
     remarks: trade.remarks ?? null,
     emotion_tag: trade.emotionTag ?? null,
     emotional_state: trade.emotionalState ?? null,
-    mindset_notes: trade.mindsetNotes ?? null
+    mindset_notes: trade.mindsetNotes ?? null,
+    trade_type: trade.tradeType ?? null
   };
 }
 
@@ -374,7 +376,11 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     emotionalState: row.emotional_state
       ? String(row.emotional_state)
       : undefined,
-    mindsetNotes: row.mindset_notes ? String(row.mindset_notes) : undefined
+    mindsetNotes: row.mindset_notes ? String(row.mindset_notes) : undefined,
+    tradeType:
+      row.trade_type === "Safe" || row.trade_type === "Risky"
+        ? row.trade_type
+        : undefined
   };
 }
 
@@ -406,6 +412,7 @@ function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
       trade.rr ? trade.rr.toFixed(2) : "",
       trade.tradeDuration,
       trade.totalInvestment.toFixed(2),
+      trade.tradeType ?? "",
       trade.emotionTag ?? "",
       trade.emotionalState ?? "",
       trade.mindsetNotes ?? ""
@@ -463,6 +470,7 @@ function AddTradeForm({
   const [emotionTag, setEmotionTag] = useState("");
   const [emotionalState, setEmotionalState] = useState("");
   const [mindsetNotes, setMindsetNotes] = useState("");
+  const [tradeType, setTradeType] = useState<"Safe" | "Risky" | "">("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -530,6 +538,7 @@ function AddTradeForm({
       setEmotionTag(editingTrade.emotionTag || "");
       setEmotionalState(editingTrade.emotionalState || "");
       setMindsetNotes(editingTrade.mindsetNotes || "");
+      setTradeType(editingTrade.tradeType || "");
       return;
     }
 
@@ -560,6 +569,7 @@ function AddTradeForm({
       setEmotionTag("");
       setEmotionalState("");
       setMindsetNotes("");
+      setTradeType("");
     }
   }, [editingTrade, instruments]);
 
@@ -607,7 +617,8 @@ function AddTradeForm({
       !stopLoss ||
       !targetPrice ||
       !exitReasonValue ||
-      !platformValue
+      !platformValue ||
+      !tradeType
     ) {
       setError("Please fill all required fields.");
       return;
@@ -662,7 +673,8 @@ function AddTradeForm({
       remarks: remarks.trim() || undefined,
       emotionTag: emotionTag.trim() || undefined,
       emotionalState: emotionalState.trim() || undefined,
-      mindsetNotes: mindsetNotes.trim() || undefined
+      mindsetNotes: mindsetNotes.trim() || undefined,
+      tradeType: tradeType || undefined
     };
 
     setSaving(true);
@@ -700,6 +712,7 @@ function AddTradeForm({
       setEmotionTag("");
       setEmotionalState("");
       setMindsetNotes("");
+      setTradeType("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -941,6 +954,19 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
+        <select
+          value={tradeType}
+          onChange={(event) =>
+            setTradeType(event.target.value as "Safe" | "Risky" | "")
+          }
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        >
+          <option value="" disabled>
+            Trade type
+          </option>
+          <option value="Safe">Safe</option>
+          <option value="Risky">Risky</option>
+        </select>
       </div>
 
       <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
@@ -1769,6 +1795,11 @@ export default function ClientDashboard({
       const targetPrice = parseNumber(getCell(row, "Target Price"));
       const exitReason = getCell(row, "Exit Reason").trim() || "Manual";
       const platform = getCell(row, "Platform").trim() || "Web";
+      const tradeTypeRaw = getCell(row, "Trade Type").trim();
+      const tradeType =
+        tradeTypeRaw === "Safe" || tradeTypeRaw === "Risky"
+          ? tradeTypeRaw
+          : undefined;
       const emotionTag = getCell(row, "Trigger Emotion").trim();
       const emotionalState = getCell(row, "Behavioral State").trim();
       const mindsetNotes = getCell(row, "Mindset Notes").trim();
@@ -1806,6 +1837,7 @@ export default function ClientDashboard({
         targetPrice,
         exitReason,
         platform,
+        tradeType,
         emotionTag: emotionTag || undefined,
         emotionalState: emotionalState || undefined,
         mindsetNotes: mindsetNotes || undefined

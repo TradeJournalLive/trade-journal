@@ -1,4 +1,5 @@
 export type Direction = "Long" | "Short";
+export type TradeType = "Safe" | "Risky";
 
 export type Trade = {
   tradeId: string;
@@ -23,6 +24,7 @@ export type Trade = {
   emotionTag?: string;
   emotionalState?: string;
   mindsetNotes?: string;
+  tradeType?: TradeType;
 };
 
 export const trades: Trade[] = [

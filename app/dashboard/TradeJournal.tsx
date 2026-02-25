@@ -70,6 +70,7 @@ export default function TradeJournal({
   const [market, setMarket] = useState("all");
   const [direction, setDirection] = useState("all");
   const [result, setResult] = useState("all");
+  const [tradeType, setTradeType] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectMode, setSelectMode] = useState(false);
@@ -104,6 +105,8 @@ export default function TradeJournal({
     if (market !== "all" && trade.market !== market) return false;
     if (direction !== "all" && trade.direction !== direction) return false;
     if (result !== "all" && trade.winLoss !== result) return false;
+    if (tradeType !== "all" && (trade.tradeType ?? "Unspecified") !== tradeType)
+      return false;
     if (startDate && trade.date < startDate) return false;
     if (endDate && trade.date > endDate) return false;
     return true;
@@ -157,6 +160,7 @@ export default function TradeJournal({
             setMarket("all");
             setDirection("all");
             setResult("all");
+            setTradeType("all");
             setStartDate("");
             setEndDate("");
           }}
@@ -224,6 +228,17 @@ export default function TradeJournal({
           <option value="Win">Win</option>
           <option value="Loss">Loss</option>
           <option value="BE">Breakeven</option>
+        </select>
+
+        <select
+          value={tradeType}
+          onChange={(event) => setTradeType(event.target.value)}
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        >
+          <option value="all">All trade types</option>
+          <option value="Safe">Safe</option>
+          <option value="Risky">Risky</option>
+          <option value="Unspecified">Unspecified</option>
         </select>
 
         <input
@@ -357,6 +372,17 @@ export default function TradeJournal({
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
                   {trade.winLoss}
+                </span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                    trade.tradeType === "Safe"
+                      ? "border-positive/40 bg-positive/15 text-positive"
+                      : trade.tradeType === "Risky"
+                      ? "border-negative/40 bg-negative/15 text-negative"
+                      : "border-white/10 bg-white/5 text-muted"
+                  }`}
+                >
+                  {trade.tradeType ?? "Unspecified"}
                 </span>
                 <span
                   className={`text-sm font-semibold ${
