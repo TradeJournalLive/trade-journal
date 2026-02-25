@@ -129,14 +129,14 @@ const testimonials = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_20%_10%,rgba(37,99,235,0.20),transparent_35%),radial-gradient(circle_at_82%_16%,rgba(16,185,129,0.20),transparent_32%),radial-gradient(circle_at_30%_85%,rgba(245,158,11,0.18),transparent_38%),rgb(var(--color-ink))] text-white">
+    <main className="min-h-screen bg-ink text-white">
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-1/2 top-[-20%] h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-primary/25 blur-[150px]" />
-        <div className="absolute right-[8%] top-[8%] h-[460px] w-[460px] rounded-full bg-[rgba(16,185,129,0.20)] blur-[95px]" />
-        <div className="absolute left-[8%] bottom-[5%] h-[380px] w-[380px] rounded-full bg-[rgba(245,158,11,0.22)] blur-[130px]" />
+        <div className="absolute left-1/2 top-[-20%] h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/15 blur-[140px]" />
+        <div className="absolute right-[10%] top-[10%] h-[420px] w-[420px] rounded-full bg-white/5 blur-[90px]" />
+        <div className="absolute left-[8%] bottom-[5%] h-[360px] w-[360px] rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[120px]" />
       </div>
 
-      <header className="mx-auto mt-4 flex max-w-6xl items-center justify-between rounded-2xl border border-white/10 bg-white/60 px-6 py-5 backdrop-blur">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 border border-primary/40 text-sm font-semibold">
             TJ
@@ -163,13 +163,13 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Link
             href="/sign-up"
-            className="rounded-full border border-blue-300/50 bg-white px-4 py-2 text-sm font-semibold text-primary hover:bg-blue-50"
+            className="rounded-full border border-white/10 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/20"
           >
             Sign up
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-full bg-[linear-gradient(135deg,#1d4ed8,#0f766e)] px-5 py-2 text-sm font-semibold text-white shadow-soft"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-on-primary shadow-soft"
           >
             Open demo
           </Link>
@@ -189,13 +189,13 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/dashboard"
-              className="rounded-full bg-[linear-gradient(135deg,#1d4ed8,#0f766e)] px-6 py-3 text-sm font-semibold text-white shadow-soft"
+              className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-on-primary shadow-soft"
             >
               Start free
             </Link>
             <Link
               href="#dashboard"
-              className="rounded-full border border-blue-200 bg-white px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-blue-50"
+              className="rounded-full border border-white/10 bg-white/70 px-6 py-3 text-sm font-semibold text-slate-900"
             >
               View dashboard
             </Link>
@@ -208,7 +208,7 @@ export default function Home() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="rounded-xl border border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.92),rgba(239,246,255,0.85))] px-4 py-3"
+                className="rounded-xl border border-white/10 bg-white/70 px-4 py-3"
               >
                 <div className="text-[10px] uppercase tracking-wide text-muted">
                   {item.label}
@@ -220,9 +220,9 @@ export default function Home() {
             ))}
           </div>
         </div>
-        <div className="card relative border border-blue-200/50 bg-[linear-gradient(155deg,rgba(255,255,255,0.96),rgba(236,253,245,0.90))]">
-          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[rgba(245,158,11,0.22)] blur-[44px]" />
-          <div className="absolute -left-8 bottom-6 h-24 w-24 rounded-full bg-[rgba(37,99,235,0.20)] blur-[42px]" />
+        <div className="card relative">
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[rgb(var(--color-warm)/0.12)] blur-[40px]" />
+          <div className="absolute -left-8 bottom-6 h-24 w-24 rounded-full bg-primary/10 blur-[40px]" />
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted">Overview</span>
             <span className="text-sm text-positive">+4.8% this month</span>
@@ -248,7 +248,7 @@ export default function Home() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-[linear-gradient(145deg,rgba(219,234,254,0.65),rgba(240,249,255,0.78))] px-4 py-3 text-sm"
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-elevate/70 px-4 py-3 text-sm"
               >
                 <span className="text-muted">{item.label}</span>
                 <span className={`font-semibold ${item.tone}`}>
@@ -313,7 +313,7 @@ export default function Home() {
               desc: "Use strategy, day-wise, and risk analytics to improve consistency."
             }
           ].map((step, index) => (
-            <div className="card border border-blue-200/50 bg-[linear-gradient(145deg,rgba(255,255,255,0.97),rgba(238,242,255,0.90))]" key={step.title}>
+            <div className="card" key={step.title}>
               <div className="text-sm text-muted">Step {index + 1}</div>
               <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
               <p className="mt-2 text-sm text-muted">{step.desc}</p>
@@ -331,7 +331,7 @@ export default function Home() {
         </div>
         <div className="grid gap-6 md:grid-cols-3">
           {testimonials.map((item) => (
-            <div className="card border border-emerald-200/50 bg-[linear-gradient(145deg,rgba(255,255,255,0.97),rgba(236,253,245,0.88))]" key={item.name}>
+            <div className="card" key={item.name}>
               <p className="text-sm leading-6 text-muted">"{item.quote}"</p>
               <div className="mt-5 border-t border-white/10 pt-4">
                 <div className="text-sm font-semibold">{item.name}</div>
@@ -351,7 +351,7 @@ export default function Home() {
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature, index) => (
-            <div className="card border border-amber-200/50 bg-[linear-gradient(145deg,rgba(255,255,255,0.97),rgba(255,251,235,0.88))]" key={feature.title}>
+            <div className="card" key={feature.title}>
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-elevate">
                   {featureIcons[index % featureIcons.length]}
@@ -371,7 +371,7 @@ export default function Home() {
             A single screen for performance, risk, and strategy breakdowns.
           </p>
         </div>
-        <div className="card border border-blue-200/50 bg-[linear-gradient(155deg,rgba(255,255,255,0.97),rgba(239,246,255,0.90))]">
+        <div className="card">
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-4">
               <div className="kpi flex items-center justify-between">
@@ -431,7 +431,7 @@ export default function Home() {
             </div>
             <Link
               href="/dashboard"
-              className="rounded-full bg-[linear-gradient(135deg,#1d4ed8,#0f766e)] px-4 py-2 text-sm font-semibold text-white shadow-soft"
+              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-soft"
             >
               Launch demo
             </Link>
@@ -448,7 +448,7 @@ export default function Home() {
         </div>
         <div className="grid gap-6 md:grid-cols-3">
           {["Free", "Pro", "Team"].map((tier, idx) => (
-            <div className="card border border-indigo-200/50 bg-[linear-gradient(145deg,rgba(255,255,255,0.97),rgba(238,242,255,0.88))]" key={tier}>
+            <div className="card" key={tier}>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{tier}</h3>
                 {idx === 1 && (
@@ -465,7 +465,7 @@ export default function Home() {
                   ? "Advanced analytics + export workflow"
                   : "Shared workspace + team-level insights"}
               </p>
-              <button className="mt-6 w-full rounded-full bg-[linear-gradient(135deg,rgba(29,78,216,0.14),rgba(15,118,110,0.12))] text-primary py-2 text-sm font-semibold">
+              <button className="mt-6 w-full rounded-full bg-primary/10 text-primary py-2 text-sm font-semibold">
                 Coming soon
               </button>
             </div>
@@ -482,7 +482,7 @@ export default function Home() {
         </div>
         <div className="grid gap-6 md:grid-cols-2">
           {faq.map((item) => (
-            <div className="card border border-sky-200/50 bg-[linear-gradient(145deg,rgba(255,255,255,0.97),rgba(240,249,255,0.88))]" key={item.q}>
+            <div className="card" key={item.q}>
               <h3 className="text-lg font-semibold">{item.q}</h3>
               <p className="mt-2 text-sm text-muted">{item.a}</p>
             </div>
