@@ -179,7 +179,7 @@ export default function Home() {
       <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
           <span className="inline-flex items-center rounded-full bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
-            Trade smarter, not harder
+            Trade smarter , not harder
           </span>
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
             India's high-clarity journal for disciplined traders.
@@ -193,7 +193,7 @@ export default function Home() {
               href="/dashboard"
               className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-6 py-3 text-sm font-semibold text-white shadow-soft"
             >
-              Start free
+              Start Free
             </Link>
             <Link
               href="#dashboard"
