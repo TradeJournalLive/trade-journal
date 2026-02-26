@@ -99,6 +99,7 @@ type DashboardView =
   | "strategy"
   | "day"
   | "behavior"
+  | "news"
   | "setup"
   | "instruments"
   | "participants"
@@ -1405,7 +1406,7 @@ export default function ClientDashboard({
   }, [view, presetInstrument, globalInstrument]);
 
   useEffect(() => {
-    if (view !== "overview") return;
+    if (view !== "overview" && view !== "news") return;
     let active = true;
     (async () => {
       setNewsLoading(true);
@@ -2329,6 +2330,7 @@ export default function ClientDashboard({
     { label: "Day-wise", href: "/dashboard#day", id: "day" },
     { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
     { label: "AI Summary", href: "/dashboard#ai-summary", id: "ai-summary" },
+    { label: "Market News", href: "/dashboard/news", id: "news" },
     { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
     { label: "Participants", href: "/dashboard/participants", id: "participants" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
@@ -2770,8 +2772,21 @@ export default function ClientDashboard({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              {kpis.map((kpi) => (
-                <div key={kpi.label} className="kpi">
+              {kpis.map((kpi, index) => (
+                <div
+                  key={kpi.label}
+                  className={`kpi border-l-4 ${
+                    index % 5 === 0
+                      ? "border-l-blue-400"
+                      : index % 5 === 1
+                        ? "border-l-teal-400"
+                        : index % 5 === 2
+                          ? "border-l-amber-400"
+                          : index % 5 === 3
+                            ? "border-l-indigo-400"
+                            : "border-l-rose-400"
+                  }`}
+                >
                   <div className="text-xs text-muted">{kpi.label}</div>
                   <div className="mt-1 text-lg font-semibold">{kpi.value}</div>
                 </div>
@@ -3912,6 +3927,85 @@ export default function ClientDashboard({
                       )}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {view === "news" && (
+            <section id="news" className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+              <div>
+                <h2 className="section-title">Market News</h2>
+                <p className="section-lead">
+                  Important headlines that can impact Indian markets.
+                </p>
+              </div>
+
+              <div className="card border border-blue-200/40 bg-[linear-gradient(135deg,rgba(37,99,235,0.08),rgba(20,184,166,0.06))]">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold">NSE/BSE impact feed</h3>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setNewsLoading(true);
+                      setNewsError("");
+                      try {
+                        const response = await fetch("/api/market-news", { cache: "no-store" });
+                        const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
+                        if (!response.ok) {
+                          throw new Error(payload.error || "Failed to refresh news.");
+                        }
+                        setMarketNews(Array.isArray(payload.items) ? payload.items : []);
+                      } catch (error) {
+                        setMarketNews([]);
+                        setNewsError(error instanceof Error ? error.message : "Failed to refresh news.");
+                      } finally {
+                        setNewsLoading(false);
+                      }
+                    }}
+                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  {newsLoading && (
+                    <div className="text-sm text-muted">Loading latest headlines...</div>
+                  )}
+                  {!newsLoading && newsError && (
+                    <div className="text-sm text-negative">{newsError}</div>
+                  )}
+                  {!newsLoading && !newsError && marketNews.length === 0 && (
+                    <div className="text-sm text-muted">No headlines available right now.</div>
+                  )}
+                  {!newsLoading &&
+                    !newsError &&
+                    marketNews.map((item) => (
+                      <a
+                        key={`${item.link}-${item.publishedAt}`}
+                        href={item.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-primary/40 hover:bg-primary/10"
+                      >
+                        <div className="text-sm font-semibold text-white">{item.title}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>{item.source}</span>
+                          <span>•</span>
+                          <span>{item.publishedAt || "Latest"}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 font-semibold ${
+                              item.impact === "High"
+                                ? "bg-rose-500/15 text-rose-400"
+                                : "bg-amber-500/15 text-amber-400"
+                            }`}
+                          >
+                            {item.impact} impact
+                          </span>
+                        </div>
+                      </a>
+                    ))}
                 </div>
               </div>
             </section>

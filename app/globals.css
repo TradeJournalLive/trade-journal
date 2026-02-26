@@ -53,16 +53,24 @@ body {
 
 .card {
   @apply rounded-2xl p-6;
-  background-color: rgb(var(--color-panel));
+  background: linear-gradient(
+    165deg,
+    rgb(var(--color-panel)) 0%,
+    rgb(var(--color-elevate) / 0.72) 100%
+  );
   border: 1px solid rgb(var(--color-border) / 0.1);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.09);
 }
 
 .kpi {
   @apply rounded-xl px-5 py-4;
-  background-color: rgb(var(--color-panel));
+  background: linear-gradient(
+    165deg,
+    rgb(var(--color-panel)) 0%,
+    rgb(var(--color-elevate) / 0.72) 100%
+  );
   border: 1px solid rgb(var(--color-border) / 0.1);
   position: relative;
   overflow: hidden;
