@@ -1406,6 +1406,12 @@ export default function ClientDashboard({
   }, [view, presetInstrument, globalInstrument]);
 
   useEffect(() => {
+    if (view !== "participants") return;
+    if (participantFlows.length > 0) return;
+    void handleFetchParticipantFromNse();
+  }, [view, participantFlows.length]);
+
+  useEffect(() => {
     if (view !== "overview" && view !== "news") return;
     let active = true;
     (async () => {
@@ -2280,6 +2286,39 @@ export default function ClientDashboard({
     ]);
     setFlowStatus("Sample participant data added.");
     setTimeout(() => setFlowStatus(""), 1500);
+  }
+
+  async function handleFetchParticipantFromNse() {
+    setFlowStatus("Fetching from NSE...");
+    try {
+      const response = await fetch("/api/participants-nse", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        items?: ParticipantFlow[];
+        date?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "NSE fetch failed.");
+      }
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (!items.length) {
+        setFlowStatus("No participant rows received from NSE.");
+        return;
+      }
+      setParticipantFlows((prev) => {
+        const existing = new Set(prev.map((item) => `${item.date}-${item.participant}`));
+        const next = items.filter(
+          (item) => !existing.has(`${item.date}-${item.participant}`)
+        );
+        return [...next, ...prev];
+      });
+      setFlowStatus(`Fetched NSE participant data for ${payload.date ?? "latest"} .`);
+      setTimeout(() => setFlowStatus(""), 1800);
+    } catch (error) {
+      setFlowStatus(
+        error instanceof Error ? error.message : "Could not fetch from NSE."
+      );
+    }
   }
 
   const participantSummary = useMemo(() => {
@@ -3870,6 +3909,12 @@ export default function ClientDashboard({
                       onClick={handleAddParticipantFlow}
                     >
                       Save activity
+                    </button>
+                    <button
+                      className="w-fit rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
+                      onClick={handleFetchParticipantFromNse}
+                    >
+                      Fetch from NSE
                     </button>
                     <button
                       className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
