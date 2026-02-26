@@ -2259,6 +2259,29 @@ export default function ClientDashboard({
     setParticipantFlows((prev) => prev.filter((item) => item.id !== id));
   }
 
+  function handleAddSampleParticipantFlows() {
+    const today = new Date().toISOString().slice(0, 10);
+    setParticipantFlows((prev) => [
+      {
+        id: `PF-S-${Date.now()}-1`,
+        date: today,
+        participant: "FII",
+        callSoldQty: 12000,
+        putSoldQty: 18000
+      },
+      {
+        id: `PF-S-${Date.now()}-2`,
+        date: today,
+        participant: "Client",
+        callSoldQty: 9500,
+        putSoldQty: 7600
+      },
+      ...prev
+    ]);
+    setFlowStatus("Sample participant data added.");
+    setTimeout(() => setFlowStatus(""), 1500);
+  }
+
   const participantSummary = useMemo(() => {
     const grouped = new Map<ParticipantType, { callSold: number; putSold: number }>();
     participantFlows.forEach((item) => {
@@ -3848,6 +3871,12 @@ export default function ClientDashboard({
                     >
                       Save activity
                     </button>
+                    <button
+                      className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
+                      onClick={handleAddSampleParticipantFlows}
+                    >
+                      Add sample data
+                    </button>
                     {flowStatus && (
                       <span className="text-xs text-muted">{flowStatus}</span>
                     )}
@@ -3900,7 +3929,8 @@ export default function ClientDashboard({
                       {participantFlows.length === 0 ? (
                         <tr className="border-t border-white/5">
                           <td className="px-3 py-4 text-muted" colSpan={5}>
-                            No participant activity added yet.
+                            No participant activity added yet. Add entry above or use
+                            "Add sample data".
                           </td>
                         </tr>
                       ) : (
