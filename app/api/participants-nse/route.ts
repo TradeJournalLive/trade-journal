@@ -68,7 +68,7 @@ function toIso(date: Date) {
 
 export async function GET() {
   const bases = [
-    "https://nsearchives.nseindia.com/content/nsccl",
+    "https://archives.nseindia.com/content/nsccl",
     "https://www1.nseindia.com/content/nsccl"
   ];
 
