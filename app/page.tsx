@@ -136,14 +136,14 @@ export default function Home() {
         <div className="absolute left-[8%] bottom-[5%] h-[360px] w-[360px] rounded-full bg-[rgba(245,158,11,0.18)] blur-[120px]" />
       </div>
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6 sm:py-8">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 border border-primary/40 text-sm font-semibold">
             TJ
           </div>
           <span className="text-lg font-semibold tracking-tight">Trade Journal</span>
         </div>
-        <div className="flex items-center gap-4 text-sm text-muted">
+        <div className="hidden items-center gap-4 text-sm text-muted md:flex">
           <Link href="#how" className="hover:text-primary">
             How it works
           </Link>
@@ -160,7 +160,7 @@ export default function Home() {
             Sign in
           </Link>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="hidden items-center gap-3 md:flex">
           <Link
             href="/sign-up"
             className="rounded-full bg-[linear-gradient(135deg,#1d4ed8,#2563eb)] px-4 py-2 text-sm font-semibold text-on-primary hover:opacity-95"
@@ -174,9 +174,35 @@ export default function Home() {
             Open demo
           </Link>
         </div>
+        <details className="group relative md:hidden">
+          <summary className="list-none rounded-lg border border-white/10 bg-white/70 px-3 py-2 text-xs font-semibold text-slate-900">
+            Menu
+          </summary>
+          <div className="absolute right-0 mt-2 w-52 rounded-xl border border-white/10 bg-white p-3 shadow-lg">
+            <div className="grid gap-1 text-sm text-slate-700">
+              <Link href="#how" className="rounded-md px-2 py-2 hover:bg-slate-100">How it works</Link>
+              <Link href="#features" className="rounded-md px-2 py-2 hover:bg-slate-100">Features</Link>
+              <Link href="#dashboard" className="rounded-md px-2 py-2 hover:bg-slate-100">Dashboard</Link>
+              <Link href="#pricing" className="rounded-md px-2 py-2 hover:bg-slate-100">Pricing</Link>
+              <Link href="/sign-in" className="rounded-md px-2 py-2 hover:bg-slate-100">Sign in</Link>
+              <Link
+                href="/sign-up"
+                className="mt-1 rounded-full bg-[linear-gradient(135deg,#1d4ed8,#2563eb)] px-3 py-2 text-center text-xs font-semibold text-on-primary"
+              >
+                Sign up
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-3 py-2 text-center text-xs font-semibold text-on-primary"
+              >
+                Open demo
+              </Link>
+            </div>
+          </div>
+        </details>
       </header>
 
-      <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr]">
+      <section className="mx-auto grid max-w-6xl gap-10 px-4 pb-16 pt-8 sm:px-6 sm:pb-20 sm:pt-12 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
           <span className="inline-flex items-center rounded-full bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
             Trade smarter , not harder

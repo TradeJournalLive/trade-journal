@@ -25,6 +25,7 @@ const CURRENCY_KEY = "pulsejournal_currency";
 const INSTRUMENTS_KEY = "pulsejournal_instruments";
 const STRATEGIES_KEY = "pulsejournal_strategies";
 const PROFILE_KEY = "pulsejournal_profile";
+const PARTICIPANTS_KEY = "pulsejournal_participants";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -100,12 +101,30 @@ type DashboardView =
   | "behavior"
   | "setup"
   | "instruments"
+  | "participants"
   | "journal"
   | "profile"
   | "setup-edit";
 
 type DashboardSection = "overview" | "performance" | "strategy" | "day" | "behavior" | "ai-summary";
 type DashboardNavId = DashboardView | DashboardSection;
+
+type ParticipantType = "FII" | "DII" | "Client" | "Pro";
+type ParticipantFlow = {
+  id: string;
+  date: string;
+  participant: ParticipantType;
+  callSoldQty: number;
+  putSoldQty: number;
+};
+
+type MarketNewsItem = {
+  title: string;
+  link: string;
+  source: string;
+  publishedAt: string;
+  impact: "High" | "Medium";
+};
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
@@ -1098,6 +1117,13 @@ export default function ClientDashboard({
   const [strategyEditName, setStrategyEditName] = useState("");
   const [strategyEditRules, setStrategyEditRules] = useState("");
   const [strategyEditStatus, setStrategyEditStatus] = useState("");
+  const [participantFlows, setParticipantFlows] = useState<ParticipantFlow[]>([]);
+  const [flowDate, setFlowDate] = useState(new Date().toISOString().slice(0, 10));
+  const [flowParticipant, setFlowParticipant] = useState<ParticipantType>("FII");
+  const [flowCallSold, setFlowCallSold] = useState("");
+  const [flowPutSold, setFlowPutSold] = useState("");
+  const [flowStatus, setFlowStatus] = useState("");
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [activeSection, setActiveSection] =
     useState<DashboardNavId>("overview");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -1105,6 +1131,9 @@ export default function ClientDashboard({
   const [passwordNext, setPasswordNext] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
+  const [marketNews, setMarketNews] = useState<MarketNewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const instrumentStorageKey = useMemo(() => {
@@ -1126,6 +1155,13 @@ export default function ClientDashboard({
       return `${PROFILE_KEY}_${session.user.id}`;
     }
     return PROFILE_KEY;
+  }, [dataSource, session?.user?.id]);
+
+  const participantsStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${PARTICIPANTS_KEY}_${session.user.id}`;
+    }
+    return PARTICIPANTS_KEY;
   }, [dataSource, session?.user?.id]);
 
   useEffect(() => {
@@ -1267,6 +1303,29 @@ export default function ClientDashboard({
   }, [strategyStorageKey, strategies]);
 
   useEffect(() => {
+    const stored = localStorage.getItem(participantsStorageKey);
+    if (!stored) {
+      setParticipantFlows([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as ParticipantFlow[];
+      if (Array.isArray(parsed)) {
+        setParticipantFlows(parsed);
+      } else {
+        setParticipantFlows([]);
+      }
+    } catch (error) {
+      console.error("Failed to load participant activity", error);
+      setParticipantFlows([]);
+    }
+  }, [participantsStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(participantsStorageKey, JSON.stringify(participantFlows));
+  }, [participantsStorageKey, participantFlows]);
+
+  useEffect(() => {
     const stored = localStorage.getItem(profileStorageKey);
     if (!stored) {
       setProfileImage(null);
@@ -1344,6 +1403,37 @@ export default function ClientDashboard({
       setGlobalInstrument(presetInstrument);
     }
   }, [view, presetInstrument, globalInstrument]);
+
+  useEffect(() => {
+    if (view !== "overview") return;
+    let active = true;
+    (async () => {
+      setNewsLoading(true);
+      setNewsError("");
+      try {
+        const response = await fetch("/api/market-news", { cache: "no-store" });
+        const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to fetch market news.");
+        }
+        if (active) {
+          setMarketNews(Array.isArray(payload.items) ? payload.items : []);
+        }
+      } catch (error) {
+        if (active) {
+          setMarketNews([]);
+          setNewsError(error instanceof Error ? error.message : "Failed to fetch market news.");
+        }
+      } finally {
+        if (active) {
+          setNewsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [view]);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -1736,7 +1826,8 @@ export default function ClientDashboard({
     setActiveSection(id);
     const target = document.getElementById(id);
     if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    const targetTop = target.getBoundingClientRect().top + window.scrollY - 110;
+    window.scrollTo({ top: Math.max(targetTop, 0), behavior: "smooth" });
     window.history.replaceState(null, "", `/dashboard#${id}`);
   };
 
@@ -2134,6 +2225,59 @@ export default function ClientDashboard({
     setStrategies((prev) => prev.filter((item) => item.id !== id));
   }
 
+  function handleAddParticipantFlow() {
+    const callQty = Number(flowCallSold);
+    const putQty = Number(flowPutSold);
+    if (!flowDate) {
+      setFlowStatus("Date is required.");
+      return;
+    }
+    if (!Number.isFinite(callQty) || callQty < 0) {
+      setFlowStatus("Call sold qty should be 0 or more.");
+      return;
+    }
+    if (!Number.isFinite(putQty) || putQty < 0) {
+      setFlowStatus("Put sold qty should be 0 or more.");
+      return;
+    }
+    const next: ParticipantFlow = {
+      id: `PF-${Date.now()}`,
+      date: flowDate,
+      participant: flowParticipant,
+      callSoldQty: callQty,
+      putSoldQty: putQty
+    };
+    setParticipantFlows((prev) => [next, ...prev]);
+    setFlowCallSold("");
+    setFlowPutSold("");
+    setFlowStatus("Participant activity saved.");
+    setTimeout(() => setFlowStatus(""), 1500);
+  }
+
+  function handleRemoveParticipantFlow(id: string) {
+    setParticipantFlows((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  const participantSummary = useMemo(() => {
+    const grouped = new Map<ParticipantType, { callSold: number; putSold: number }>();
+    participantFlows.forEach((item) => {
+      const current = grouped.get(item.participant) ?? { callSold: 0, putSold: 0 };
+      current.callSold += item.callSoldQty;
+      current.putSold += item.putSoldQty;
+      grouped.set(item.participant, current);
+    });
+    return (["FII", "DII", "Client", "Pro"] as ParticipantType[]).map((key) => {
+      const row = grouped.get(key) ?? { callSold: 0, putSold: 0 };
+      return {
+        participant: key,
+        callSold: row.callSold,
+        putSold: row.putSold,
+        totalSold: row.callSold + row.putSold,
+        bias: row.putSold - row.callSold
+      };
+    });
+  }, [participantFlows]);
+
   const strategyBeingEdited = useMemo(() => {
     if (!editStrategyId) return null;
     return strategies.find((strategy) => strategy.id === editStrategyId) ?? null;
@@ -2186,6 +2330,7 @@ export default function ClientDashboard({
     { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
     { label: "AI Summary", href: "/dashboard#ai-summary", id: "ai-summary" },
     { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
+    { label: "Participants", href: "/dashboard/participants", id: "participants" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
@@ -2285,7 +2430,7 @@ export default function ClientDashboard({
                 <h1 className="text-xl font-semibold">Trader cockpit</h1>
                 <p className="text-xs text-muted">Review period: {dateRange}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="hidden flex-wrap items-center gap-2 text-xs md:flex">
                 {isOverviewView ? (
                   <button
                     type="button"
@@ -2474,16 +2619,116 @@ export default function ClientDashboard({
                   Export CSV
                 </button>
               </div>
+              <div className="flex w-full items-center justify-end gap-2 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => handleSectionNav("overview")}
+                  className="rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-muted"
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileControlsOpen((prev) => !prev)}
+                  className="rounded-full bg-primary px-3 py-2 text-xs font-semibold text-on-primary"
+                >
+                  {mobileControlsOpen ? "Hide filters" : "Filters"}
+                </button>
+              </div>
             </div>
+            {mobileControlsOpen && (
+              <div className="border-t border-white/5 px-4 py-3 md:hidden">
+                <div className="grid gap-2">
+                  <input
+                    type="date"
+                    value={globalStartDate}
+                    onChange={(event) => setGlobalStartDate(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  />
+                  <input
+                    type="date"
+                    value={globalEndDate}
+                    onChange={(event) => setGlobalEndDate(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  />
+                  <select
+                    value={globalMarket}
+                    onChange={(event) => setGlobalMarket(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  >
+                    <option value="all">All markets</option>
+                    {marketOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={globalInstrument}
+                    onChange={(event) => setGlobalInstrument(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  >
+                    <option value="all">All instruments</option>
+                    {instrumentOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={globalStrategy}
+                    onChange={(event) => setGlobalStrategy(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  >
+                    <option value="all">All strategies</option>
+                    {strategyOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={currency}
+                      onChange={(event) =>
+                        setCurrency(event.target.value as "INR" | "USD")
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                    >
+                      <option value="INR">INR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                    <button
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted"
+                      onClick={() => {
+                        setGlobalMarket("all");
+                        setGlobalInstrument("all");
+                        setGlobalStrategy("all");
+                        setGlobalStartDate("");
+                        setGlobalEndDate("");
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <button
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary"
+                    onClick={handleExportCsv}
+                  >
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="lg:hidden border-t border-white/5">
-              <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-xs sm:px-6">
+              <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-sm sm:px-6">
                 {navItems.map((item) => {
                   const isSection = sectionNavIds.includes(item.id as DashboardSection);
                   const isActive = activeSection === item.id;
-                  const classes = `rounded-full px-3 py-1 whitespace-nowrap ${
+                  const classes = `rounded-full border px-3 py-1.5 whitespace-nowrap font-medium ${
                     isActive
-                      ? "bg-primary/15 text-white"
-                      : "text-muted hover:bg-primary/10 hover:text-white"
+                      ? "border-primary/40 bg-primary/20 text-white"
+                      : "border-white/10 text-muted hover:bg-primary/10 hover:text-white"
                   }`;
                   if (isOverviewView && isSection) {
                     return (
@@ -2619,6 +2864,65 @@ export default function ClientDashboard({
                   </div>
                   <div className="mt-2 text-xs text-muted">
                     Max profit {signedMoney2.format(summary.maxProfitTrade)} · Max loss {signedMoney2.format(summary.maxLossTrade)}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm text-muted">India market impact news</h3>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setNewsLoading(true);
+                        setNewsError("");
+                        try {
+                          const response = await fetch("/api/market-news", { cache: "no-store" });
+                          const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
+                          if (!response.ok) {
+                            throw new Error(payload.error || "Failed to refresh news.");
+                          }
+                          setMarketNews(Array.isArray(payload.items) ? payload.items : []);
+                        } catch (error) {
+                          setMarketNews([]);
+                          setNewsError(error instanceof Error ? error.message : "Failed to refresh news.");
+                        } finally {
+                          setNewsLoading(false);
+                        }
+                      }}
+                      className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {newsLoading && (
+                      <div className="text-xs text-muted">Loading latest headlines...</div>
+                    )}
+                    {!newsLoading && newsError && (
+                      <div className="text-xs text-negative">{newsError}</div>
+                    )}
+                    {!newsLoading && !newsError && marketNews.length === 0 && (
+                      <div className="text-xs text-muted">No headlines available right now.</div>
+                    )}
+                    {!newsLoading &&
+                      !newsError &&
+                      marketNews.slice(0, 6).map((item) => (
+                        <a
+                          key={`${item.link}-${item.publishedAt}`}
+                          href={item.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition hover:border-primary/40 hover:bg-primary/10"
+                        >
+                          <div className="text-xs font-semibold text-white">
+                            {item.title}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[10px] text-muted">
+                            <span>{item.source}</span>
+                            <span>{item.impact}</span>
+                          </div>
+                        </a>
+                      ))}
                   </div>
                 </div>
               </div>
@@ -3461,6 +3765,151 @@ export default function ClientDashboard({
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {view === "participants" && (
+            <section
+              id="participants"
+              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">Participant Activity (India)</h2>
+                <p className="section-lead">
+                  Track who sold calls and puts (FII, DII, Client, Pro) by quantity.
+                </p>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+                <div className="card space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Add activity</h3>
+                    <p className="text-sm text-muted">
+                      Enter daily participant sell-side quantities.
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    <input
+                      type="date"
+                      value={flowDate}
+                      onChange={(event) => setFlowDate(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <select
+                      value={flowParticipant}
+                      onChange={(event) =>
+                        setFlowParticipant(event.target.value as ParticipantType)
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    >
+                      <option value="FII">FII</option>
+                      <option value="DII">DII</option>
+                      <option value="Client">Client</option>
+                      <option value="Pro">Pro</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Call sold qty"
+                      value={flowCallSold}
+                      onChange={(event) => setFlowCallSold(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Put sold qty"
+                      value={flowPutSold}
+                      onChange={(event) => setFlowPutSold(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <button
+                      className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold text-on-primary"
+                      onClick={handleAddParticipantFlow}
+                    >
+                      Save activity
+                    </button>
+                    {flowStatus && (
+                      <span className="text-xs text-muted">{flowStatus}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Participant summary</h3>
+                    <span className="text-xs text-muted">
+                      {participantFlows.length} entries
+                    </span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {participantSummary.map((item) => (
+                      <div key={item.participant} className="kpi">
+                        <div className="text-xs text-muted">{item.participant}</div>
+                        <div className="mt-2 text-sm">
+                          Call sold: <span className="font-semibold">{item.callSold}</span>
+                        </div>
+                        <div className="text-sm">
+                          Put sold: <span className="font-semibold">{item.putSold}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted">
+                          Bias: {item.bias >= 0 ? "Put-heavy" : "Call-heavy"} ({item.bias})
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Latest entries</h3>
+                  <span className="text-xs text-muted">Most recent first</span>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="text-muted">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-left font-medium">Participant</th>
+                        <th className="px-3 py-2 text-right font-medium">Call sold</th>
+                        <th className="px-3 py-2 text-right font-medium">Put sold</th>
+                        <th className="px-3 py-2 text-right font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {participantFlows.length === 0 ? (
+                        <tr className="border-t border-white/5">
+                          <td className="px-3 py-4 text-muted" colSpan={5}>
+                            No participant activity added yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        participantFlows
+                          .slice()
+                          .sort((a, b) => b.date.localeCompare(a.date))
+                          .map((item) => (
+                            <tr key={item.id} className="border-t border-white/5">
+                              <td className="px-3 py-3">{item.date}</td>
+                              <td className="px-3 py-3 font-semibold">{item.participant}</td>
+                              <td className="px-3 py-3 text-right">{item.callSoldQty}</td>
+                              <td className="px-3 py-3 text-right">{item.putSoldQty}</td>
+                              <td className="px-3 py-3 text-right">
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                                  onClick={() => handleRemoveParticipantFlow(item.id)}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                      )}
                     </tbody>
                   </table>
                 </div>
