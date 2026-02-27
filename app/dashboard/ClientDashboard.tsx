@@ -2391,7 +2391,17 @@ export default function ClientDashboard({
   }
 
   async function handleFetchParticipantFromNse() {
-    await fetchParticipantForDate(flowDate, false);
+    const ok = await fetchParticipantForDate(flowDate, false);
+    if (!ok) return;
+    // Also fetch nearest previous date so change can be computed day-over-day.
+    const selected = new Date(`${flowDate}T00:00:00`);
+    for (let i = 1; i <= 7; i += 1) {
+      const prev = new Date(selected);
+      prev.setDate(selected.getDate() - i);
+      const prevIso = prev.toISOString().slice(0, 10);
+      const fetched = await fetchParticipantForDate(prevIso, true);
+      if (fetched) break;
+    }
   }
 
   const participantSummary = useMemo(() => {
@@ -2464,7 +2474,25 @@ export default function ClientDashboard({
 
   const participantActivityRows = useMemo(() => {
     const source = participantFlows.filter((item) => item.date === participantViewDate);
-    const grouped = new Map<
+    const previousDate = participantDateOptions.find(
+      (date) => date < participantViewDate
+    );
+    const previousSource = previousDate
+      ? participantFlows.filter((item) => item.date === previousDate)
+      : [];
+
+    const groupedToday = new Map<
+      ParticipantType,
+      {
+        futureBuy: number;
+        futureSold: number;
+        callBuy: number;
+        callSold: number;
+        putBuy: number;
+        putSold: number;
+      }
+    >();
+    const groupedPrev = new Map<
       ParticipantType,
       {
         futureBuy: number;
@@ -2477,7 +2505,7 @@ export default function ClientDashboard({
     >();
 
     source.forEach((item) => {
-      const current = grouped.get(item.participant) ?? {
+      const current = groupedToday.get(item.participant) ?? {
         futureBuy: 0,
         futureSold: 0,
         callBuy: 0,
@@ -2491,7 +2519,25 @@ export default function ClientDashboard({
       current.callSold += item.callSoldQty;
       current.putBuy += item.putBoughtQty;
       current.putSold += item.putSoldQty;
-      grouped.set(item.participant, current);
+      groupedToday.set(item.participant, current);
+    });
+
+    previousSource.forEach((item) => {
+      const current = groupedPrev.get(item.participant) ?? {
+        futureBuy: 0,
+        futureSold: 0,
+        callBuy: 0,
+        callSold: 0,
+        putBuy: 0,
+        putSold: 0
+      };
+      current.futureBuy += item.futureBoughtQty;
+      current.futureSold += item.futureSoldQty;
+      current.callBuy += item.callBoughtQty;
+      current.callSold += item.callSoldQty;
+      current.putBuy += item.putBoughtQty;
+      current.putSold += item.putSoldQty;
+      groupedPrev.set(item.participant, current);
     });
 
     const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
@@ -2532,7 +2578,7 @@ export default function ClientDashboard({
     };
 
     order.forEach((participant) => {
-      const data = grouped.get(participant) ?? {
+      const data = groupedToday.get(participant) ?? {
         futureBuy: 0,
         futureSold: 0,
         callBuy: 0,
@@ -2540,13 +2586,39 @@ export default function ClientDashboard({
         putBuy: 0,
         putSold: 0
       };
+      const prev = groupedPrev.get(participant) ?? {
+        futureBuy: 0,
+        futureSold: 0,
+        callBuy: 0,
+        callSold: 0,
+        putBuy: 0,
+        putSold: 0
+      };
+      const futureBoughtDelta = data.futureBuy - prev.futureBuy;
+      const futureSoldDelta = data.futureSold - prev.futureSold;
+      const callBoughtDelta = data.callBuy - prev.callBuy;
+      const callSoldDelta = data.callSold - prev.callSold;
+      const putBoughtDelta = data.putBuy - prev.putBuy;
+      const putSoldDelta = data.putSold - prev.putSold;
       const label = participant === "Client" ? "RETAIL" : participant;
-      rows.push(evaluate(participant, label, "Future", data.futureBuy, data.futureSold));
-      rows.push(evaluate(participant, label, "CE", data.callBuy, data.callSold));
-      rows.push(evaluate(participant, label, "PE", data.putBuy, data.putSold));
+      rows.push(
+        evaluate(
+          participant,
+          label,
+          "Future",
+          futureBoughtDelta,
+          futureSoldDelta
+        )
+      );
+      rows.push(
+        evaluate(participant, label, "CE", callBoughtDelta, callSoldDelta)
+      );
+      rows.push(
+        evaluate(participant, label, "PE", putBoughtDelta, putSoldDelta)
+      );
     });
     return rows;
-  }, [participantFlows, participantViewDate]);
+  }, [participantFlows, participantViewDate, participantDateOptions]);
 
   const participantOverallTrend = useMemo(() => {
     const score = participantActivityRows.reduce(
@@ -4346,7 +4418,8 @@ export default function ClientDashboard({
                       </tr>
                       <tr className="border-t border-white/10">
                         <td colSpan={5} className="px-3 py-2 text-[10px] text-muted">
-                          Note: Trend is based on net participant buy/sell positioning.
+                          Note: Change is computed day-over-day (selected date vs previous
+                          available trading date).
                         </td>
                       </tr>
                     </tbody>
