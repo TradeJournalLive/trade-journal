@@ -70,6 +70,85 @@ function toIso(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function toIsoFromUnknown(value: unknown) {
+  if (typeof value !== "string") return "";
+  const v = value.trim();
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(v)) {
+    const [dd, mm, yyyy] = v.split(/[-/]/);
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function getByAliases(
+  row: Record<string, unknown>,
+  aliases: string[]
+) {
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const normalizedAlias = alias.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const match = entries.find(([key]) =>
+      key.toLowerCase().replace(/[^a-z0-9]/g, "").includes(normalizedAlias)
+    );
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
+function changeToBuySell(change: number) {
+  if (change >= 0) {
+    return { buy: change, sell: 0 };
+  }
+  return { buy: 0, sell: Math.abs(change) };
+}
+
+function extractRows(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null
+    );
+  }
+  if (!payload || typeof payload !== "object") return [];
+  const record = payload as Record<string, unknown>;
+  const directKeys = [
+    "data",
+    "result",
+    "results",
+    "rows",
+    "items",
+    "tableData",
+    "records"
+  ];
+  for (const key of directKeys) {
+    const candidate = record[key];
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
+      );
+    }
+    if (candidate && typeof candidate === "object") {
+      const nested = extractRows(candidate);
+      if (nested.length) return nested;
+    }
+  }
+  for (const value of Object.values(record)) {
+    if (Array.isArray(value)) {
+      const rows = value.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
+      );
+      if (rows.length) return rows;
+    }
+  }
+  return [];
+}
+
 function pickIndexes(
   header: string[],
   preferredTokens: string[],
@@ -150,6 +229,158 @@ export async function GET(request: Request) {
       d.setDate(d.getDate() - offset);
       candidateDates.push(d);
     }
+  }
+
+  const targetDate = candidateDates[0] ? toIso(candidateDates[0]) : "";
+
+  // Try NiftyTrader participant endpoint first (closest to user reference output).
+  try {
+    const niftyUrl = "https://webapi.niftytrader.in/webapi/Resource/participant-oi-table-data";
+    const niftyRequestUrl = targetDate
+      ? `${niftyUrl}?date=${encodeURIComponent(targetDate)}`
+      : niftyUrl;
+    const niftyResponse = await fetch(niftyRequestUrl, {
+      headers: {
+        accept: "application/json, text/plain, */*",
+        origin: "https://www.niftytrader.in",
+        referer: "https://www.niftytrader.in/participant-wise-oi",
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+      },
+      next: { revalidate: 900 }
+    });
+
+    if (niftyResponse.ok) {
+      const payload = await niftyResponse.json();
+      const rows = extractRows(payload);
+      const filtered = targetDate
+        ? rows.filter((row) => {
+            const rowDate = toIsoFromUnknown(
+              getByAliases(row, ["date", "tradingDate", "asOnDate"])
+            );
+            return !rowDate || rowDate === targetDate;
+          })
+        : rows;
+
+      const mapped: ParticipantFlow[] = filtered
+        .map((row, index) => {
+          const participant = mapParticipant(
+            String(
+              getByAliases(row, ["clientType", "participant", "category", "client"]) ?? ""
+            )
+          );
+          if (!participant) return null;
+
+          const futureBuyRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "futureIndexLong",
+                "futureLong",
+                "futureBuy",
+                "futureBought"
+              ]) ?? "0"
+            )
+          );
+          const futureSellRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "futureIndexShort",
+                "futureShort",
+                "futureSell",
+                "futureSold"
+              ]) ?? "0"
+            )
+          );
+          const ceBuyRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "optionIndexCallLong",
+                "callLong",
+                "ceBuy",
+                "callBuy"
+              ]) ?? "0"
+            )
+          );
+          const ceSellRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "optionIndexCallShort",
+                "callShort",
+                "ceSell",
+                "callSell"
+              ]) ?? "0"
+            )
+          );
+          const peBuyRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "optionIndexPutLong",
+                "putLong",
+                "peBuy",
+                "putBuy"
+              ]) ?? "0"
+            )
+          );
+          const peSellRaw = toNumber(
+            String(
+              getByAliases(row, [
+                "optionIndexPutShort",
+                "putShort",
+                "peSell",
+                "putSell"
+              ]) ?? "0"
+            )
+          );
+
+          // If endpoint gives ready change values, convert to buy/sell proxy.
+          const futureChange = toNumber(
+            String(getByAliases(row, ["futureChange", "futureNetChange"]) ?? "0")
+          );
+          const ceChange = toNumber(
+            String(getByAliases(row, ["ceChange", "callChange"]) ?? "0")
+          );
+          const peChange = toNumber(
+            String(getByAliases(row, ["peChange", "putChange"]) ?? "0")
+          );
+
+          const futurePair =
+            futureBuyRaw || futureSellRaw
+              ? { buy: futureBuyRaw, sell: futureSellRaw }
+              : changeToBuySell(futureChange);
+          const cePair =
+            ceBuyRaw || ceSellRaw
+              ? { buy: ceBuyRaw, sell: ceSellRaw }
+              : changeToBuySell(ceChange);
+          const pePair =
+            peBuyRaw || peSellRaw
+              ? { buy: peBuyRaw, sell: peSellRaw }
+              : changeToBuySell(peChange);
+
+          return {
+            id: `NT-${targetDate || "latest"}-${participant}-${index}`,
+            date: targetDate || toIsoFromUnknown(getByAliases(row, ["date", "tradingDate"])) || new Date().toISOString().slice(0, 10),
+            participant,
+            futureBoughtQty: futurePair.buy,
+            futureSoldQty: futurePair.sell,
+            callBoughtQty: cePair.buy,
+            putBoughtQty: pePair.buy,
+            callSoldQty: cePair.sell,
+            putSoldQty: pePair.sell
+          };
+        })
+        .filter((item): item is ParticipantFlow => Boolean(item));
+
+      if (mapped.length) {
+        return NextResponse.json({
+          source: "NiftyTrader",
+          date: targetDate || mapped[0].date,
+          file: "participant-oi-table-data",
+          items: mapped
+        });
+      }
+    }
+  } catch {
+    // Fall back to NSE archive parser below.
   }
 
   for (const d of candidateDates) {
