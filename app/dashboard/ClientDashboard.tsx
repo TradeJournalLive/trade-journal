@@ -2341,7 +2341,7 @@ export default function ClientDashboard({
 
   async function fetchParticipantForDate(date: string, silent = false) {
     if (!silent) {
-      setFlowStatus(`Fetching NSE data for ${date}...`);
+      setFlowStatus(`Fetching NiftyTrader data for ${date}...`);
     }
     try {
       const response = await fetch(
@@ -2351,6 +2351,7 @@ export default function ClientDashboard({
       const payload = (await response.json()) as {
         items?: ParticipantFlow[];
         date?: string;
+        source?: string;
         error?: string;
         details?: string[];
       };
@@ -2359,7 +2360,7 @@ export default function ClientDashboard({
           Array.isArray(payload.details) && payload.details.length
             ? ` (${payload.details.join(" | ")})`
             : "";
-        throw new Error((payload.error || "NSE fetch failed.") + detailText);
+        throw new Error((payload.error || "NiftyTrader fetch failed.") + detailText);
       }
       const items = Array.isArray(payload.items) ? payload.items : [];
       if (!items.length) {
@@ -2376,7 +2377,9 @@ export default function ClientDashboard({
         setParticipantViewDate(payload.date);
       }
       if (!silent) {
-        setFlowStatus(`Fetched NSE participant data for ${payload.date ?? date}.`);
+        setFlowStatus(
+          `Fetched ${payload.source ?? "NiftyTrader"} participant data for ${payload.date ?? date}.`
+        );
         setTimeout(() => setFlowStatus(""), 1800);
       }
       return true;
@@ -4187,7 +4190,7 @@ export default function ClientDashboard({
                       className="w-fit rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
                       onClick={handleFetchParticipantFromNse}
                     >
-                      Fetch from NSE for selected date
+                      Fetch from NiftyTrader for selected date
                     </button>
                     <button
                       className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
