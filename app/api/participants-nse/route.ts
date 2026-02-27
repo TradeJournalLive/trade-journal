@@ -75,14 +75,45 @@ function pickIndexes(
   preferredTokens: string[],
   fallbackTokens: string[]
 ) {
+  const preferredWithContracts = header
+    .map((h, idx) => ({ h, idx }))
+    .filter(
+      ({ h }) =>
+        preferredTokens.every((token) => h.includes(token)) &&
+        h.includes("contracts") &&
+        !h.includes("value")
+    )
+    .map(({ idx }) => idx);
+  if (preferredWithContracts.length) return preferredWithContracts;
+
   const preferred = header
     .map((h, idx) => ({ h, idx }))
-    .filter(({ h }) => preferredTokens.every((token) => h.includes(token)))
+    .filter(
+      ({ h }) =>
+        preferredTokens.every((token) => h.includes(token)) &&
+        !h.includes("value")
+    )
     .map(({ idx }) => idx);
   if (preferred.length) return preferred;
+
+  const fallbackWithContracts = header
+    .map((h, idx) => ({ h, idx }))
+    .filter(
+      ({ h }) =>
+        fallbackTokens.every((token) => h.includes(token)) &&
+        h.includes("contracts") &&
+        !h.includes("value")
+    )
+    .map(({ idx }) => idx);
+  if (fallbackWithContracts.length) return fallbackWithContracts;
+
   return header
     .map((h, idx) => ({ h, idx }))
-    .filter(({ h }) => fallbackTokens.every((token) => h.includes(token)))
+    .filter(
+      ({ h }) =>
+        fallbackTokens.every((token) => h.includes(token)) &&
+        !h.includes("value")
+    )
     .map(({ idx }) => idx);
 }
 
