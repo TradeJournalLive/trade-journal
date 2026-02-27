@@ -2391,14 +2391,7 @@ export default function ClientDashboard({
   }
 
   async function handleFetchParticipantFromNse() {
-    const ok = await fetchParticipantForDate(flowDate, false);
-    if (!ok) return;
-    // Fetch exactly previous calendar date for strict day-over-day calculation.
-    const selected = new Date(`${flowDate}T00:00:00`);
-    const prev = new Date(selected);
-    prev.setDate(selected.getDate() - 1);
-    const prevIso = prev.toISOString().slice(0, 10);
-    await fetchParticipantForDate(prevIso, true);
+    await fetchParticipantForDate(flowDate, false);
   }
 
   const participantSummary = useMemo(() => {
@@ -2471,25 +2464,8 @@ export default function ClientDashboard({
 
   const participantActivityRows = useMemo(() => {
     const source = participantFlows.filter((item) => item.date === participantViewDate);
-    const prev = new Date(`${participantViewDate}T00:00:00`);
-    prev.setDate(prev.getDate() - 1);
-    const previousDate = prev.toISOString().slice(0, 10);
-    const previousSource = previousDate
-      ? participantFlows.filter((item) => item.date === previousDate)
-      : [];
 
     const groupedToday = new Map<
-      ParticipantType,
-      {
-        futureBuy: number;
-        futureSold: number;
-        callBuy: number;
-        callSold: number;
-        putBuy: number;
-        putSold: number;
-      }
-    >();
-    const groupedPrev = new Map<
       ParticipantType,
       {
         futureBuy: number;
@@ -2517,24 +2493,6 @@ export default function ClientDashboard({
       current.putBuy += item.putBoughtQty;
       current.putSold += item.putSoldQty;
       groupedToday.set(item.participant, current);
-    });
-
-    previousSource.forEach((item) => {
-      const current = groupedPrev.get(item.participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
-      current.futureBuy += item.futureBoughtQty;
-      current.futureSold += item.futureSoldQty;
-      current.callBuy += item.callBoughtQty;
-      current.callSold += item.callSoldQty;
-      current.putBuy += item.putBoughtQty;
-      current.putSold += item.putSoldQty;
-      groupedPrev.set(item.participant, current);
     });
 
     const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
@@ -2583,39 +2541,25 @@ export default function ClientDashboard({
         putBuy: 0,
         putSold: 0
       };
-      const prev = groupedPrev.get(participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
-      const futureBoughtDelta = data.futureBuy - prev.futureBuy;
-      const futureSoldDelta = data.futureSold - prev.futureSold;
-      const callBoughtDelta = data.callBuy - prev.callBuy;
-      const callSoldDelta = data.callSold - prev.callSold;
-      const putBoughtDelta = data.putBuy - prev.putBuy;
-      const putSoldDelta = data.putSold - prev.putSold;
       const label = participant === "Client" ? "RETAIL" : participant;
       rows.push(
         evaluate(
           participant,
           label,
           "Future",
-          futureBoughtDelta,
-          futureSoldDelta
+          data.futureBuy,
+          data.futureSold
         )
       );
       rows.push(
-        evaluate(participant, label, "CE", callBoughtDelta, callSoldDelta)
+        evaluate(participant, label, "CE", data.callBuy, data.callSold)
       );
       rows.push(
-        evaluate(participant, label, "PE", putBoughtDelta, putSoldDelta)
+        evaluate(participant, label, "PE", data.putBuy, data.putSold)
       );
     });
     return rows;
-  }, [participantFlows, participantViewDate, participantDateOptions]);
+  }, [participantFlows, participantViewDate]);
 
   const participantOverallTrend = useMemo(() => {
     const score = participantActivityRows.reduce(
@@ -2627,17 +2571,6 @@ export default function ClientDashboard({
     return "Neutral";
   }, [participantActivityRows]);
 
-  const participantPreviousDate = useMemo(() => {
-    const prev = new Date(`${participantViewDate}T00:00:00`);
-    if (Number.isNaN(prev.getTime())) return "";
-    prev.setDate(prev.getDate() - 1);
-    return prev.toISOString().slice(0, 10);
-  }, [participantViewDate]);
-
-  const hasPreviousDateData = useMemo(
-    () => participantFlows.some((item) => item.date === participantPreviousDate),
-    [participantFlows, participantPreviousDate]
-  );
 
   const participantViewDateDisplay = useMemo(() => {
     if (!participantViewDate) return "N/A";
@@ -4355,12 +4288,6 @@ export default function ClientDashboard({
                     </button>
                   </div>
                 </div>
-                {!hasPreviousDateData && (
-                  <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                    Previous day data ({participantPreviousDate}) not available yet.
-                    Change may not match strict day-over-day output.
-                  </div>
-                )}
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead className="text-muted">
@@ -4433,8 +4360,8 @@ export default function ClientDashboard({
                       </tr>
                       <tr className="border-t border-white/10">
                         <td colSpan={5} className="px-3 py-2 text-[10px] text-muted">
-                          Note: Change is computed day-over-day (selected date vs previous
-                          available trading date).
+                          Note: Change is computed from selected-day participant long/short
+                          contracts (NSE).
                         </td>
                       </tr>
                     </tbody>
