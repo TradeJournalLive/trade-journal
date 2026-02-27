@@ -2391,17 +2391,7 @@ export default function ClientDashboard({
   }
 
   async function handleFetchParticipantFromNse() {
-    const ok = await fetchParticipantForDate(flowDate, false);
-    if (!ok) return;
-    // Fetch nearest previous trading date for day-over-day change.
-    const selected = new Date(`${flowDate}T00:00:00`);
-    for (let i = 1; i <= 7; i += 1) {
-      const prev = new Date(selected);
-      prev.setDate(selected.getDate() - i);
-      const prevIso = prev.toISOString().slice(0, 10);
-      const hit = await fetchParticipantForDate(prevIso, true);
-      if (hit) break;
-    }
+    await fetchParticipantForDate(flowDate, false);
   }
 
   const participantSummary = useMemo(() => {
@@ -2474,23 +2464,8 @@ export default function ClientDashboard({
 
   const participantActivityRows = useMemo(() => {
     const source = participantFlows.filter((item) => item.date === participantViewDate);
-    const previousDate = participantDateOptions.find((date) => date < participantViewDate);
-    const previousSource = previousDate
-      ? participantFlows.filter((item) => item.date === previousDate)
-      : [];
 
     const groupedToday = new Map<
-      ParticipantType,
-      {
-        futureBuy: number;
-        futureSold: number;
-        callBuy: number;
-        callSold: number;
-        putBuy: number;
-        putSold: number;
-      }
-    >();
-    const groupedPrev = new Map<
       ParticipantType,
       {
         futureBuy: number;
@@ -2518,24 +2493,6 @@ export default function ClientDashboard({
       current.putBuy += item.putBoughtQty;
       current.putSold += item.putSoldQty;
       groupedToday.set(item.participant, current);
-    });
-
-    previousSource.forEach((item) => {
-      const current = groupedPrev.get(item.participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
-      current.futureBuy += item.futureBoughtQty;
-      current.futureSold += item.futureSoldQty;
-      current.callBuy += item.callBoughtQty;
-      current.callSold += item.callSoldQty;
-      current.putBuy += item.putBoughtQty;
-      current.putSold += item.putSoldQty;
-      groupedPrev.set(item.participant, current);
     });
 
     const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
@@ -2584,39 +2541,25 @@ export default function ClientDashboard({
         putBuy: 0,
         putSold: 0
       };
-      const prev = groupedPrev.get(participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
       const label = participant === "Client" ? "RETAIL" : participant;
-      const futureBuyDelta = data.futureBuy - prev.futureBuy;
-      const futureSellDelta = data.futureSold - prev.futureSold;
-      const callBuyDelta = data.callBuy - prev.callBuy;
-      const callSellDelta = data.callSold - prev.callSold;
-      const putBuyDelta = data.putBuy - prev.putBuy;
-      const putSellDelta = data.putSold - prev.putSold;
       rows.push(
         evaluate(
           participant,
           label,
           "Future",
-          futureBuyDelta,
-          futureSellDelta
+          data.futureBuy,
+          data.futureSold
         )
       );
       rows.push(
-        evaluate(participant, label, "CE", callBuyDelta, callSellDelta)
+        evaluate(participant, label, "CE", data.callBuy, data.callSold)
       );
       rows.push(
-        evaluate(participant, label, "PE", putBuyDelta, putSellDelta)
+        evaluate(participant, label, "PE", data.putBuy, data.putSold)
       );
     });
     return rows;
-  }, [participantFlows, participantViewDate, participantDateOptions]);
+  }, [participantFlows, participantViewDate]);
 
   const participantOverallTrend = useMemo(() => {
     const score = participantActivityRows.reduce(
@@ -4417,8 +4360,7 @@ export default function ClientDashboard({
                       </tr>
                       <tr className="border-t border-white/10">
                         <td colSpan={5} className="px-3 py-2 text-[10px] text-muted">
-                          Note: Change = (selected day net long-short) - (previous trading day
-                          net long-short).
+                          Note: Change = selected day net (buy - sell) contracts from NSE.
                         </td>
                       </tr>
                     </tbody>

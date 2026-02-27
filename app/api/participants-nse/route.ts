@@ -117,6 +117,18 @@ function pickIndexes(
     .map(({ idx }) => idx);
 }
 
+function pickByMode(
+  header: string[],
+  baseTokens: string[],
+  mode: "buy" | "sell" | "long" | "short"
+) {
+  return pickIndexes(
+    header,
+    [...baseTokens, mode],
+    [...baseTokens, mode]
+  );
+}
+
 export async function GET(request: Request) {
   const bases = [
     "https://archives.nseindia.com/content/nsccl",
@@ -143,9 +155,10 @@ export async function GET(request: Request) {
   for (const d of candidateDates) {
     const stamp = toDateStamp(d);
     const isoDate = toIso(d);
-    const filename = `fao_participant_oi_${stamp}.csv`;
+    const filenames = [`fao_participant_vol_${stamp}.csv`, `fao_participant_oi_${stamp}.csv`];
 
     for (const base of bases) {
+      for (const filename of filenames) {
       const url = `${base}/${filename}`;
       try {
         const response = await fetch(url, {
@@ -179,54 +192,48 @@ export async function GET(request: Request) {
         for (let i = 0; i < Math.min(lines.length, 12); i += 1) {
           const header = parseCsvLine(lines[i]).map(normalize);
           const cIdx = header.findIndex((h) => h.includes("clienttype"));
-          // Prefer index derivatives columns to match the compact activity view.
-          const futLongIdxs = pickIndexes(
-            header,
-            ["future", "index", "long"],
-            ["future", "long"]
-          );
-          const futShortIdxs = pickIndexes(
-            header,
-            ["future", "index", "short"],
-            ["future", "short"]
-          );
-          const callLongIdxs = pickIndexes(
-            header,
-            ["option", "index", "call", "long"],
-            ["option", "call", "long"]
-          );
-          const putLongIdxs = pickIndexes(
-            header,
-            ["option", "index", "put", "long"],
-            ["option", "put", "long"]
-          );
-          const callIdxs = pickIndexes(
-            header,
-            ["option", "index", "call", "short"],
-            ["option", "call", "short"]
-          );
-          const putIdxs = pickIndexes(
-            header,
-            ["option", "index", "put", "short"],
-            ["option", "put", "short"]
-          );
+          // Prefer volume buy/sell columns; fallback to OI long/short.
+          const futBuyIdxs =
+            pickByMode(header, ["future", "index"], "buy").length
+              ? pickByMode(header, ["future", "index"], "buy")
+              : pickByMode(header, ["future", "index"], "long");
+          const futSellIdxs =
+            pickByMode(header, ["future", "index"], "sell").length
+              ? pickByMode(header, ["future", "index"], "sell")
+              : pickByMode(header, ["future", "index"], "short");
+          const callBuyIdxs =
+            pickByMode(header, ["option", "index", "call"], "buy").length
+              ? pickByMode(header, ["option", "index", "call"], "buy")
+              : pickByMode(header, ["option", "index", "call"], "long");
+          const putBuyIdxs =
+            pickByMode(header, ["option", "index", "put"], "buy").length
+              ? pickByMode(header, ["option", "index", "put"], "buy")
+              : pickByMode(header, ["option", "index", "put"], "long");
+          const callSellIdxs =
+            pickByMode(header, ["option", "index", "call"], "sell").length
+              ? pickByMode(header, ["option", "index", "call"], "sell")
+              : pickByMode(header, ["option", "index", "call"], "short");
+          const putSellIdxs =
+            pickByMode(header, ["option", "index", "put"], "sell").length
+              ? pickByMode(header, ["option", "index", "put"], "sell")
+              : pickByMode(header, ["option", "index", "put"], "short");
           if (
             cIdx >= 0 &&
-            futLongIdxs.length &&
-            futShortIdxs.length &&
-            callLongIdxs.length &&
-            putLongIdxs.length &&
-            callIdxs.length &&
-            putIdxs.length
+            futBuyIdxs.length &&
+            futSellIdxs.length &&
+            callBuyIdxs.length &&
+            putBuyIdxs.length &&
+            callSellIdxs.length &&
+            putSellIdxs.length
           ) {
             headerIndex = i;
             clientIdx = cIdx;
-            futureLongIndexes = futLongIdxs;
-            futureShortIndexes = futShortIdxs;
-            callLongIndexes = callLongIdxs;
-            putLongIndexes = putLongIdxs;
-            callShortIndexes = callIdxs;
-            putShortIndexes = putIdxs;
+            futureLongIndexes = futBuyIdxs;
+            futureShortIndexes = futSellIdxs;
+            callLongIndexes = callBuyIdxs;
+            putLongIndexes = putBuyIdxs;
+            callShortIndexes = callSellIdxs;
+            putShortIndexes = putSellIdxs;
             break;
           }
         }
@@ -282,6 +289,7 @@ export async function GET(request: Request) {
           return NextResponse.json({
             source: "NSE",
             date: isoDate,
+            file: filename,
             items
           });
         }
@@ -292,6 +300,7 @@ export async function GET(request: Request) {
         errors.push(`${stamp}:${message}`);
         continue;
       }
+    }
     }
   }
 
