@@ -71,8 +71,9 @@ export async function GET() {
     "https://archives.nseindia.com/content/nsccl",
     "https://www1.nseindia.com/content/nsccl"
   ];
+  const errors: string[] = [];
 
-  for (let offset = 0; offset < 8; offset += 1) {
+  for (let offset = 0; offset < 21; offset += 1) {
     const d = new Date();
     d.setDate(d.getDate() - offset);
     const stamp = toDateStamp(d);
@@ -90,7 +91,10 @@ export async function GET() {
           },
           next: { revalidate: 1800 }
         });
-        if (!response.ok) continue;
+        if (!response.ok) {
+          errors.push(`${stamp}:${response.status}`);
+          continue;
+        }
         const csv = await response.text();
         const lines = csv
           .split(/\r?\n/)
@@ -98,29 +102,44 @@ export async function GET() {
           .filter(Boolean);
         if (lines.length < 2) continue;
 
-        const header = parseCsvLine(lines[0]).map(normalize);
-        const clientIdx = header.findIndex((h) => h.includes("clienttype"));
-        const callShortIndexes = header
-          .map((h, idx) => ({ h, idx }))
-          .filter(
-            ({ h }) =>
-              h.includes("option") && h.includes("call") && h.includes("short")
-          )
-          .map(({ idx }) => idx);
-        const putShortIndexes = header
-          .map((h, idx) => ({ h, idx }))
-          .filter(
-            ({ h }) =>
-              h.includes("option") && h.includes("put") && h.includes("short")
-          )
-          .map(({ idx }) => idx);
+        let headerIndex = -1;
+        let clientIdx = -1;
+        let callShortIndexes: number[] = [];
+        let putShortIndexes: number[] = [];
 
-        if (clientIdx < 0 || !callShortIndexes.length || !putShortIndexes.length) {
+        for (let i = 0; i < Math.min(lines.length, 12); i += 1) {
+          const header = parseCsvLine(lines[i]).map(normalize);
+          const cIdx = header.findIndex((h) => h.includes("clienttype"));
+          const callIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("option") && h.includes("call") && h.includes("short")
+            )
+            .map(({ idx }) => idx);
+          const putIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("option") && h.includes("put") && h.includes("short")
+            )
+            .map(({ idx }) => idx);
+          if (cIdx >= 0 && callIdxs.length && putIdxs.length) {
+            headerIndex = i;
+            clientIdx = cIdx;
+            callShortIndexes = callIdxs;
+            putShortIndexes = putIdxs;
+            break;
+          }
+        }
+
+        if (headerIndex < 0) {
+          errors.push(`${stamp}:header-not-found`);
           continue;
         }
 
         const items: ParticipantFlow[] = [];
-        for (let i = 1; i < lines.length; i += 1) {
+        for (let i = headerIndex + 1; i < lines.length; i += 1) {
           const row = parseCsvLine(lines[i]);
           const participant = mapParticipant(row[clientIdx] ?? "");
           if (!participant) continue;
@@ -148,14 +167,21 @@ export async function GET() {
             items
           });
         }
-      } catch {
+        errors.push(`${stamp}:no-mapped-items`);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "unknown-fetch-error";
+        errors.push(`${stamp}:${message}`);
         continue;
       }
     }
   }
 
   return NextResponse.json(
-    { error: "Could not fetch participant data from NSE right now." },
+    {
+      error: "Could not fetch participant data from NSE right now.",
+      details: errors.slice(0, 6)
+    },
     { status: 503 }
   );
 }

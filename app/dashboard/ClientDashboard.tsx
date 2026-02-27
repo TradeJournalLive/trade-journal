@@ -2296,9 +2296,14 @@ export default function ClientDashboard({
         items?: ParticipantFlow[];
         date?: string;
         error?: string;
+        details?: string[];
       };
       if (!response.ok) {
-        throw new Error(payload.error || "NSE fetch failed.");
+        const detailText =
+          Array.isArray(payload.details) && payload.details.length
+            ? ` (${payload.details.join(" | ")})`
+            : "";
+        throw new Error((payload.error || "NSE fetch failed.") + detailText);
       }
       const items = Array.isArray(payload.items) ? payload.items : [];
       if (!items.length) {
