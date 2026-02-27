@@ -72,13 +72,30 @@ function extractRows(payload: unknown): Record<string, unknown>[] {
   }
   if (!payload || typeof payload !== "object") return [];
   const record = payload as Record<string, unknown>;
-  for (const key of ["data", "result", "results", "rows", "items", "tableData"]) {
+  for (const key of [
+    "data",
+    "result",
+    "Result",
+    "results",
+    "rows",
+    "items",
+    "tableData"
+  ]) {
     const value = record[key];
     if (Array.isArray(value)) {
       return value.filter(
         (item): item is Record<string, unknown> =>
           typeof item === "object" && item !== null
       );
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        const nested = extractRows(parsed);
+        if (nested.length) return nested;
+      } catch {
+        // ignore non-json string
+      }
     }
     if (value && typeof value === "object") {
       const nested = extractRows(value);
