@@ -2393,15 +2393,12 @@ export default function ClientDashboard({
   async function handleFetchParticipantFromNse() {
     const ok = await fetchParticipantForDate(flowDate, false);
     if (!ok) return;
-    // Also fetch nearest previous date so change can be computed day-over-day.
+    // Fetch exactly previous calendar date for strict day-over-day calculation.
     const selected = new Date(`${flowDate}T00:00:00`);
-    for (let i = 1; i <= 7; i += 1) {
-      const prev = new Date(selected);
-      prev.setDate(selected.getDate() - i);
-      const prevIso = prev.toISOString().slice(0, 10);
-      const fetched = await fetchParticipantForDate(prevIso, true);
-      if (fetched) break;
-    }
+    const prev = new Date(selected);
+    prev.setDate(selected.getDate() - 1);
+    const prevIso = prev.toISOString().slice(0, 10);
+    await fetchParticipantForDate(prevIso, true);
   }
 
   const participantSummary = useMemo(() => {
@@ -2474,9 +2471,9 @@ export default function ClientDashboard({
 
   const participantActivityRows = useMemo(() => {
     const source = participantFlows.filter((item) => item.date === participantViewDate);
-    const previousDate = participantDateOptions.find(
-      (date) => date < participantViewDate
-    );
+    const prev = new Date(`${participantViewDate}T00:00:00`);
+    prev.setDate(prev.getDate() - 1);
+    const previousDate = prev.toISOString().slice(0, 10);
     const previousSource = previousDate
       ? participantFlows.filter((item) => item.date === previousDate)
       : [];
@@ -2629,6 +2626,18 @@ export default function ClientDashboard({
     if (score < 0) return "Bearish";
     return "Neutral";
   }, [participantActivityRows]);
+
+  const participantPreviousDate = useMemo(() => {
+    const prev = new Date(`${participantViewDate}T00:00:00`);
+    if (Number.isNaN(prev.getTime())) return "";
+    prev.setDate(prev.getDate() - 1);
+    return prev.toISOString().slice(0, 10);
+  }, [participantViewDate]);
+
+  const hasPreviousDateData = useMemo(
+    () => participantFlows.some((item) => item.date === participantPreviousDate),
+    [participantFlows, participantPreviousDate]
+  );
 
   const participantViewDateDisplay = useMemo(() => {
     if (!participantViewDate) return "N/A";
@@ -4346,6 +4355,12 @@ export default function ClientDashboard({
                     </button>
                   </div>
                 </div>
+                {!hasPreviousDateData && (
+                  <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                    Previous day data ({participantPreviousDate}) not available yet.
+                    Change may not match strict day-over-day output.
+                  </div>
+                )}
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead className="text-muted">
