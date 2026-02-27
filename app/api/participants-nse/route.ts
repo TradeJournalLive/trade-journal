@@ -70,6 +70,22 @@ function toIso(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function pickIndexes(
+  header: string[],
+  preferredTokens: string[],
+  fallbackTokens: string[]
+) {
+  const preferred = header
+    .map((h, idx) => ({ h, idx }))
+    .filter(({ h }) => preferredTokens.every((token) => h.includes(token)))
+    .map(({ idx }) => idx);
+  if (preferred.length) return preferred;
+  return header
+    .map((h, idx) => ({ h, idx }))
+    .filter(({ h }) => fallbackTokens.every((token) => h.includes(token)))
+    .map(({ idx }) => idx);
+}
+
 export async function GET(request: Request) {
   const bases = [
     "https://archives.nseindia.com/content/nsccl",
@@ -132,48 +148,37 @@ export async function GET(request: Request) {
         for (let i = 0; i < Math.min(lines.length, 12); i += 1) {
           const header = parseCsvLine(lines[i]).map(normalize);
           const cIdx = header.findIndex((h) => h.includes("clienttype"));
-          const futLongIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("future") && h.includes("long")
-            )
-            .map(({ idx }) => idx);
-          const futShortIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("future") && h.includes("short")
-            )
-            .map(({ idx }) => idx);
-          const callLongIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("option") && h.includes("call") && h.includes("long")
-            )
-            .map(({ idx }) => idx);
-          const putLongIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("option") && h.includes("put") && h.includes("long")
-            )
-            .map(({ idx }) => idx);
-          const callIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("option") && h.includes("call") && h.includes("short")
-            )
-            .map(({ idx }) => idx);
-          const putIdxs = header
-            .map((h, idx) => ({ h, idx }))
-            .filter(
-              ({ h }) =>
-                h.includes("option") && h.includes("put") && h.includes("short")
-            )
-            .map(({ idx }) => idx);
+          // Prefer index derivatives columns to match the compact activity view.
+          const futLongIdxs = pickIndexes(
+            header,
+            ["future", "index", "long"],
+            ["future", "long"]
+          );
+          const futShortIdxs = pickIndexes(
+            header,
+            ["future", "index", "short"],
+            ["future", "short"]
+          );
+          const callLongIdxs = pickIndexes(
+            header,
+            ["option", "index", "call", "long"],
+            ["option", "call", "long"]
+          );
+          const putLongIdxs = pickIndexes(
+            header,
+            ["option", "index", "put", "long"],
+            ["option", "put", "long"]
+          );
+          const callIdxs = pickIndexes(
+            header,
+            ["option", "index", "call", "short"],
+            ["option", "call", "short"]
+          );
+          const putIdxs = pickIndexes(
+            header,
+            ["option", "index", "put", "short"],
+            ["option", "put", "short"]
+          );
           if (
             cIdx >= 0 &&
             futLongIdxs.length &&
