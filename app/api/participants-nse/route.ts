@@ -6,6 +6,8 @@ type ParticipantFlow = {
   id: string;
   date: string;
   participant: ParticipantType;
+  futureBoughtQty: number;
+  futureSoldQty: number;
   callBoughtQty: number;
   putBoughtQty: number;
   callSoldQty: number;
@@ -68,16 +70,30 @@ function toIso(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const bases = [
     "https://archives.nseindia.com/content/nsccl",
     "https://www1.nseindia.com/content/nsccl"
   ];
   const errors: string[] = [];
 
-  for (let offset = 0; offset < 21; offset += 1) {
-    const d = new Date();
-    d.setDate(d.getDate() - offset);
+  const requestDate = new URL(request.url).searchParams.get("date");
+  const candidateDates: Date[] = [];
+  if (requestDate) {
+    const parsed = new Date(`${requestDate}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      candidateDates.push(parsed);
+    }
+  }
+  if (!candidateDates.length) {
+    for (let offset = 0; offset < 21; offset += 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - offset);
+      candidateDates.push(d);
+    }
+  }
+
+  for (const d of candidateDates) {
     const stamp = toDateStamp(d);
     const isoDate = toIso(d);
     const filename = `fao_participant_oi_${stamp}.csv`;
@@ -106,6 +122,8 @@ export async function GET() {
 
         let headerIndex = -1;
         let clientIdx = -1;
+        let futureLongIndexes: number[] = [];
+        let futureShortIndexes: number[] = [];
         let callLongIndexes: number[] = [];
         let putLongIndexes: number[] = [];
         let callShortIndexes: number[] = [];
@@ -114,6 +132,20 @@ export async function GET() {
         for (let i = 0; i < Math.min(lines.length, 12); i += 1) {
           const header = parseCsvLine(lines[i]).map(normalize);
           const cIdx = header.findIndex((h) => h.includes("clienttype"));
+          const futLongIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("future") && h.includes("long")
+            )
+            .map(({ idx }) => idx);
+          const futShortIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("future") && h.includes("short")
+            )
+            .map(({ idx }) => idx);
           const callLongIdxs = header
             .map((h, idx) => ({ h, idx }))
             .filter(
@@ -144,6 +176,8 @@ export async function GET() {
             .map(({ idx }) => idx);
           if (
             cIdx >= 0 &&
+            futLongIdxs.length &&
+            futShortIdxs.length &&
             callLongIdxs.length &&
             putLongIdxs.length &&
             callIdxs.length &&
@@ -151,6 +185,8 @@ export async function GET() {
           ) {
             headerIndex = i;
             clientIdx = cIdx;
+            futureLongIndexes = futLongIdxs;
+            futureShortIndexes = futShortIdxs;
             callLongIndexes = callLongIdxs;
             putLongIndexes = putLongIdxs;
             callShortIndexes = callIdxs;
@@ -169,6 +205,14 @@ export async function GET() {
           const row = parseCsvLine(lines[i]);
           const participant = mapParticipant(row[clientIdx] ?? "");
           if (!participant) continue;
+          const futureBoughtQty = futureLongIndexes.reduce(
+            (sum, idx) => sum + toNumber(row[idx] ?? "0"),
+            0
+          );
+          const futureSoldQty = futureShortIndexes.reduce(
+            (sum, idx) => sum + toNumber(row[idx] ?? "0"),
+            0
+          );
           const callBoughtQty = callLongIndexes.reduce(
             (sum, idx) => sum + toNumber(row[idx] ?? "0"),
             0
@@ -189,6 +233,8 @@ export async function GET() {
             id: `NSE-${stamp}-${participant}`,
             date: isoDate,
             participant,
+            futureBoughtQty,
+            futureSoldQty,
             callBoughtQty,
             putBoughtQty,
             callSoldQty,

@@ -115,6 +115,8 @@ type ParticipantFlow = {
   id: string;
   date: string;
   participant: ParticipantType;
+  futureBoughtQty: number;
+  futureSoldQty: number;
   callBoughtQty: number;
   putBoughtQty: number;
   callSoldQty: number;
@@ -1122,7 +1124,12 @@ export default function ClientDashboard({
   const [strategyEditStatus, setStrategyEditStatus] = useState("");
   const [participantFlows, setParticipantFlows] = useState<ParticipantFlow[]>([]);
   const [flowDate, setFlowDate] = useState(new Date().toISOString().slice(0, 10));
+  const [participantViewDate, setParticipantViewDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
   const [flowParticipant, setFlowParticipant] = useState<ParticipantType>("FII");
+  const [flowFutureBought, setFlowFutureBought] = useState("");
+  const [flowFutureSold, setFlowFutureSold] = useState("");
   const [flowCallBought, setFlowCallBought] = useState("");
   const [flowPutBought, setFlowPutBought] = useState("");
   const [flowCallSold, setFlowCallSold] = useState("");
@@ -1319,6 +1326,8 @@ export default function ClientDashboard({
         setParticipantFlows(
           parsed.map((item) => ({
             ...item,
+            futureBoughtQty: Number(item.futureBoughtQty ?? 0) || 0,
+            futureSoldQty: Number(item.futureSoldQty ?? 0) || 0,
             callBoughtQty: Number(item.callBoughtQty ?? 0) || 0,
             putBoughtQty: Number(item.putBoughtQty ?? 0) || 0,
             callSoldQty: Number(item.callSoldQty ?? 0) || 0,
@@ -2245,6 +2254,8 @@ export default function ClientDashboard({
   }
 
   function handleAddParticipantFlow() {
+    const futureBuyQty = Number(flowFutureBought);
+    const futureSellQty = Number(flowFutureSold);
     const callBuyQty = Number(flowCallBought);
     const putBuyQty = Number(flowPutBought);
     const callQty = Number(flowCallSold);
@@ -2255,6 +2266,14 @@ export default function ClientDashboard({
     }
     if (!Number.isFinite(callBuyQty) || callBuyQty < 0) {
       setFlowStatus("Call buy qty should be 0 or more.");
+      return;
+    }
+    if (!Number.isFinite(futureBuyQty) || futureBuyQty < 0) {
+      setFlowStatus("Future buy qty should be 0 or more.");
+      return;
+    }
+    if (!Number.isFinite(futureSellQty) || futureSellQty < 0) {
+      setFlowStatus("Future sold qty should be 0 or more.");
       return;
     }
     if (!Number.isFinite(putBuyQty) || putBuyQty < 0) {
@@ -2273,12 +2292,16 @@ export default function ClientDashboard({
       id: `PF-${Date.now()}`,
       date: flowDate,
       participant: flowParticipant,
+      futureBoughtQty: futureBuyQty,
+      futureSoldQty: futureSellQty,
       callBoughtQty: callBuyQty,
       putBoughtQty: putBuyQty,
       callSoldQty: callQty,
       putSoldQty: putQty
     };
     setParticipantFlows((prev) => [next, ...prev]);
+    setFlowFutureBought("");
+    setFlowFutureSold("");
     setFlowCallBought("");
     setFlowPutBought("");
     setFlowCallSold("");
@@ -2298,6 +2321,8 @@ export default function ClientDashboard({
         id: `PF-S-${Date.now()}-1`,
         date: today,
         participant: "FII",
+        futureBoughtQty: 3200,
+        futureSoldQty: 1800,
         callBoughtQty: 9000,
         putBoughtQty: 14000,
         callSoldQty: 12000,
@@ -2307,6 +2332,8 @@ export default function ClientDashboard({
         id: `PF-S-${Date.now()}-2`,
         date: today,
         participant: "Client",
+        futureBoughtQty: 6400,
+        futureSoldQty: 8000,
         callBoughtQty: 11000,
         putBoughtQty: 8400,
         callSoldQty: 9500,
@@ -2321,7 +2348,10 @@ export default function ClientDashboard({
   async function handleFetchParticipantFromNse() {
     setFlowStatus("Fetching from NSE...");
     try {
-      const response = await fetch("/api/participants-nse", { cache: "no-store" });
+      const response = await fetch(
+        `/api/participants-nse?date=${encodeURIComponent(flowDate)}`,
+        { cache: "no-store" }
+      );
       const payload = (await response.json()) as {
         items?: ParticipantFlow[];
         date?: string;
@@ -2347,6 +2377,9 @@ export default function ClientDashboard({
         );
         return [...next, ...prev];
       });
+      if (payload.date) {
+        setParticipantViewDate(payload.date);
+      }
       setFlowStatus(`Fetched NSE participant data for ${payload.date ?? "latest"} .`);
       setTimeout(() => setFlowStatus(""), 1800);
     } catch (error) {
@@ -2359,15 +2392,26 @@ export default function ClientDashboard({
   const participantSummary = useMemo(() => {
     const grouped = new Map<
       ParticipantType,
-      { callBuy: number; putBuy: number; callSold: number; putSold: number }
+      {
+        futureBuy: number;
+        futureSold: number;
+        callBuy: number;
+        putBuy: number;
+        callSold: number;
+        putSold: number;
+      }
     >();
     participantFlows.forEach((item) => {
       const current = grouped.get(item.participant) ?? {
+        futureBuy: 0,
+        futureSold: 0,
         callBuy: 0,
         putBuy: 0,
         callSold: 0,
         putSold: 0
       };
+      current.futureBuy += item.futureBoughtQty;
+      current.futureSold += item.futureSoldQty;
       current.callBuy += item.callBoughtQty;
       current.putBuy += item.putBoughtQty;
       current.callSold += item.callSoldQty;
@@ -2376,6 +2420,8 @@ export default function ClientDashboard({
     });
     return (["FII", "DII", "Client", "Pro"] as ParticipantType[]).map((key) => {
       const row = grouped.get(key) ?? {
+        futureBuy: 0,
+        futureSold: 0,
         callBuy: 0,
         putBuy: 0,
         callSold: 0,
@@ -2383,15 +2429,129 @@ export default function ClientDashboard({
       };
       return {
         participant: key,
+        futureBuy: row.futureBuy,
+        futureSold: row.futureSold,
         callBuy: row.callBuy,
         putBuy: row.putBuy,
         callSold: row.callSold,
         putSold: row.putSold,
+        netFutures: row.futureBuy - row.futureSold,
         netCalls: row.callBuy - row.callSold,
         netPuts: row.putBuy - row.putSold
       };
     });
   }, [participantFlows]);
+
+  const participantDateOptions = useMemo(
+    () =>
+      Array.from(new Set(participantFlows.map((item) => item.date))).sort((a, b) =>
+        b.localeCompare(a)
+      ),
+    [participantFlows]
+  );
+
+  useEffect(() => {
+    if (!participantDateOptions.length) return;
+    if (!participantDateOptions.includes(participantViewDate)) {
+      setParticipantViewDate(participantDateOptions[0]);
+    }
+  }, [participantDateOptions, participantViewDate]);
+
+  const participantActivityRows = useMemo(() => {
+    const source = participantFlows.filter((item) => item.date === participantViewDate);
+    const grouped = new Map<
+      ParticipantType,
+      {
+        futureBuy: number;
+        futureSold: number;
+        callBuy: number;
+        callSold: number;
+        putBuy: number;
+        putSold: number;
+      }
+    >();
+
+    source.forEach((item) => {
+      const current = grouped.get(item.participant) ?? {
+        futureBuy: 0,
+        futureSold: 0,
+        callBuy: 0,
+        callSold: 0,
+        putBuy: 0,
+        putSold: 0
+      };
+      current.futureBuy += item.futureBoughtQty;
+      current.futureSold += item.futureSoldQty;
+      current.callBuy += item.callBoughtQty;
+      current.callSold += item.callSoldQty;
+      current.putBuy += item.putBoughtQty;
+      current.putSold += item.putSoldQty;
+      grouped.set(item.participant, current);
+    });
+
+    const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
+    const rows: Array<{
+      participant: ParticipantType;
+      label: string;
+      instrument: "Future" | "CE" | "PE";
+      change: number;
+      activity: string;
+      trend: "Bullish" | "Bearish" | "Neutral";
+      score: number;
+    }> = [];
+
+    const evaluate = (
+      participant: ParticipantType,
+      label: string,
+      instrument: "Future" | "CE" | "PE",
+      bought: number,
+      sold: number
+    ) => {
+      const change = bought - sold;
+      if (change === 0) {
+        return { participant, label, instrument, change, activity: "No change", trend: "Neutral" as const, score: 0 };
+      }
+      if (instrument === "Future") {
+        return change > 0
+          ? { participant, label, instrument, change, activity: "Bought Futures", trend: "Bullish" as const, score: 1 }
+          : { participant, label, instrument, change, activity: "Sold Futures", trend: "Bearish" as const, score: -1 };
+      }
+      if (instrument === "CE") {
+        return change > 0
+          ? { participant, label, instrument, change, activity: "Bought Calls", trend: "Bullish" as const, score: 1 }
+          : { participant, label, instrument, change, activity: "Sold Calls", trend: "Bearish" as const, score: -1 };
+      }
+      return change > 0
+        ? { participant, label, instrument, change, activity: "Bought Puts", trend: "Bearish" as const, score: -1 }
+        : { participant, label, instrument, change, activity: "Sold Puts", trend: "Bullish" as const, score: 1 };
+    };
+
+    order.forEach((participant) => {
+      const data = grouped.get(participant) ?? {
+        futureBuy: 0,
+        futureSold: 0,
+        callBuy: 0,
+        callSold: 0,
+        putBuy: 0,
+        putSold: 0
+      };
+      const label = participant === "Client" ? "RETAIL" : participant;
+      rows.push(evaluate(participant, label, "Future", data.futureBuy, data.futureSold));
+      rows.push(evaluate(participant, label, "CE", data.callBuy, data.callSold));
+      rows.push(evaluate(participant, label, "PE", data.putBuy, data.putSold));
+    });
+    return rows;
+  }, [participantFlows, participantViewDate]);
+
+  const participantOverallTrend = useMemo(() => {
+    const score = participantActivityRows.reduce(
+      (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
+      0
+    );
+    if (score > 0) return "Bullish";
+    if (score < 0) return "Bearish";
+    return "Neutral";
+  }, [participantActivityRows]);
 
   const strategyBeingEdited = useMemo(() => {
     if (!editStrategyId) return null;
@@ -3925,7 +4085,10 @@ export default function ClientDashboard({
                     <input
                       type="date"
                       value={flowDate}
-                      onChange={(event) => setFlowDate(event.target.value)}
+                      onChange={(event) => {
+                        setFlowDate(event.target.value);
+                        setParticipantViewDate(event.target.value);
+                      }}
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                     />
                     <select
@@ -3940,6 +4103,22 @@ export default function ClientDashboard({
                       <option value="Client">Client</option>
                       <option value="Pro">Pro</option>
                     </select>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Future buy qty"
+                      value={flowFutureBought}
+                      onChange={(event) => setFlowFutureBought(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Future sold qty"
+                      value={flowFutureSold}
+                      onChange={(event) => setFlowFutureSold(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
                     <input
                       type="number"
                       min={0}
@@ -3982,7 +4161,7 @@ export default function ClientDashboard({
                       className="w-fit rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
                       onClick={handleFetchParticipantFromNse}
                     >
-                      Fetch from NSE
+                      Fetch from NSE for selected date
                     </button>
                     <button
                       className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
@@ -4008,6 +4187,12 @@ export default function ClientDashboard({
                       <div key={item.participant} className="kpi">
                         <div className="text-xs text-muted">{item.participant}</div>
                         <div className="mt-2 text-sm">
+                          Future buy: <span className="font-semibold">{item.futureBuy}</span>
+                        </div>
+                        <div className="text-sm">
+                          Future sold: <span className="font-semibold">{item.futureSold}</span>
+                        </div>
+                        <div className="text-sm">
                           Call buy: <span className="font-semibold">{item.callBuy}</span>
                         </div>
                         <div className="text-sm">
@@ -4020,11 +4205,89 @@ export default function ClientDashboard({
                           Put sold: <span className="font-semibold">{item.putSold}</span>
                         </div>
                         <div className="mt-1 text-xs text-muted">
-                          Net Calls: {item.netCalls} · Net Puts: {item.netPuts}
+                          Net Fut: {item.netFutures} · Net Calls: {item.netCalls} · Net Puts: {item.netPuts}
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold">
+                    {participantViewDate} - FII DII FNO Activity
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted">Date</span>
+                    <select
+                      value={participantViewDate}
+                      onChange={(event) => setParticipantViewDate(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
+                    >
+                      {participantDateOptions.map((dateItem) => (
+                        <option key={dateItem} value={dateItem}>
+                          {dateItem}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="text-muted">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Participant</th>
+                        <th className="px-3 py-2 text-left font-medium">Instrument</th>
+                        <th className="px-3 py-2 text-right font-medium">Change</th>
+                        <th className="px-3 py-2 text-left font-medium">Activity</th>
+                        <th className="px-3 py-2 text-left font-medium">Trend</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {participantActivityRows.map((row) => (
+                        <tr key={`${row.participant}-${row.instrument}`} className="border-t border-white/5">
+                          <td className="px-3 py-2 font-semibold">{row.label}</td>
+                          <td className="px-3 py-2">{row.instrument}</td>
+                          <td className="px-3 py-2 text-right font-semibold">
+                            {row.change > 0 ? `+${row.change}` : row.change}
+                          </td>
+                          <td className="px-3 py-2">{row.activity}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                row.trend === "Bullish"
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : row.trend === "Bearish"
+                                    ? "bg-rose-500/20 text-rose-400"
+                                    : "bg-slate-500/20 text-slate-300"
+                              }`}
+                            >
+                              {row.trend}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-white/10">
+                        <td className="px-3 py-3 font-semibold" colSpan={4}>
+                          OVERALL TREND
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              participantOverallTrend === "Bullish"
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : participantOverallTrend === "Bearish"
+                                  ? "bg-rose-500/20 text-rose-400"
+                                  : "bg-slate-500/20 text-slate-300"
+                            }`}
+                          >
+                            {participantOverallTrend}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
@@ -4039,6 +4302,8 @@ export default function ClientDashboard({
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">Date</th>
                         <th className="px-3 py-2 text-left font-medium">Participant</th>
+                        <th className="px-3 py-2 text-right font-medium">Future buy</th>
+                        <th className="px-3 py-2 text-right font-medium">Future sold</th>
                         <th className="px-3 py-2 text-right font-medium">Call buy</th>
                         <th className="px-3 py-2 text-right font-medium">Put buy</th>
                         <th className="px-3 py-2 text-right font-medium">Call sold</th>
@@ -4049,7 +4314,7 @@ export default function ClientDashboard({
                     <tbody>
                       {participantFlows.length === 0 ? (
                         <tr className="border-t border-white/5">
-                          <td className="px-3 py-4 text-muted" colSpan={7}>
+                          <td className="px-3 py-4 text-muted" colSpan={9}>
                             No participant activity added yet. Add entry above or use
                             "Add sample data".
                           </td>
@@ -4062,6 +4327,8 @@ export default function ClientDashboard({
                             <tr key={item.id} className="border-t border-white/5">
                               <td className="px-3 py-3">{item.date}</td>
                               <td className="px-3 py-3 font-semibold">{item.participant}</td>
+                              <td className="px-3 py-3 text-right">{item.futureBoughtQty}</td>
+                              <td className="px-3 py-3 text-right">{item.futureSoldQty}</td>
                               <td className="px-3 py-3 text-right">{item.callBoughtQty}</td>
                               <td className="px-3 py-3 text-right">{item.putBoughtQty}</td>
                               <td className="px-3 py-3 text-right">{item.callSoldQty}</td>
