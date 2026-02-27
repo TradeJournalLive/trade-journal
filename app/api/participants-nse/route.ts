@@ -6,6 +6,8 @@ type ParticipantFlow = {
   id: string;
   date: string;
   participant: ParticipantType;
+  callBoughtQty: number;
+  putBoughtQty: number;
   callSoldQty: number;
   putSoldQty: number;
 };
@@ -104,12 +106,28 @@ export async function GET() {
 
         let headerIndex = -1;
         let clientIdx = -1;
+        let callLongIndexes: number[] = [];
+        let putLongIndexes: number[] = [];
         let callShortIndexes: number[] = [];
         let putShortIndexes: number[] = [];
 
         for (let i = 0; i < Math.min(lines.length, 12); i += 1) {
           const header = parseCsvLine(lines[i]).map(normalize);
           const cIdx = header.findIndex((h) => h.includes("clienttype"));
+          const callLongIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("option") && h.includes("call") && h.includes("long")
+            )
+            .map(({ idx }) => idx);
+          const putLongIdxs = header
+            .map((h, idx) => ({ h, idx }))
+            .filter(
+              ({ h }) =>
+                h.includes("option") && h.includes("put") && h.includes("long")
+            )
+            .map(({ idx }) => idx);
           const callIdxs = header
             .map((h, idx) => ({ h, idx }))
             .filter(
@@ -124,9 +142,17 @@ export async function GET() {
                 h.includes("option") && h.includes("put") && h.includes("short")
             )
             .map(({ idx }) => idx);
-          if (cIdx >= 0 && callIdxs.length && putIdxs.length) {
+          if (
+            cIdx >= 0 &&
+            callLongIdxs.length &&
+            putLongIdxs.length &&
+            callIdxs.length &&
+            putIdxs.length
+          ) {
             headerIndex = i;
             clientIdx = cIdx;
+            callLongIndexes = callLongIdxs;
+            putLongIndexes = putLongIdxs;
             callShortIndexes = callIdxs;
             putShortIndexes = putIdxs;
             break;
@@ -143,6 +169,14 @@ export async function GET() {
           const row = parseCsvLine(lines[i]);
           const participant = mapParticipant(row[clientIdx] ?? "");
           if (!participant) continue;
+          const callBoughtQty = callLongIndexes.reduce(
+            (sum, idx) => sum + toNumber(row[idx] ?? "0"),
+            0
+          );
+          const putBoughtQty = putLongIndexes.reduce(
+            (sum, idx) => sum + toNumber(row[idx] ?? "0"),
+            0
+          );
           const callSoldQty = callShortIndexes.reduce(
             (sum, idx) => sum + toNumber(row[idx] ?? "0"),
             0
@@ -155,6 +189,8 @@ export async function GET() {
             id: `NSE-${stamp}-${participant}`,
             date: isoDate,
             participant,
+            callBoughtQty,
+            putBoughtQty,
             callSoldQty,
             putSoldQty
           });

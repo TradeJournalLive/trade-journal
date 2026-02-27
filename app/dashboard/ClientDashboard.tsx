@@ -115,6 +115,8 @@ type ParticipantFlow = {
   id: string;
   date: string;
   participant: ParticipantType;
+  callBoughtQty: number;
+  putBoughtQty: number;
   callSoldQty: number;
   putSoldQty: number;
 };
@@ -1121,6 +1123,8 @@ export default function ClientDashboard({
   const [participantFlows, setParticipantFlows] = useState<ParticipantFlow[]>([]);
   const [flowDate, setFlowDate] = useState(new Date().toISOString().slice(0, 10));
   const [flowParticipant, setFlowParticipant] = useState<ParticipantType>("FII");
+  const [flowCallBought, setFlowCallBought] = useState("");
+  const [flowPutBought, setFlowPutBought] = useState("");
   const [flowCallSold, setFlowCallSold] = useState("");
   const [flowPutSold, setFlowPutSold] = useState("");
   const [flowStatus, setFlowStatus] = useState("");
@@ -1312,7 +1316,15 @@ export default function ClientDashboard({
     try {
       const parsed = JSON.parse(stored) as ParticipantFlow[];
       if (Array.isArray(parsed)) {
-        setParticipantFlows(parsed);
+        setParticipantFlows(
+          parsed.map((item) => ({
+            ...item,
+            callBoughtQty: Number(item.callBoughtQty ?? 0) || 0,
+            putBoughtQty: Number(item.putBoughtQty ?? 0) || 0,
+            callSoldQty: Number(item.callSoldQty ?? 0) || 0,
+            putSoldQty: Number(item.putSoldQty ?? 0) || 0
+          }))
+        );
       } else {
         setParticipantFlows([]);
       }
@@ -2233,10 +2245,20 @@ export default function ClientDashboard({
   }
 
   function handleAddParticipantFlow() {
+    const callBuyQty = Number(flowCallBought);
+    const putBuyQty = Number(flowPutBought);
     const callQty = Number(flowCallSold);
     const putQty = Number(flowPutSold);
     if (!flowDate) {
       setFlowStatus("Date is required.");
+      return;
+    }
+    if (!Number.isFinite(callBuyQty) || callBuyQty < 0) {
+      setFlowStatus("Call buy qty should be 0 or more.");
+      return;
+    }
+    if (!Number.isFinite(putBuyQty) || putBuyQty < 0) {
+      setFlowStatus("Put buy qty should be 0 or more.");
       return;
     }
     if (!Number.isFinite(callQty) || callQty < 0) {
@@ -2251,10 +2273,14 @@ export default function ClientDashboard({
       id: `PF-${Date.now()}`,
       date: flowDate,
       participant: flowParticipant,
+      callBoughtQty: callBuyQty,
+      putBoughtQty: putBuyQty,
       callSoldQty: callQty,
       putSoldQty: putQty
     };
     setParticipantFlows((prev) => [next, ...prev]);
+    setFlowCallBought("");
+    setFlowPutBought("");
     setFlowCallSold("");
     setFlowPutSold("");
     setFlowStatus("Participant activity saved.");
@@ -2272,6 +2298,8 @@ export default function ClientDashboard({
         id: `PF-S-${Date.now()}-1`,
         date: today,
         participant: "FII",
+        callBoughtQty: 9000,
+        putBoughtQty: 14000,
         callSoldQty: 12000,
         putSoldQty: 18000
       },
@@ -2279,6 +2307,8 @@ export default function ClientDashboard({
         id: `PF-S-${Date.now()}-2`,
         date: today,
         participant: "Client",
+        callBoughtQty: 11000,
+        putBoughtQty: 8400,
         callSoldQty: 9500,
         putSoldQty: 7600
       },
@@ -2327,21 +2357,38 @@ export default function ClientDashboard({
   }
 
   const participantSummary = useMemo(() => {
-    const grouped = new Map<ParticipantType, { callSold: number; putSold: number }>();
+    const grouped = new Map<
+      ParticipantType,
+      { callBuy: number; putBuy: number; callSold: number; putSold: number }
+    >();
     participantFlows.forEach((item) => {
-      const current = grouped.get(item.participant) ?? { callSold: 0, putSold: 0 };
+      const current = grouped.get(item.participant) ?? {
+        callBuy: 0,
+        putBuy: 0,
+        callSold: 0,
+        putSold: 0
+      };
+      current.callBuy += item.callBoughtQty;
+      current.putBuy += item.putBoughtQty;
       current.callSold += item.callSoldQty;
       current.putSold += item.putSoldQty;
       grouped.set(item.participant, current);
     });
     return (["FII", "DII", "Client", "Pro"] as ParticipantType[]).map((key) => {
-      const row = grouped.get(key) ?? { callSold: 0, putSold: 0 };
+      const row = grouped.get(key) ?? {
+        callBuy: 0,
+        putBuy: 0,
+        callSold: 0,
+        putSold: 0
+      };
       return {
         participant: key,
+        callBuy: row.callBuy,
+        putBuy: row.putBuy,
         callSold: row.callSold,
         putSold: row.putSold,
-        totalSold: row.callSold + row.putSold,
-        bias: row.putSold - row.callSold
+        netCalls: row.callBuy - row.callSold,
+        netPuts: row.putBuy - row.putSold
       };
     });
   }, [participantFlows]);
@@ -3896,6 +3943,22 @@ export default function ClientDashboard({
                     <input
                       type="number"
                       min={0}
+                      placeholder="Call buy qty"
+                      value={flowCallBought}
+                      onChange={(event) => setFlowCallBought(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Put buy qty"
+                      value={flowPutBought}
+                      onChange={(event) => setFlowPutBought(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      type="number"
+                      min={0}
                       placeholder="Call sold qty"
                       value={flowCallSold}
                       onChange={(event) => setFlowCallSold(event.target.value)}
@@ -3945,13 +4008,19 @@ export default function ClientDashboard({
                       <div key={item.participant} className="kpi">
                         <div className="text-xs text-muted">{item.participant}</div>
                         <div className="mt-2 text-sm">
+                          Call buy: <span className="font-semibold">{item.callBuy}</span>
+                        </div>
+                        <div className="text-sm">
+                          Put buy: <span className="font-semibold">{item.putBuy}</span>
+                        </div>
+                        <div className="text-sm">
                           Call sold: <span className="font-semibold">{item.callSold}</span>
                         </div>
                         <div className="text-sm">
                           Put sold: <span className="font-semibold">{item.putSold}</span>
                         </div>
                         <div className="mt-1 text-xs text-muted">
-                          Bias: {item.bias >= 0 ? "Put-heavy" : "Call-heavy"} ({item.bias})
+                          Net Calls: {item.netCalls} · Net Puts: {item.netPuts}
                         </div>
                       </div>
                     ))}
@@ -3970,6 +4039,8 @@ export default function ClientDashboard({
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">Date</th>
                         <th className="px-3 py-2 text-left font-medium">Participant</th>
+                        <th className="px-3 py-2 text-right font-medium">Call buy</th>
+                        <th className="px-3 py-2 text-right font-medium">Put buy</th>
                         <th className="px-3 py-2 text-right font-medium">Call sold</th>
                         <th className="px-3 py-2 text-right font-medium">Put sold</th>
                         <th className="px-3 py-2 text-right font-medium">Action</th>
@@ -3978,7 +4049,7 @@ export default function ClientDashboard({
                     <tbody>
                       {participantFlows.length === 0 ? (
                         <tr className="border-t border-white/5">
-                          <td className="px-3 py-4 text-muted" colSpan={5}>
+                          <td className="px-3 py-4 text-muted" colSpan={7}>
                             No participant activity added yet. Add entry above or use
                             "Add sample data".
                           </td>
@@ -3991,6 +4062,8 @@ export default function ClientDashboard({
                             <tr key={item.id} className="border-t border-white/5">
                               <td className="px-3 py-3">{item.date}</td>
                               <td className="px-3 py-3 font-semibold">{item.participant}</td>
+                              <td className="px-3 py-3 text-right">{item.callBoughtQty}</td>
+                              <td className="px-3 py-3 text-right">{item.putBoughtQty}</td>
                               <td className="px-3 py-3 text-right">{item.callSoldQty}</td>
                               <td className="px-3 py-3 text-right">{item.putSoldQty}</td>
                               <td className="px-3 py-3 text-right">
