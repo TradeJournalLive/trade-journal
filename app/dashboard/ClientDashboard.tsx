@@ -1147,6 +1147,7 @@ export default function ClientDashboard({
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const participantFetchedDatesRef = useRef<Set<string>>(new Set());
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -1428,9 +1429,24 @@ export default function ClientDashboard({
 
   useEffect(() => {
     if (view !== "participants") return;
-    if (participantFlows.length > 0) return;
-    void handleFetchParticipantFromNse();
-  }, [view, participantFlows.length]);
+    let active = true;
+    (async () => {
+      const center = participantViewDate || new Date().toISOString().slice(0, 10);
+      const centerDate = new Date(`${center}T00:00:00`);
+      if (Number.isNaN(centerDate.getTime())) return;
+      const offsets = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7];
+      for (const offset of offsets) {
+        if (!active) return;
+        const date = new Date(centerDate);
+        date.setDate(centerDate.getDate() + offset);
+        const iso = date.toISOString().slice(0, 10);
+        await fetchParticipantForDate(iso, true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [view, participantViewDate]);
 
   useEffect(() => {
     if (view !== "overview" && view !== "news") return;
@@ -2345,11 +2361,16 @@ export default function ClientDashboard({
     setTimeout(() => setFlowStatus(""), 1500);
   }
 
-  async function handleFetchParticipantFromNse() {
-    setFlowStatus("Fetching from NSE...");
+  async function fetchParticipantForDate(date: string, silent = false) {
+    if (participantFetchedDatesRef.current.has(date)) {
+      return true;
+    }
+    if (!silent) {
+      setFlowStatus(`Fetching NSE data for ${date}...`);
+    }
     try {
       const response = await fetch(
-        `/api/participants-nse?date=${encodeURIComponent(flowDate)}`,
+        `/api/participants-nse?date=${encodeURIComponent(date)}`,
         { cache: "no-store" }
       );
       const payload = (await response.json()) as {
@@ -2367,8 +2388,10 @@ export default function ClientDashboard({
       }
       const items = Array.isArray(payload.items) ? payload.items : [];
       if (!items.length) {
-        setFlowStatus("No participant rows received from NSE.");
-        return;
+        if (!silent) {
+          setFlowStatus("No participant rows received from NSE.");
+        }
+        return false;
       }
       setParticipantFlows((prev) => {
         const existing = new Set(prev.map((item) => `${item.date}-${item.participant}`));
@@ -2377,16 +2400,27 @@ export default function ClientDashboard({
         );
         return [...next, ...prev];
       });
+      participantFetchedDatesRef.current.add(payload.date ?? date);
       if (payload.date) {
         setParticipantViewDate(payload.date);
       }
-      setFlowStatus(`Fetched NSE participant data for ${payload.date ?? "latest"} .`);
-      setTimeout(() => setFlowStatus(""), 1800);
+      if (!silent) {
+        setFlowStatus(`Fetched NSE participant data for ${payload.date ?? date}.`);
+        setTimeout(() => setFlowStatus(""), 1800);
+      }
+      return true;
     } catch (error) {
-      setFlowStatus(
-        error instanceof Error ? error.message : "Could not fetch from NSE."
-      );
+      if (!silent) {
+        setFlowStatus(
+          error instanceof Error ? error.message : "Could not fetch from NSE."
+        );
+      }
+      return false;
     }
+  }
+
+  async function handleFetchParticipantFromNse() {
+    await fetchParticipantForDate(flowDate, false);
   }
 
   const participantSummary = useMemo(() => {
@@ -2552,6 +2586,13 @@ export default function ClientDashboard({
     if (score < 0) return "Bearish";
     return "Neutral";
   }, [participantActivityRows]);
+
+  const participantViewDateDisplay = useMemo(() => {
+    if (!participantViewDate) return "N/A";
+    const [year, month, day] = participantViewDate.split("-");
+    if (!year || !month || !day) return participantViewDate;
+    return `${day}/${month}/${year}`;
+  }, [participantViewDate]);
 
   const strategyBeingEdited = useMemo(() => {
     if (!editStrategyId) return null;
@@ -4216,13 +4257,29 @@ export default function ClientDashboard({
               <div className="card">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold">
-                    {participantViewDate} - FII DII FNO Activity
+                    {participantViewDateDisplay} - FII DII FNO Activity
                   </h3>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
+                      onClick={() => {
+                        const d = new Date(`${participantViewDate}T00:00:00`);
+                        d.setDate(d.getDate() - 1);
+                        const prev = d.toISOString().slice(0, 10);
+                        setParticipantViewDate(prev);
+                        setFlowDate(prev);
+                      }}
+                    >
+                      Prev
+                    </button>
                     <span className="text-xs text-muted">Date</span>
                     <select
                       value={participantViewDate}
-                      onChange={(event) => setParticipantViewDate(event.target.value)}
+                      onChange={(event) => {
+                        setParticipantViewDate(event.target.value);
+                        setFlowDate(event.target.value);
+                      }}
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
                     >
                       {participantDateOptions.map((dateItem) => (
@@ -4231,6 +4288,19 @@ export default function ClientDashboard({
                         </option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
+                      onClick={() => {
+                        const d = new Date(`${participantViewDate}T00:00:00`);
+                        d.setDate(d.getDate() + 1);
+                        const next = d.toISOString().slice(0, 10);
+                        setParticipantViewDate(next);
+                        setFlowDate(next);
+                      }}
+                    >
+                      Next
+                    </button>
                   </div>
                 </div>
                 <div className="mt-4 overflow-x-auto">
@@ -4245,21 +4315,38 @@ export default function ClientDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {participantActivityRows.map((row) => (
+                      {participantActivityRows.map((row, index) => (
                         <tr key={`${row.participant}-${row.instrument}`} className="border-t border-white/5">
-                          <td className="px-3 py-2 font-semibold">{row.label}</td>
+                          {index % 3 === 0 ? (
+                            <td
+                              className="px-3 py-2 font-semibold align-middle"
+                              rowSpan={3}
+                            >
+                              {row.label}
+                            </td>
+                          ) : null}
                           <td className="px-3 py-2">{row.instrument}</td>
                           <td className="px-3 py-2 text-right font-semibold">
                             {row.change > 0 ? `+${row.change}` : row.change}
                           </td>
-                          <td className="px-3 py-2">{row.activity}</td>
+                          <td
+                            className={`px-3 py-2 ${
+                              row.activity.includes("Bought")
+                                ? "text-emerald-400"
+                                : row.activity.includes("Sold")
+                                  ? "text-rose-400"
+                                  : "text-slate-300"
+                            }`}
+                          >
+                            {row.activity}
+                          </td>
                           <td className="px-3 py-2">
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                 row.trend === "Bullish"
-                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  ? "bg-emerald-500/25 text-emerald-300"
                                   : row.trend === "Bearish"
-                                    ? "bg-rose-500/20 text-rose-400"
+                                    ? "bg-rose-500/25 text-rose-300"
                                     : "bg-slate-500/20 text-slate-300"
                               }`}
                             >
@@ -4284,6 +4371,11 @@ export default function ClientDashboard({
                           >
                             {participantOverallTrend}
                           </span>
+                        </td>
+                      </tr>
+                      <tr className="border-t border-white/10">
+                        <td colSpan={5} className="px-3 py-2 text-[10px] text-muted">
+                          Note: Trend is based on net participant buy/sell positioning.
                         </td>
                       </tr>
                     </tbody>
