@@ -1147,7 +1147,6 @@ export default function ClientDashboard({
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
-  const participantFetchedDatesRef = useRef<Set<string>>(new Set());
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -1426,27 +1425,6 @@ export default function ClientDashboard({
       setGlobalInstrument(presetInstrument);
     }
   }, [view, presetInstrument, globalInstrument]);
-
-  useEffect(() => {
-    if (view !== "participants") return;
-    let active = true;
-    (async () => {
-      const center = participantViewDate || new Date().toISOString().slice(0, 10);
-      const centerDate = new Date(`${center}T00:00:00`);
-      if (Number.isNaN(centerDate.getTime())) return;
-      const offsets = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7];
-      for (const offset of offsets) {
-        if (!active) return;
-        const date = new Date(centerDate);
-        date.setDate(centerDate.getDate() + offset);
-        const iso = date.toISOString().slice(0, 10);
-        await fetchParticipantForDate(iso, true);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [view, participantViewDate]);
 
   useEffect(() => {
     if (view !== "overview" && view !== "news") return;
@@ -2362,9 +2340,6 @@ export default function ClientDashboard({
   }
 
   async function fetchParticipantForDate(date: string, silent = false) {
-    if (participantFetchedDatesRef.current.has(date)) {
-      return true;
-    }
     if (!silent) {
       setFlowStatus(`Fetching NSE data for ${date}...`);
     }
@@ -2394,13 +2369,9 @@ export default function ClientDashboard({
         return false;
       }
       setParticipantFlows((prev) => {
-        const existing = new Set(prev.map((item) => `${item.date}-${item.participant}`));
-        const next = items.filter(
-          (item) => !existing.has(`${item.date}-${item.participant}`)
-        );
-        return [...next, ...prev];
+        const kept = prev.filter((item) => item.date !== (payload.date ?? date));
+        return [...items, ...kept];
       });
-      participantFetchedDatesRef.current.add(payload.date ?? date);
       if (payload.date) {
         setParticipantViewDate(payload.date);
       }
