@@ -32,6 +32,12 @@ function toIso(dateValue: string) {
   return d.toISOString().slice(0, 10);
 }
 
+function toNiftyDate(iso: string) {
+  const [yyyy, mm, dd] = iso.split("-");
+  if (!yyyy || !mm || !dd) return "";
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function mapParticipant(value: unknown): ParticipantType | null {
   const v = String(value ?? "").trim().toLowerCase();
   if (!v) return null;
@@ -113,61 +119,53 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid or missing date." }, { status: 400 });
   }
 
+  const bearer = process.env.NIFTYTRADER_BEARER_TOKEN;
+  if (!bearer) {
+    return NextResponse.json(
+      {
+        error:
+          "Missing NIFTYTRADER_BEARER_TOKEN. Add it in Vercel and local env."
+      },
+      { status: 500 }
+    );
+  }
+
   try {
-    const baseUrl =
+    const url =
       "https://webapi.niftytrader.in/webapi/Resource/participant-oi-table-data";
-    const commonHeaders = {
+    const headers = {
       accept: "application/json, text/plain, */*",
+      "accept-language": "en-US,en;q=0.9",
+      authorization: `Bearer ${bearer}`,
+      "content-type": "application/json",
       origin: "https://www.niftytrader.in",
-      referer: "https://www.niftytrader.in/participant-wise-oi",
-      "x-requested-with": "XMLHttpRequest",
+      platform_type: "1",
+      referer: "https://www.niftytrader.in/",
       "user-agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     };
-
-    const attempts: Array<() => Promise<Response>> = [
-      () =>
-        fetch(`${baseUrl}?date=${encodeURIComponent(targetDate)}`, {
-          method: "GET",
-          headers: commonHeaders,
-          next: { revalidate: 300 }
-        }),
-      () =>
-        fetch(baseUrl, {
-          method: "POST",
-          headers: {
-            ...commonHeaders,
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({ date: targetDate }),
-          next: { revalidate: 300 }
-        }),
-      () =>
-        fetch(baseUrl, {
-          method: "POST",
-          headers: {
-            ...commonHeaders,
-            "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-          },
-          body: `date=${encodeURIComponent(targetDate)}`,
-          next: { revalidate: 300 }
-        })
+    const bodyAttempts = [
+      { date: toNiftyDate(targetDate) },
+      { date: targetDate },
+      { date: "" }
     ];
 
     let response: Response | null = null;
-    for (const attempt of attempts) {
-      const res = await attempt();
+    for (const body of bodyAttempts) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        next: { revalidate: 300 }
+      });
       if (res.ok) {
         response = res;
         break;
       }
-      if (res.status !== 405) {
-        response = res;
-        break;
-      }
+      response = res;
     }
 
-    if (!response || !response.ok) {
+    if (!response?.ok) {
       return NextResponse.json(
         {
           error: `NiftyTrader API failed (${response?.status ?? "no-response"}).`
