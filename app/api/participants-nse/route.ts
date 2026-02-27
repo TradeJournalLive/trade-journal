@@ -85,6 +85,24 @@ function extractRows(payload: unknown): Record<string, unknown>[] {
       if (nested.length) return nested;
     }
   }
+  // Deep fallback: search recursively for first array of objects.
+  const stack: unknown[] = [payload];
+  while (stack.length) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) {
+      const rows = node.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item)
+      );
+      if (rows.length) return rows;
+      node.forEach((item) => stack.push(item));
+      continue;
+    }
+    Object.values(node as Record<string, unknown>).forEach((value) =>
+      stack.push(value)
+    );
+  }
   return [];
 }
 
@@ -177,8 +195,16 @@ export async function GET(request: Request) {
     const payload = await response.json();
     const rows = extractRows(payload);
     if (!rows.length) {
+      const payloadKeys =
+        payload && typeof payload === "object"
+          ? Object.keys(payload as Record<string, unknown>).slice(0, 20)
+          : [];
       return NextResponse.json(
-        { error: "No participant rows returned by NiftyTrader." },
+        {
+          error: "No participant rows returned by NiftyTrader.",
+          payloadType: Array.isArray(payload) ? "array" : typeof payload,
+          payloadKeys
+        },
         { status: 422 }
       );
     }
