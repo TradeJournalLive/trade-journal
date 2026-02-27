@@ -114,21 +114,64 @@ export async function GET(request: Request) {
   }
 
   try {
-    const url = `https://webapi.niftytrader.in/webapi/Resource/participant-oi-table-data?date=${encodeURIComponent(targetDate)}`;
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json, text/plain, */*",
-        origin: "https://www.niftytrader.in",
-        referer: "https://www.niftytrader.in/participant-wise-oi",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-      },
-      next: { revalidate: 300 }
-    });
+    const baseUrl =
+      "https://webapi.niftytrader.in/webapi/Resource/participant-oi-table-data";
+    const commonHeaders = {
+      accept: "application/json, text/plain, */*",
+      origin: "https://www.niftytrader.in",
+      referer: "https://www.niftytrader.in/participant-wise-oi",
+      "x-requested-with": "XMLHttpRequest",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    };
 
-    if (!response.ok) {
+    const attempts: Array<() => Promise<Response>> = [
+      () =>
+        fetch(`${baseUrl}?date=${encodeURIComponent(targetDate)}`, {
+          method: "GET",
+          headers: commonHeaders,
+          next: { revalidate: 300 }
+        }),
+      () =>
+        fetch(baseUrl, {
+          method: "POST",
+          headers: {
+            ...commonHeaders,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ date: targetDate }),
+          next: { revalidate: 300 }
+        }),
+      () =>
+        fetch(baseUrl, {
+          method: "POST",
+          headers: {
+            ...commonHeaders,
+            "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
+          },
+          body: `date=${encodeURIComponent(targetDate)}`,
+          next: { revalidate: 300 }
+        })
+    ];
+
+    let response: Response | null = null;
+    for (const attempt of attempts) {
+      const res = await attempt();
+      if (res.ok) {
+        response = res;
+        break;
+      }
+      if (res.status !== 405) {
+        response = res;
+        break;
+      }
+    }
+
+    if (!response || !response.ok) {
       return NextResponse.json(
-        { error: `NiftyTrader API failed (${response.status}).` },
+        {
+          error: `NiftyTrader API failed (${response?.status ?? "no-response"}).`
+        },
         { status: 503 }
       );
     }
