@@ -88,20 +88,21 @@ function pairFromRow(
   sellKeys: string[],
   changeKeys: string[]
 ) {
+  // Prefer explicit "change" fields from source (closest to displayed participant activity tables).
+  const changeRaw = getExact(row, changeKeys);
+  const change = toNumber(changeRaw);
+  if (change > 0) return { buy: change, sell: 0, ok: true };
+  if (change < 0) return { buy: 0, sell: Math.abs(change), ok: true };
+  if (changeRaw !== undefined) return { buy: 0, sell: 0, ok: true };
+
   const buyRaw = getExact(row, buyKeys);
   const sellRaw = getExact(row, sellKeys);
-  const changeRaw = getExact(row, changeKeys);
 
   const buy = toNumber(buyRaw);
   const sell = toNumber(sellRaw);
   if (buy !== 0 || sell !== 0) {
     return { buy, sell, ok: true };
   }
-
-  const change = toNumber(changeRaw);
-  if (change > 0) return { buy: change, sell: 0, ok: true };
-  if (change < 0) return { buy: 0, sell: Math.abs(change), ok: true };
-  if (changeRaw !== undefined) return { buy: 0, sell: 0, ok: true };
   return { buy: 0, sell: 0, ok: false };
 }
 
@@ -152,19 +153,26 @@ export async function GET(request: Request) {
           row,
           ["futureIndexBuy", "futureBuy", "futureBought", "futureLong", "futureContractsBuy"],
           ["futureIndexSell", "futureSell", "futureSold", "futureShort", "futureContractsSell"],
-          ["futureChange", "futureNetChange", "future_contract_change"]
+          [
+            "futureChange",
+            "futureNetChange",
+            "future_contract_change",
+            "futureContractsChange",
+            "futChange",
+            "futureOiChange"
+          ]
         );
         const ce = pairFromRow(
           row,
           ["ceIndexBuy", "ceBuy", "callBuy", "callLong", "optionCallBuy"],
           ["ceIndexSell", "ceSell", "callSell", "callShort", "optionCallSell"],
-          ["ceChange", "callChange", "ceNetChange"]
+          ["ceChange", "callChange", "ceNetChange", "ceContractsChange", "callOiChange"]
         );
         const pe = pairFromRow(
           row,
           ["peIndexBuy", "peBuy", "putBuy", "putLong", "optionPutBuy"],
           ["peIndexSell", "peSell", "putSell", "putShort", "optionPutSell"],
-          ["peChange", "putChange", "peNetChange"]
+          ["peChange", "putChange", "peNetChange", "peContractsChange", "putOiChange"]
         );
 
         // Strict mode: require each instrument pair to be discoverable from exact keys.
