@@ -278,10 +278,16 @@ export async function GET(request: Request) {
 
     if (!items.length) {
       const sampleKeys = Object.keys(rows[0] ?? {}).slice(0, 30);
+      const sampleRow =
+        rows[0] && typeof rows[0] === "object"
+          ? Object.fromEntries(Object.entries(rows[0]).slice(0, 30))
+          : {};
       return NextResponse.json(
         {
           error: "Strict NiftyTrader mapping failed for this date.",
-          keys: sampleKeys
+          rowCount: rows.length,
+          keys: sampleKeys,
+          sampleRow
         },
         { status: 422 }
       );
