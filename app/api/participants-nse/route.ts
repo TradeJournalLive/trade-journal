@@ -38,6 +38,21 @@ function toNiftyDate(iso: string) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function rowDateToIso(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+  if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split(/[-/]/);
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
 function mapParticipant(value: unknown): ParticipantType | null {
   const v = String(value ?? "").trim().toLowerCase();
   if (!v) return null;
@@ -283,7 +298,15 @@ export async function GET(request: Request) {
       );
     }
 
-    const items: ParticipantFlow[] = rows
+    const matchedRows = rows.filter((row) => {
+      const rowDate = rowDateToIso(
+        getExact(row, ["created_at", "createdAt", "date", "Date"])
+      );
+      return rowDate === targetDate;
+    });
+    const strictRows = matchedRows.length ? matchedRows : rows;
+
+    const items: ParticipantFlow[] = strictRows
       .map((row, index) => {
         const participant = mapParticipant(
           getExact(row, ["clientType", "client_type", "participant", "category", "client"])
@@ -330,10 +353,10 @@ export async function GET(request: Request) {
       .filter((item): item is ParticipantFlow => Boolean(item));
 
     if (!items.length) {
-      const sampleKeys = Object.keys(rows[0] ?? {}).slice(0, 30);
+      const sampleKeys = Object.keys(strictRows[0] ?? {}).slice(0, 30);
       const sampleRow =
-        rows[0] && typeof rows[0] === "object"
-          ? Object.fromEntries(Object.entries(rows[0]).slice(0, 30))
+        strictRows[0] && typeof strictRows[0] === "object"
+          ? Object.fromEntries(Object.entries(strictRows[0]).slice(0, 30))
           : {};
       return NextResponse.json(
         {
@@ -341,6 +364,16 @@ export async function GET(request: Request) {
           rowCount: rows.length,
           keys: sampleKeys,
           sampleRow
+        },
+        { status: 422 }
+      );
+    }
+
+    if (!matchedRows.length) {
+      return NextResponse.json(
+        {
+          error: "No exact rows found for requested date.",
+          requestedDate: targetDate
         },
         { status: 422 }
       );
