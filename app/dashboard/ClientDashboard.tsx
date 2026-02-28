@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
@@ -128,6 +128,7 @@ type MarketNewsItem = {
   link: string;
   source: string;
   publishedAt: string;
+  image?: string;
   impact: "High" | "Medium";
 };
 
@@ -1146,7 +1147,10 @@ export default function ClientDashboard({
   const [marketNews, setMarketNews] = useState<MarketNewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState("");
+  const [newsPage, setNewsPage] = useState(1);
+  const [newsHasMore, setNewsHasMore] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const participantsTableRef = useRef<HTMLTableElement | null>(null);
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -1175,6 +1179,47 @@ export default function ClientDashboard({
     }
     return PARTICIPANTS_KEY;
   }, [dataSource, session?.user?.id]);
+
+  const loadMarketNews = useCallback(async ({
+    page = 1,
+    append = false,
+    pageSize = 8
+  }: {
+    page?: number;
+    append?: boolean;
+    pageSize?: number;
+  } = {}) => {
+    setNewsLoading(true);
+    setNewsError("");
+    try {
+      const response = await fetch(
+        `/api/market-news?page=${page}&pageSize=${pageSize}`,
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as {
+        items?: MarketNewsItem[];
+        error?: string;
+        page?: number;
+        hasMore?: boolean;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to fetch market news.");
+      }
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      setMarketNews((prev) => (append ? [...prev, ...items] : items));
+      setNewsPage(payload.page ?? page);
+      setNewsHasMore(Boolean(payload.hasMore));
+    } catch (error) {
+      if (!append) {
+        setMarketNews([]);
+      }
+      setNewsError(
+        error instanceof Error ? error.message : "Failed to fetch market news."
+      );
+    } finally {
+      setNewsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -1417,7 +1462,7 @@ export default function ClientDashboard({
     if (view !== "journal") {
       setEditingTrade(null);
     }
-  }, [view]);
+  }, [view, loadMarketNews]);
 
   useEffect(() => {
     if (view !== "journal") return;
@@ -1428,33 +1473,9 @@ export default function ClientDashboard({
 
   useEffect(() => {
     if (view !== "overview" && view !== "news") return;
-    let active = true;
-    (async () => {
-      setNewsLoading(true);
-      setNewsError("");
-      try {
-        const response = await fetch("/api/market-news", { cache: "no-store" });
-        const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
-        if (!response.ok) {
-          throw new Error(payload.error || "Failed to fetch market news.");
-        }
-        if (active) {
-          setMarketNews(Array.isArray(payload.items) ? payload.items : []);
-        }
-      } catch (error) {
-        if (active) {
-          setMarketNews([]);
-          setNewsError(error instanceof Error ? error.message : "Failed to fetch market news.");
-        }
-      } finally {
-        if (active) {
-          setNewsLoading(false);
-        }
-      }
-    })();
-    return () => {
-      active = false;
-    };
+    setNewsPage(1);
+    const pageSize = view === "news" ? 10 : 6;
+    void loadMarketNews({ page: 1, append: false, pageSize });
   }, [view]);
 
   useEffect(() => {
@@ -2582,6 +2603,143 @@ export default function ClientDashboard({
     return `${day}/${month}/${year}`;
   }, [participantViewDate]);
 
+  function handleParticipantCsvDownload() {
+    const lines = [
+      `${participantViewDateDisplay} - FII DII FNO Activity`,
+      "Participant,Instrument,Change,Activity,Trend",
+      ...participantActivityRows.map(
+        (row) =>
+          `${row.label},${row.instrument},${row.change},${row.activity},${row.trend}`
+      ),
+      `OVERALL TREND,,,,${participantOverallTrend}`
+    ];
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `participant-activity-${participantViewDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleParticipantPngDownload() {
+    const headers = ["Participant", "Instrument", "Change", "Activity", "Trend"];
+    const rowHeight = 44;
+    const titleHeight = 54;
+    const headerHeight = 44;
+    const footerHeight = 48;
+    const tableRows = participantActivityRows.length;
+    const width = 980;
+    const height = titleHeight + headerHeight + tableRows * rowHeight + footerHeight;
+    const colWidths = [180, 170, 190, 230, 210];
+    const starts = [0, colWidths[0], colWidths[0] + colWidths[1], colWidths[0] + colWidths[1] + colWidths[2], colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3]];
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "700 28px Inter, system-ui, sans-serif";
+    ctx.fillText(`${participantViewDateDisplay} - FII DII FNO Activity`, 24, 36);
+
+    const tableTop = titleHeight;
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(0, tableTop, width, headerHeight);
+    ctx.font = "700 18px Inter, system-ui, sans-serif";
+    ctx.fillStyle = "#0f172a";
+    headers.forEach((header, index) => {
+      const x = starts[index] + 16;
+      const y = tableTop + 28;
+      if (index === 2) {
+        ctx.textAlign = "right";
+        ctx.fillText(header, starts[index] + colWidths[index] - 16, y);
+        ctx.textAlign = "left";
+      } else {
+        ctx.fillText(header, x, y);
+      }
+    });
+
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= tableRows + 1; i += 1) {
+      const y = tableTop + headerHeight + i * rowHeight;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    starts.concat(width).forEach((x) => {
+      ctx.beginPath();
+      ctx.moveTo(x, tableTop);
+      ctx.lineTo(x, tableTop + headerHeight + tableRows * rowHeight);
+      ctx.stroke();
+    });
+
+    ctx.font = "600 16px Inter, system-ui, sans-serif";
+    participantActivityRows.forEach((row, index) => {
+      const top = tableTop + headerHeight + index * rowHeight;
+      const midY = top + 28;
+
+      if (index % 3 === 0) {
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "700 16px Inter, system-ui, sans-serif";
+        ctx.fillText(row.label, 16, midY + rowHeight);
+        ctx.font = "600 16px Inter, system-ui, sans-serif";
+      }
+
+      ctx.fillStyle = "#0f172a";
+      ctx.fillText(row.instrument, starts[1] + 16, midY);
+      ctx.textAlign = "right";
+      ctx.fillText(
+        row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString(),
+        starts[2] + colWidths[2] - 16,
+        midY
+      );
+      ctx.textAlign = "left";
+
+      ctx.fillStyle =
+        row.activity.includes("Bought")
+          ? "#047857"
+          : row.activity.includes("Sold")
+            ? "#be123c"
+            : "#334155";
+      ctx.fillText(row.activity, starts[3] + 16, midY);
+
+      ctx.fillStyle =
+        row.trend === "Bullish"
+          ? "#047857"
+          : row.trend === "Bearish"
+            ? "#b91c1c"
+            : "#334155";
+      ctx.fillText(row.trend, starts[4] + 16, midY);
+    });
+
+    const footerTop = tableTop + headerHeight + tableRows * rowHeight;
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, footerTop, width, footerHeight);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 20px Inter, system-ui, sans-serif";
+    ctx.fillText("OVERALL TREND", 24, footerTop + 30);
+    ctx.fillStyle =
+      participantOverallTrend === "Bullish"
+        ? "#34d399"
+        : participantOverallTrend === "Bearish"
+          ? "#f87171"
+          : "#cbd5e1";
+    ctx.fillText(participantOverallTrend, width - 220, footerTop + 30);
+
+    const link = document.createElement("a");
+    link.download = `participant-activity-${participantViewDate}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
   const strategyBeingEdited = useMemo(() => {
     if (!editStrategyId) return null;
     return strategies.find((strategy) => strategy.id === editStrategyId) ?? null;
@@ -3185,64 +3343,69 @@ export default function ClientDashboard({
                   </div>
                 </div>
 
-                <div className="card">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm text-muted">India market impact news</h3>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setNewsLoading(true);
-                        setNewsError("");
-                        try {
-                          const response = await fetch("/api/market-news", { cache: "no-store" });
-                          const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
-                          if (!response.ok) {
-                            throw new Error(payload.error || "Failed to refresh news.");
-                          }
-                          setMarketNews(Array.isArray(payload.items) ? payload.items : []);
-                        } catch (error) {
-                          setMarketNews([]);
-                          setNewsError(error instanceof Error ? error.message : "Failed to refresh news.");
-                        } finally {
-                          setNewsLoading(false);
-                        }
-                      }}
-                      className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    {newsLoading && (
-                      <div className="text-xs text-muted">Loading latest headlines...</div>
-                    )}
-                    {!newsLoading && newsError && (
-                      <div className="text-xs text-negative">{newsError}</div>
-                    )}
-                    {!newsLoading && !newsError && marketNews.length === 0 && (
-                      <div className="text-xs text-muted">No headlines available right now.</div>
-                    )}
-                    {!newsLoading &&
-                      !newsError &&
-                      marketNews.slice(0, 6).map((item) => (
-                        <a
-                          key={`${item.link}-${item.publishedAt}`}
-                          href={item.link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition hover:border-primary/40 hover:bg-primary/10"
-                        >
-                          <div className="text-xs font-semibold text-white">
-                            {item.title}
-                          </div>
-                          <div className="mt-1 flex items-center justify-between text-[10px] text-muted">
-                            <span>{item.source}</span>
-                            <span>{item.impact}</span>
-                          </div>
-                        </a>
-                      ))}
-                  </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-semibold">India market impact news</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadMarketNews({ page: 1, append: false, pageSize: 6 })}
+                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:brightness-105"
+                  >
+                    Refresh
+                  </button>
+                  <Link
+                    href="/dashboard/news"
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    View all
+                  </Link>
                 </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {newsLoading && (
+                  <div className="text-sm text-muted">Loading latest headlines...</div>
+                )}
+                {!newsLoading && newsError && (
+                  <div className="text-sm text-negative">{newsError}</div>
+                )}
+                {!newsLoading && !newsError && marketNews.length === 0 && (
+                  <div className="text-sm text-muted">No headlines available right now.</div>
+                )}
+                {!newsLoading &&
+                  !newsError &&
+                  marketNews.slice(0, 6).map((item) => (
+                    <a
+                      key={`${item.link}-${item.publishedAt}`}
+                      href={item.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40"
+                    >
+                      <div className="h-28 bg-[linear-gradient(135deg,rgba(37,99,235,0.14),rgba(20,184,166,0.12))]">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="space-y-2 p-3">
+                        <div className="line-clamp-2 text-sm font-semibold text-slate-900">
+                          {item.title}
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span>{item.source}</span>
+                          <span>{item.impact}</span>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
               </div>
             </div>
 
@@ -4138,47 +4301,28 @@ export default function ClientDashboard({
                       Next
                     </button>
                     <button
-                      className="rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
+                      className="rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
                       onClick={handleFetchParticipantFromNse}
                     >
                       Fetch
                     </button>
                     <button
-                      className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
-                      onClick={() => {
-                        const lines = [
-                          `${participantViewDateDisplay} - FII DII FNO Activity`,
-                          "Participant,Instrument,Change,Activity,Trend",
-                          ...participantActivityRows.map(
-                            (row) =>
-                              `${row.label},${row.instrument},${row.change},${row.activity},${row.trend}`
-                          ),
-                          `OVERALL TREND,,,,${participantOverallTrend}`
-                        ];
-                        const blob = new Blob([lines.join("\n")], {
-                          type: "text/csv;charset=utf-8;"
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `participant-activity-${participantViewDate}.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
+                      className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+                      onClick={handleParticipantCsvDownload}
                     >
                       Download CSV
                     </button>
                     <button
-                      className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
-                      onClick={() => window.print()}
+                      className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                      onClick={handleParticipantPngDownload}
                     >
-                      Download PDF
+                      Download PNG
                     </button>
                   </div>
                 </div>
                 {flowStatus && <div className="mt-2 text-xs text-muted">{flowStatus}</div>}
                 <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full text-xs">
+                  <table ref={participantsTableRef} className="min-w-full text-xs">
                     <thead className="text-muted">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">Participant</th>
@@ -4215,10 +4359,10 @@ export default function ClientDashboard({
                             <span
                               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                 row.trend === "Bullish"
-                                  ? "bg-emerald-500/25 text-emerald-800 dark:text-emerald-200"
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-200"
                                   : row.trend === "Bearish"
-                                    ? "bg-rose-500/25 text-rose-800 dark:text-rose-200"
-                                    : "bg-slate-500/20 text-slate-800 dark:text-slate-200"
+                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-500/25 dark:text-rose-200"
+                                    : "bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200"
                               }`}
                             >
                               {row.trend}
@@ -4234,10 +4378,10 @@ export default function ClientDashboard({
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                               participantOverallTrend === "Bullish"
-                                ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200"
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200"
                                 : participantOverallTrend === "Bearish"
-                                  ? "bg-rose-500/20 text-rose-800 dark:text-rose-200"
-                                  : "bg-slate-500/20 text-slate-800 dark:text-slate-200"
+                                  ? "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200"
+                                  : "bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200"
                             }`}
                           >
                             {participantOverallTrend}
@@ -4263,29 +4407,18 @@ export default function ClientDashboard({
               <div className="card border border-blue-200/40 bg-[linear-gradient(135deg,rgba(37,99,235,0.08),rgba(20,184,166,0.06))]">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold">NSE/BSE impact feed</h3>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setNewsLoading(true);
-                      setNewsError("");
-                      try {
-                        const response = await fetch("/api/market-news", { cache: "no-store" });
-                        const payload = (await response.json()) as { items?: MarketNewsItem[]; error?: string };
-                        if (!response.ok) {
-                          throw new Error(payload.error || "Failed to refresh news.");
-                        }
-                        setMarketNews(Array.isArray(payload.items) ? payload.items : []);
-                      } catch (error) {
-                        setMarketNews([]);
-                        setNewsError(error instanceof Error ? error.message : "Failed to refresh news.");
-                      } finally {
-                        setNewsLoading(false);
-                      }
-                    }}
-                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
-                  >
-                    Refresh
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadMarketNews({ page: 1, append: false, pageSize: 10 })}
+                      className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
+                    >
+                      Refresh
+                    </button>
+                    <span className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600">
+                      Auto-refresh: 1h
+                    </span>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-3">
@@ -4306,25 +4439,57 @@ export default function ClientDashboard({
                         href={item.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="block rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-primary/40 hover:bg-primary/10"
+                        className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40"
                       >
-                        <div className="text-sm font-semibold text-white">{item.title}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <span>{item.source}</span>
-                          <span>•</span>
-                          <span>{item.publishedAt || "Latest"}</span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 font-semibold ${
-                              item.impact === "High"
-                                ? "bg-rose-500/15 text-rose-400"
-                                : "bg-amber-500/15 text-amber-400"
-                            }`}
-                          >
-                            {item.impact} impact
-                          </span>
+                        <div className="h-36 bg-[linear-gradient(135deg,rgba(37,99,235,0.14),rgba(20,184,166,0.12))]">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.title}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : null}
+                        </div>
+                        <div className="px-4 py-3">
+                          <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span>{item.source}</span>
+                            <span>•</span>
+                            <span>{item.publishedAt || "Latest"}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 font-semibold ${
+                                item.impact === "High"
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {item.impact} impact
+                            </span>
+                          </div>
                         </div>
                       </a>
                     ))}
+                  {!newsLoading && !newsError && newsHasMore && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void loadMarketNews({
+                            page: newsPage + 1,
+                            append: true,
+                            pageSize: 10
+                          })
+                        }
+                        className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Next page
+                      </button>
+                    </div>
+                  )}
+                  {!newsLoading && !newsError && !newsHasMore && marketNews.length > 0 && (
+                    <div className="text-xs text-slate-500">No more headlines.</div>
+                  )}
                 </div>
               </div>
             </section>
