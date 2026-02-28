@@ -198,37 +198,75 @@ export async function GET(request: Request) {
       "user-agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     };
-    const bodyAttempts = [
-      { date: toNiftyDate(targetDate) },
-      { date: targetDate },
-      { date: "" }
-    ];
-
-    let response: Response | null = null;
-    for (const body of bodyAttempts) {
+    const fetchPayload = async (dateValue: string) => {
       const res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify({ date: dateValue }),
         next: { revalidate: 300 }
       });
-      if (res.ok) {
-        response = res;
+      if (!res.ok) return null;
+      return res.json();
+    };
+
+    const dateAttempts = [toNiftyDate(targetDate), targetDate, ""];
+    let payload: unknown = null;
+    let responseOk = false;
+
+    for (const dateValue of dateAttempts) {
+      const nextPayload = await fetchPayload(dateValue);
+      if (!nextPayload) continue;
+      payload = nextPayload;
+      responseOk = true;
+      const rows = extractRows(payload);
+      const targetedRows = rows.filter((row) =>
+        String(getExact(row, ["created_at", "createdAt", "date"]) ?? "").startsWith(
+          targetDate
+        )
+      );
+      if (targetedRows.length) {
+        payload = { rows: targetedRows };
         break;
       }
-      response = res;
+
+      const resultData =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>).resultData
+          : null;
+      const availableDates =
+        resultData && typeof resultData === "object"
+          ? (resultData as Record<string, unknown>).date
+          : null;
+      if (Array.isArray(availableDates)) {
+        const matched = availableDates.find(
+          (item) => typeof item === "string" && item.startsWith(targetDate)
+        ) as string | undefined;
+        if (matched) {
+          const byTimestamp = await fetchPayload(matched);
+          if (byTimestamp) {
+            const stampRows = extractRows(byTimestamp).filter((row) =>
+              String(
+                getExact(row, ["created_at", "createdAt", "date"]) ?? ""
+              ).startsWith(targetDate)
+            );
+            if (stampRows.length) {
+              payload = { rows: stampRows };
+              break;
+            }
+            payload = byTimestamp;
+          }
+        }
+      }
     }
 
-    if (!response?.ok) {
+    if (!responseOk || !payload) {
       return NextResponse.json(
         {
-          error: `NiftyTrader API failed (${response?.status ?? "no-response"}).`
+          error: "NiftyTrader API failed (no successful response)."
         },
         { status: 503 }
       );
     }
-
-    const payload = await response.json();
     const rows = extractRows(payload);
     if (!rows.length) {
       const payloadKeys =
