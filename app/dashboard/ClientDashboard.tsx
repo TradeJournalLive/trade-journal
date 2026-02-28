@@ -4095,159 +4095,12 @@ export default function ClientDashboard({
               id="participants"
               className="mx-auto max-w-6xl space-y-6 px-6 py-8"
             >
-              <div>
-                <h2 className="section-title">Participant Activity (India)</h2>
-                <p className="section-lead">
-                  Track who sold calls and puts (FII, DII, Client, Pro) by quantity.
-                </p>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="card space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold">Add activity</h3>
-                    <p className="text-sm text-muted">
-                      Enter daily participant sell-side quantities.
-                    </p>
-                  </div>
-                  <div className="grid gap-3">
-                    <input
-                      type="date"
-                      value={flowDate}
-                      onChange={(event) => {
-                        setFlowDate(event.target.value);
-                        setParticipantViewDate(event.target.value);
-                      }}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <select
-                      value={flowParticipant}
-                      onChange={(event) =>
-                        setFlowParticipant(event.target.value as ParticipantType)
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    >
-                      <option value="FII">FII</option>
-                      <option value="DII">DII</option>
-                      <option value="Client">Client</option>
-                      <option value="Pro">Pro</option>
-                    </select>
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Future buy qty"
-                      value={flowFutureBought}
-                      onChange={(event) => setFlowFutureBought(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Future sold qty"
-                      value={flowFutureSold}
-                      onChange={(event) => setFlowFutureSold(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Call buy qty"
-                      value={flowCallBought}
-                      onChange={(event) => setFlowCallBought(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Put buy qty"
-                      value={flowPutBought}
-                      onChange={(event) => setFlowPutBought(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Call sold qty"
-                      value={flowCallSold}
-                      onChange={(event) => setFlowCallSold(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Put sold qty"
-                      value={flowPutSold}
-                      onChange={(event) => setFlowPutSold(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
-                    />
-                    <button
-                      className="w-fit rounded-full bg-primary px-4 py-2 text-xs font-semibold text-on-primary"
-                      onClick={handleAddParticipantFlow}
-                    >
-                      Save activity
-                    </button>
-                    <button
-                      className="w-fit rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
-                      onClick={handleFetchParticipantFromNse}
-                    >
-                      Fetch from NiftyTrader for selected date
-                    </button>
-                    <button
-                      className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
-                      onClick={handleAddSampleParticipantFlows}
-                    >
-                      Add sample data
-                    </button>
-                    {flowStatus && (
-                      <span className="text-xs text-muted">{flowStatus}</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="card space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">Participant summary</h3>
-                    <span className="text-xs text-muted">
-                      {participantFlows.length} entries
-                    </span>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {participantSummary.map((item) => (
-                      <div key={item.participant} className="kpi">
-                        <div className="text-xs text-muted">{item.participant}</div>
-                        <div className="mt-2 text-sm">
-                          Future buy: <span className="font-semibold">{item.futureBuy}</span>
-                        </div>
-                        <div className="text-sm">
-                          Future sold: <span className="font-semibold">{item.futureSold}</span>
-                        </div>
-                        <div className="text-sm">
-                          Call buy: <span className="font-semibold">{item.callBuy}</span>
-                        </div>
-                        <div className="text-sm">
-                          Put buy: <span className="font-semibold">{item.putBuy}</span>
-                        </div>
-                        <div className="text-sm">
-                          Call sold: <span className="font-semibold">{item.callSold}</span>
-                        </div>
-                        <div className="text-sm">
-                          Put sold: <span className="font-semibold">{item.putSold}</span>
-                        </div>
-                        <div className="mt-1 text-xs text-muted">
-                          Net Fut: {item.netFutures} · Net Calls: {item.netCalls} · Net Puts: {item.netPuts}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               <div className="card">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold">
                     {participantViewDateDisplay} - FII DII FNO Activity
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
@@ -4262,20 +4115,15 @@ export default function ClientDashboard({
                       Prev
                     </button>
                     <span className="text-xs text-muted">Date</span>
-                    <select
+                    <input
+                      type="date"
                       value={participantViewDate}
                       onChange={(event) => {
                         setParticipantViewDate(event.target.value);
                         setFlowDate(event.target.value);
                       }}
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
-                    >
-                      {participantDateOptions.map((dateItem) => (
-                        <option key={dateItem} value={dateItem}>
-                          {dateItem}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     <button
                       type="button"
                       className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
@@ -4289,8 +4137,46 @@ export default function ClientDashboard({
                     >
                       Next
                     </button>
+                    <button
+                      className="rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-on-primary"
+                      onClick={handleFetchParticipantFromNse}
+                    >
+                      Fetch
+                    </button>
+                    <button
+                      className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
+                      onClick={() => {
+                        const lines = [
+                          `${participantViewDateDisplay} - FII DII FNO Activity`,
+                          "Participant,Instrument,Change,Activity,Trend",
+                          ...participantActivityRows.map(
+                            (row) =>
+                              `${row.label},${row.instrument},${row.change},${row.activity},${row.trend}`
+                          ),
+                          `OVERALL TREND,,,,${participantOverallTrend}`
+                        ];
+                        const blob = new Blob([lines.join("\n")], {
+                          type: "text/csv;charset=utf-8;"
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `participant-activity-${participantViewDate}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      Download CSV
+                    </button>
+                    <button
+                      className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
+                      onClick={() => window.print()}
+                    >
+                      Download PDF
+                    </button>
                   </div>
                 </div>
+                {flowStatus && <div className="mt-2 text-xs text-muted">{flowStatus}</div>}
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead className="text-muted">
@@ -4306,36 +4192,33 @@ export default function ClientDashboard({
                       {participantActivityRows.map((row, index) => (
                         <tr key={`${row.participant}-${row.instrument}`} className="border-t border-white/5">
                           {index % 3 === 0 ? (
-                            <td
-                              className="px-3 py-2 font-semibold align-middle"
-                              rowSpan={3}
-                            >
+                            <td className="px-3 py-2 font-semibold align-middle" rowSpan={3}>
                               {row.label}
                             </td>
                           ) : null}
                           <td className="px-3 py-2">{row.instrument}</td>
                           <td className="px-3 py-2 text-right font-semibold">
-                            {row.change > 0 ? `+${row.change}` : row.change}
+                            {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
                           </td>
                           <td
                             className={`px-3 py-2 ${
                               row.activity.includes("Bought")
-                                ? "text-emerald-400"
+                                ? "text-emerald-700 dark:text-emerald-300"
                                 : row.activity.includes("Sold")
-                                  ? "text-rose-400"
-                                  : "text-slate-300"
+                                  ? "text-rose-700 dark:text-rose-300"
+                                  : "text-slate-700 dark:text-slate-200"
                             }`}
                           >
                             {row.activity}
                           </td>
                           <td className="px-3 py-2">
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                 row.trend === "Bullish"
-                                  ? "bg-emerald-500/25 text-emerald-300"
+                                  ? "bg-emerald-500/25 text-emerald-800 dark:text-emerald-200"
                                   : row.trend === "Bearish"
-                                    ? "bg-rose-500/25 text-rose-300"
-                                    : "bg-slate-500/20 text-slate-300"
+                                    ? "bg-rose-500/25 text-rose-800 dark:text-rose-200"
+                                    : "bg-slate-500/20 text-slate-800 dark:text-slate-200"
                               }`}
                             >
                               {row.trend}
@@ -4349,82 +4232,18 @@ export default function ClientDashboard({
                         </td>
                         <td className="px-3 py-3">
                           <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                               participantOverallTrend === "Bullish"
-                                ? "bg-emerald-500/20 text-emerald-400"
+                                ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200"
                                 : participantOverallTrend === "Bearish"
-                                  ? "bg-rose-500/20 text-rose-400"
-                                  : "bg-slate-500/20 text-slate-300"
+                                  ? "bg-rose-500/20 text-rose-800 dark:text-rose-200"
+                                  : "bg-slate-500/20 text-slate-800 dark:text-slate-200"
                             }`}
                           >
                             {participantOverallTrend}
                           </span>
                         </td>
                       </tr>
-                      <tr className="border-t border-white/10">
-                        <td colSpan={5} className="px-3 py-2 text-[10px] text-muted">
-                          Note: Change = selected day net (buy - sell) contracts from NSE.
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Latest entries</h3>
-                  <span className="text-xs text-muted">Most recent first</span>
-                </div>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full text-xs">
-                    <thead className="text-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium">Date</th>
-                        <th className="px-3 py-2 text-left font-medium">Participant</th>
-                        <th className="px-3 py-2 text-right font-medium">Future buy</th>
-                        <th className="px-3 py-2 text-right font-medium">Future sold</th>
-                        <th className="px-3 py-2 text-right font-medium">Call buy</th>
-                        <th className="px-3 py-2 text-right font-medium">Put buy</th>
-                        <th className="px-3 py-2 text-right font-medium">Call sold</th>
-                        <th className="px-3 py-2 text-right font-medium">Put sold</th>
-                        <th className="px-3 py-2 text-right font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {participantFlows.length === 0 ? (
-                        <tr className="border-t border-white/5">
-                          <td className="px-3 py-4 text-muted" colSpan={9}>
-                            No participant activity added yet. Add entry above or use
-                            "Add sample data".
-                          </td>
-                        </tr>
-                      ) : (
-                        participantFlows
-                          .slice()
-                          .sort((a, b) => b.date.localeCompare(a.date))
-                          .map((item) => (
-                            <tr key={item.id} className="border-t border-white/5">
-                              <td className="px-3 py-3">{item.date}</td>
-                              <td className="px-3 py-3 font-semibold">{item.participant}</td>
-                              <td className="px-3 py-3 text-right">{item.futureBoughtQty}</td>
-                              <td className="px-3 py-3 text-right">{item.futureSoldQty}</td>
-                              <td className="px-3 py-3 text-right">{item.callBoughtQty}</td>
-                              <td className="px-3 py-3 text-right">{item.putBoughtQty}</td>
-                              <td className="px-3 py-3 text-right">{item.callSoldQty}</td>
-                              <td className="px-3 py-3 text-right">{item.putSoldQty}</td>
-                              <td className="px-3 py-3 text-right">
-                                <button
-                                  type="button"
-                                  className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
-                                  onClick={() => handleRemoveParticipantFlow(item.id)}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                      )}
                     </tbody>
                   </table>
                 </div>
