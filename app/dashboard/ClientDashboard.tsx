@@ -181,6 +181,19 @@ function normalizeInstrumentName(value: string) {
   return value.trim();
 }
 
+function getRecentTradingDates(count: number) {
+  const dates: string[] = [];
+  const cursor = new Date();
+  while (dates.length < count) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      dates.push(cursor.toISOString().slice(0, 10));
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return dates;
+}
+
 function buildInstrumentId(name: string) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return `INST-${slug}-${Date.now()}`;
@@ -2360,7 +2373,7 @@ export default function ClientDashboard({
     setTimeout(() => setFlowStatus(""), 1500);
   }
 
-  async function fetchParticipantForDate(date: string, silent = false) {
+  const fetchParticipantForDate = useCallback(async (date: string, silent = false) => {
     if (!silent) {
       setFlowStatus(`Fetching NiftyTrader data for ${date}...`);
     }
@@ -2394,7 +2407,7 @@ export default function ClientDashboard({
         const kept = prev.filter((item) => item.date !== (payload.date ?? date));
         return [...items, ...kept];
       });
-      if (payload.date) {
+      if (!silent && payload.date) {
         setParticipantViewDate(payload.date);
       }
       if (!silent) {
@@ -2412,11 +2425,31 @@ export default function ClientDashboard({
       }
       return false;
     }
-  }
+  }, []);
 
   async function handleFetchParticipantFromNse() {
     await fetchParticipantForDate(flowDate, false);
   }
+
+  useEffect(() => {
+    if (view !== "participants") return;
+    const targetDates = getRecentTradingDates(5);
+    const have = new Set(participantFlows.map((item) => item.date));
+    const missing = targetDates.filter((date) => !have.has(date));
+    if (!missing.length) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const date of missing) {
+        if (cancelled) return;
+        await fetchParticipantForDate(date, true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view, participantFlows, fetchParticipantForDate]);
 
   const participantSummary = useMemo(() => {
     const grouped = new Map<
@@ -2603,9 +2636,40 @@ export default function ClientDashboard({
     return `${day}/${month}/${year}`;
   }, [participantViewDate]);
 
+  const lastFiveDateOi = useMemo(() => {
+    const targetDates = getRecentTradingDates(5);
+    return targetDates.map((date) => {
+      const dayRows = participantFlows.filter((item) => item.date === date);
+      const futures = dayRows.reduce(
+        (sum, row) => sum + row.futureBoughtQty - row.futureSoldQty,
+        0
+      );
+      const ce = dayRows.reduce(
+        (sum, row) => sum + row.callBoughtQty - row.callSoldQty,
+        0
+      );
+      const pe = dayRows.reduce(
+        (sum, row) => sum + row.putBoughtQty - row.putSoldQty,
+        0
+      );
+      const combinedScore = futures + ce - pe;
+      const trend =
+        combinedScore > 0 ? "Bullish" : combinedScore < 0 ? "Bearish" : "Neutral";
+      return {
+        date,
+        display: date.split("-").reverse().join("/"),
+        futures,
+        ce,
+        pe,
+        trend,
+        ready: dayRows.length > 0
+      };
+    });
+  }, [participantFlows]);
+
   function handleParticipantCsvDownload() {
     const lines = [
-      `${participantViewDateDisplay} - FII DII FNO Activity`,
+      `${participantViewDateDisplay} - Participant Wise Open Interest and Changes`,
       "Participant,Instrument,Change,Activity,Trend",
       ...participantActivityRows.map(
         (row) =>
@@ -2646,7 +2710,11 @@ export default function ClientDashboard({
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = "#0f172a";
     ctx.font = "700 28px Inter, system-ui, sans-serif";
-    ctx.fillText(`${participantViewDateDisplay} - FII DII FNO Activity`, 24, 36);
+    ctx.fillText(
+      `${participantViewDateDisplay} - Participant Wise Open Interest and Changes`,
+      24,
+      36
+    );
 
     const tableTop = titleHeight;
     ctx.fillStyle = "#e2e8f0";
@@ -4259,9 +4327,65 @@ export default function ClientDashboard({
               className="mx-auto max-w-6xl space-y-6 px-6 py-8"
             >
               <div className="card">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Last 5 Dates OI Snapshot
+                  </h3>
+                  <span className="text-[11px] text-muted">Auto-updated</span>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {lastFiveDateOi.map((row) => (
+                    <button
+                      key={row.date}
+                      type="button"
+                      onClick={() => {
+                        setParticipantViewDate(row.date);
+                        setFlowDate(row.date);
+                      }}
+                      className={`rounded-xl border px-3 py-3 text-left transition ${
+                        participantViewDate === row.date
+                          ? "border-sky-400 bg-sky-50 dark:bg-sky-500/10"
+                          : "border-slate-200 bg-white hover:border-sky-300 dark:border-white/10 dark:bg-white/5"
+                      }`}
+                    >
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        {row.display}
+                      </div>
+                      {!row.ready ? (
+                        <div className="mt-2 text-[11px] text-muted">Loading OI...</div>
+                      ) : (
+                        <>
+                          <div className="mt-2 text-[11px] text-muted">
+                            Fut: {row.futures > 0 ? `+${row.futures.toLocaleString()}` : row.futures.toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-muted">
+                            CE: {row.ce > 0 ? `+${row.ce.toLocaleString()}` : row.ce.toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-muted">
+                            PE: {row.pe > 0 ? `+${row.pe.toLocaleString()}` : row.pe.toLocaleString()}
+                          </div>
+                          <div
+                            className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              row.trend === "Bullish"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : row.trend === "Bearish"
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-slate-200 text-slate-700"
+                            }`}
+                          >
+                            {row.trend}
+                          </div>
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold">
-                    {participantViewDateDisplay} - FII DII FNO Activity
+                    {participantViewDateDisplay} - Participant Wise Open Interest and Changes
                   </h3>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
