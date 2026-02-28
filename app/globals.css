@@ -213,3 +213,19 @@ html.dark .bg-candles {
 .hero-dot {
   animation: hero-dot-pulse 1.8s ease-in-out infinite;
 }
+
+.dashboard-shell section {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .dashboard-shell section {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+.dashboard-shell .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}

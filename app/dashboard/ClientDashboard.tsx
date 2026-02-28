@@ -2583,23 +2583,28 @@ export default function ClientDashboard({
 
   useEffect(() => {
     if (view !== "participants") return;
-    const targetDates = getRecentTradingDates(5);
-    const have = new Set(participantFlows.map((item) => item.date));
-    const missing = targetDates.filter((date) => !have.has(date));
-    if (!missing.length) return;
+    const candidateDates = getRecentTradingDates(14);
 
     let cancelled = false;
     (async () => {
-      for (const date of missing) {
+      let loaded = 0;
+      for (const date of candidateDates) {
         if (cancelled) return;
-        await fetchParticipantForDate(date, true);
+        setParticipantFlows((prev) => prev.filter((item) => item.date !== date));
+        const ok = await fetchParticipantForDate(date, true);
+        if (ok) {
+          loaded += 1;
+        }
+        if (loaded >= 5) {
+          break;
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [view, participantFlows, fetchParticipantForDate]);
+  }, [view, fetchParticipantForDate]);
 
   const participantSummary = useMemo(() => {
     const grouped = new Map<
@@ -2691,22 +2696,13 @@ export default function ClientDashboard({
     return `${day}/${month}/${year}`;
   }, [participantViewDate]);
 
-  const snapshotDates = useMemo(() => {
-    const available = Array.from(new Set(participantFlows.map((item) => item.date))).sort(
-      (a, b) => b.localeCompare(a)
-    );
-    if (available.length >= 5) {
-      return available.slice(0, 5);
-    }
-    const fallback = getRecentTradingDates(10);
-    const merged = [...available];
-    for (const date of fallback) {
-      if (merged.includes(date)) continue;
-      merged.push(date);
-      if (merged.length >= 5) break;
-    }
-    return merged.slice(0, 5);
-  }, [participantFlows]);
+  const snapshotDates = useMemo(
+    () =>
+      Array.from(new Set(participantFlows.map((item) => item.date)))
+        .sort((a, b) => b.localeCompare(a))
+        .slice(0, 5),
+    [participantFlows]
+  );
 
   const [expandedSnapshotDate, setExpandedSnapshotDate] = useState<
     string | null
@@ -2962,14 +2958,14 @@ export default function ClientDashboard({
   }
 
   return (
-    <main className="min-h-screen bg-ink text-white relative overflow-hidden">
+    <main className="dashboard-shell min-h-screen bg-ink text-white relative overflow-x-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-grid opacity-70" />
         <div className="absolute inset-0 bg-candles opacity-30" />
         <div className="absolute -top-40 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[140px]" />
         <div className="absolute bottom-[-20%] right-[-10%] h-[360px] w-[360px] rounded-full bg-white/10 blur-[120px]" />
       </div>
-      <div className="relative flex items-start">
+      <div className="relative flex min-w-0 items-start">
         <aside className="hidden h-screen w-60 flex-col border-r border-white/5 bg-panel/40 p-6 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto">
           {isOverviewView ? (
             <button
@@ -3023,7 +3019,7 @@ export default function ClientDashboard({
           </div>
         </aside>
 
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-10 border-b border-white/5 bg-ink/80 backdrop-blur">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
               <div>
@@ -4405,13 +4401,13 @@ export default function ClientDashboard({
                 <div className="mt-2 text-[11px] text-muted">
                   Date-wise snapshots (latest 5): {lastFiveDateTables.map((item) => item.display).join(" • ")}
                 </div>
-                <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
+                <div className="mt-3 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
                   {lastFiveDateTables.map((table) => (
                     <button
                       key={table.date}
                       type="button"
                       onClick={() => setExpandedSnapshotDate(table.date)}
-                      className="w-[290px] min-w-[290px] overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
+                      className="w-[290px] min-w-[290px] snap-start overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
                     >
                       <div className="bg-slate-900 px-3 py-1.5 text-[11px] text-white">
                         <div className="flex items-center justify-between">
