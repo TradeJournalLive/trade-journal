@@ -4480,8 +4480,13 @@ export default function ClientDashboard({
                 <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/65 p-4">
                   <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-300 bg-white shadow-2xl">
                     <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
-                      <div className="text-sm font-semibold">
-                        {expandedSnapshot.display} - Participant Wise Open Interest and Changes
+                      <div>
+                        <div className="text-sm font-semibold">
+                          Participant Wise Open Interest and Changes
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-300">
+                          Date: {expandedSnapshot.display}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -4492,6 +4497,9 @@ export default function ClientDashboard({
                       </button>
                     </div>
                     <div className="overflow-x-auto p-4">
+                      <div className="mb-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        Snapshot Date: {expandedSnapshot.display}
+                      </div>
                       <table className="min-w-full text-xs">
                         <thead className="bg-slate-200 text-slate-900">
                           <tr>
