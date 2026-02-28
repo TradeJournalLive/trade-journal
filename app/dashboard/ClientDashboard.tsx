@@ -2628,6 +2628,36 @@ export default function ClientDashboard({
     return "Neutral";
   }, [participantActivityRows]);
 
+  const participantPhotoCards = useMemo(() => {
+    const ordered: Array<{ key: ParticipantType; label: string }> = [
+      { key: "FII", label: "FII" },
+      { key: "Pro", label: "PRO" },
+      { key: "DII", label: "DII" },
+      { key: "Client", label: "RETAIL" }
+    ];
+    return ordered.map((item) => {
+      const rows = participantActivityRows.filter(
+        (row) => row.participant === item.key
+      );
+      const future = rows.find((row) => row.instrument === "Future");
+      const ce = rows.find((row) => row.instrument === "CE");
+      const pe = rows.find((row) => row.instrument === "PE");
+      const score = rows.reduce(
+        (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
+        0
+      );
+      const trend = score > 0 ? "Bullish" : score < 0 ? "Bearish" : "Neutral";
+      return {
+        key: item.key,
+        label: item.label,
+        trend,
+        future,
+        ce,
+        pe
+      };
+    });
+  }, [participantActivityRows]);
+
 
   const participantViewDateDisplay = useMemo(() => {
     if (!participantViewDate) return "N/A";
@@ -4423,6 +4453,77 @@ export default function ClientDashboard({
                           </div>
                         </>
                       )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Participant Wise OI (Visual)
+                  </h3>
+                  <span className="text-[11px] text-muted">
+                    {participantViewDateDisplay}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {participantPhotoCards.map((item) => (
+                    <div
+                      key={item.key}
+                      className="relative overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(150deg,rgba(30,41,59,0.92),rgba(15,23,42,0.98))] p-4 text-white shadow-sm"
+                    >
+                      <div className="absolute inset-0 bg-candles opacity-35" />
+                      <div className="relative">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold tracking-wide">
+                            {item.label}
+                          </div>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              item.trend === "Bullish"
+                                ? "bg-emerald-500/20 text-emerald-200"
+                                : item.trend === "Bearish"
+                                  ? "bg-rose-500/20 text-rose-200"
+                                  : "bg-slate-500/20 text-slate-100"
+                            }`}
+                          >
+                            {item.trend}
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-300">Future</span>
+                            <span className="font-semibold">
+                              {item.future
+                                ? item.future.change > 0
+                                  ? `+${item.future.change.toLocaleString()}`
+                                  : item.future.change.toLocaleString()
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-300">CE</span>
+                            <span className="font-semibold">
+                              {item.ce
+                                ? item.ce.change > 0
+                                  ? `+${item.ce.change.toLocaleString()}`
+                                  : item.ce.change.toLocaleString()
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-300">PE</span>
+                            <span className="font-semibold">
+                              {item.pe
+                                ? item.pe.change > 0
+                                  ? `+${item.pe.change.toLocaleString()}`
+                                  : item.pe.change.toLocaleString()
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
