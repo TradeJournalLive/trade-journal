@@ -123,6 +123,16 @@ type ParticipantFlow = {
   putSoldQty: number;
 };
 
+type ParticipantActivityRow = {
+  participant: ParticipantType;
+  label: string;
+  instrument: "Future" | "CE" | "PE";
+  change: number;
+  activity: string;
+  trend: "Bullish" | "Bearish" | "Neutral";
+  score: number;
+};
+
 type MarketNewsItem = {
   title: string;
   link: string;
@@ -192,6 +202,146 @@ function getRecentTradingDates(count: number) {
     cursor.setDate(cursor.getDate() - 1);
   }
   return dates;
+}
+
+function buildParticipantActivityRows(
+  flows: ParticipantFlow[],
+  date: string
+): ParticipantActivityRow[] {
+  const source = flows.filter((item) => item.date === date);
+  const groupedToday = new Map<
+    ParticipantType,
+    {
+      futureBuy: number;
+      futureSold: number;
+      callBuy: number;
+      callSold: number;
+      putBuy: number;
+      putSold: number;
+    }
+  >();
+
+  source.forEach((item) => {
+    const current = groupedToday.get(item.participant) ?? {
+      futureBuy: 0,
+      futureSold: 0,
+      callBuy: 0,
+      callSold: 0,
+      putBuy: 0,
+      putSold: 0
+    };
+    current.futureBuy += item.futureBoughtQty;
+    current.futureSold += item.futureSoldQty;
+    current.callBuy += item.callBoughtQty;
+    current.callSold += item.callSoldQty;
+    current.putBuy += item.putBoughtQty;
+    current.putSold += item.putSoldQty;
+    groupedToday.set(item.participant, current);
+  });
+
+  const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
+  const rows: ParticipantActivityRow[] = [];
+
+  const evaluate = (
+    participant: ParticipantType,
+    label: string,
+    instrument: "Future" | "CE" | "PE",
+    bought: number,
+    sold: number
+  ) => {
+    const change = bought - sold;
+    if (change === 0) {
+      return {
+        participant,
+        label,
+        instrument,
+        change,
+        activity: "No change",
+        trend: "Neutral" as const,
+        score: 0
+      };
+    }
+    if (instrument === "Future") {
+      return change > 0
+        ? {
+            participant,
+            label,
+            instrument,
+            change,
+            activity: "Bought Futures",
+            trend: "Bullish" as const,
+            score: 1
+          }
+        : {
+            participant,
+            label,
+            instrument,
+            change,
+            activity: "Sold Futures",
+            trend: "Bearish" as const,
+            score: -1
+          };
+    }
+    if (instrument === "CE") {
+      return change > 0
+        ? {
+            participant,
+            label,
+            instrument,
+            change,
+            activity: "Bought Calls",
+            trend: "Bullish" as const,
+            score: 1
+          }
+        : {
+            participant,
+            label,
+            instrument,
+            change,
+            activity: "Sold Calls",
+            trend: "Bearish" as const,
+            score: -1
+          };
+    }
+    return change > 0
+      ? {
+          participant,
+          label,
+          instrument,
+          change,
+          activity: "Bought Puts",
+          trend: "Bearish" as const,
+          score: -1
+        }
+      : {
+          participant,
+          label,
+          instrument,
+          change,
+          activity: "Sold Puts",
+          trend: "Bullish" as const,
+          score: 1
+        };
+  };
+
+  order.forEach((participant) => {
+    const data = groupedToday.get(participant) ?? {
+      futureBuy: 0,
+      futureSold: 0,
+      callBuy: 0,
+      callSold: 0,
+      putBuy: 0,
+      putSold: 0
+    };
+    const label = participant === "Client" ? "RETAIL" : participant;
+    rows.push(
+      evaluate(participant, label, "Future", data.futureBuy, data.futureSold)
+    );
+    rows.push(evaluate(participant, label, "CE", data.callBuy, data.callSold));
+    rows.push(evaluate(participant, label, "PE", data.putBuy, data.putSold));
+  });
+
+  return rows;
 }
 
 function buildInstrumentId(name: string) {
@@ -2519,104 +2669,10 @@ export default function ClientDashboard({
     }
   }, [participantDateOptions, participantViewDate]);
 
-  const participantActivityRows = useMemo(() => {
-    const source = participantFlows.filter((item) => item.date === participantViewDate);
-
-    const groupedToday = new Map<
-      ParticipantType,
-      {
-        futureBuy: number;
-        futureSold: number;
-        callBuy: number;
-        callSold: number;
-        putBuy: number;
-        putSold: number;
-      }
-    >();
-
-    source.forEach((item) => {
-      const current = groupedToday.get(item.participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
-      current.futureBuy += item.futureBoughtQty;
-      current.futureSold += item.futureSoldQty;
-      current.callBuy += item.callBoughtQty;
-      current.callSold += item.callSoldQty;
-      current.putBuy += item.putBoughtQty;
-      current.putSold += item.putSoldQty;
-      groupedToday.set(item.participant, current);
-    });
-
-    const order: ParticipantType[] = ["FII", "Pro", "DII", "Client"];
-    const rows: Array<{
-      participant: ParticipantType;
-      label: string;
-      instrument: "Future" | "CE" | "PE";
-      change: number;
-      activity: string;
-      trend: "Bullish" | "Bearish" | "Neutral";
-      score: number;
-    }> = [];
-
-    const evaluate = (
-      participant: ParticipantType,
-      label: string,
-      instrument: "Future" | "CE" | "PE",
-      bought: number,
-      sold: number
-    ) => {
-      const change = bought - sold;
-      if (change === 0) {
-        return { participant, label, instrument, change, activity: "No change", trend: "Neutral" as const, score: 0 };
-      }
-      if (instrument === "Future") {
-        return change > 0
-          ? { participant, label, instrument, change, activity: "Bought Futures", trend: "Bullish" as const, score: 1 }
-          : { participant, label, instrument, change, activity: "Sold Futures", trend: "Bearish" as const, score: -1 };
-      }
-      if (instrument === "CE") {
-        return change > 0
-          ? { participant, label, instrument, change, activity: "Bought Calls", trend: "Bullish" as const, score: 1 }
-          : { participant, label, instrument, change, activity: "Sold Calls", trend: "Bearish" as const, score: -1 };
-      }
-      return change > 0
-        ? { participant, label, instrument, change, activity: "Bought Puts", trend: "Bearish" as const, score: -1 }
-        : { participant, label, instrument, change, activity: "Sold Puts", trend: "Bullish" as const, score: 1 };
-    };
-
-    order.forEach((participant) => {
-      const data = groupedToday.get(participant) ?? {
-        futureBuy: 0,
-        futureSold: 0,
-        callBuy: 0,
-        callSold: 0,
-        putBuy: 0,
-        putSold: 0
-      };
-      const label = participant === "Client" ? "RETAIL" : participant;
-      rows.push(
-        evaluate(
-          participant,
-          label,
-          "Future",
-          data.futureBuy,
-          data.futureSold
-        )
-      );
-      rows.push(
-        evaluate(participant, label, "CE", data.callBuy, data.callSold)
-      );
-      rows.push(
-        evaluate(participant, label, "PE", data.putBuy, data.putSold)
-      );
-    });
-    return rows;
-  }, [participantFlows, participantViewDate]);
+  const participantActivityRows = useMemo(
+    () => buildParticipantActivityRows(participantFlows, participantViewDate),
+    [participantFlows, participantViewDate]
+  );
 
   const participantOverallTrend = useMemo(() => {
     const score = participantActivityRows.reduce(
@@ -2627,37 +2683,6 @@ export default function ClientDashboard({
     if (score < 0) return "Bearish";
     return "Neutral";
   }, [participantActivityRows]);
-
-  const participantPhotoCards = useMemo(() => {
-    const ordered: Array<{ key: ParticipantType; label: string }> = [
-      { key: "FII", label: "FII" },
-      { key: "Pro", label: "PRO" },
-      { key: "DII", label: "DII" },
-      { key: "Client", label: "RETAIL" }
-    ];
-    return ordered.map((item) => {
-      const rows = participantActivityRows.filter(
-        (row) => row.participant === item.key
-      );
-      const future = rows.find((row) => row.instrument === "Future");
-      const ce = rows.find((row) => row.instrument === "CE");
-      const pe = rows.find((row) => row.instrument === "PE");
-      const score = rows.reduce(
-        (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
-        0
-      );
-      const trend = score > 0 ? "Bullish" : score < 0 ? "Bearish" : "Neutral";
-      return {
-        key: item.key,
-        label: item.label,
-        trend,
-        future,
-        ce,
-        pe
-      };
-    });
-  }, [participantActivityRows]);
-
 
   const participantViewDateDisplay = useMemo(() => {
     if (!participantViewDate) return "N/A";
@@ -2683,35 +2708,33 @@ export default function ClientDashboard({
     return merged.slice(0, 5);
   }, [participantFlows]);
 
-  const lastFiveDateOi = useMemo(() => {
+  const [expandedSnapshotDate, setExpandedSnapshotDate] = useState<
+    string | null
+  >(null);
+
+  const lastFiveDateTables = useMemo(() => {
     return snapshotDates.map((date) => {
-      const dayRows = participantFlows.filter((item) => item.date === date);
-      const futures = dayRows.reduce(
-        (sum, row) => sum + row.futureBoughtQty - row.futureSoldQty,
+      const rows = buildParticipantActivityRows(participantFlows, date);
+      const score = rows.reduce(
+        (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
         0
       );
-      const ce = dayRows.reduce(
-        (sum, row) => sum + row.callBoughtQty - row.callSoldQty,
-        0
-      );
-      const pe = dayRows.reduce(
-        (sum, row) => sum + row.putBoughtQty - row.putSoldQty,
-        0
-      );
-      const combinedScore = futures + ce - pe;
-      const trend =
-        combinedScore > 0 ? "Bullish" : combinedScore < 0 ? "Bearish" : "Neutral";
       return {
         date,
         display: date.split("-").reverse().join("/"),
-        futures,
-        ce,
-        pe,
-        trend,
-        ready: dayRows.length > 0
+        rows,
+        ready: rows.some((row) => row.change !== 0),
+        overallTrend: score > 0 ? "Bullish" : score < 0 ? "Bearish" : "Neutral"
       };
     });
   }, [participantFlows, snapshotDates]);
+
+  const expandedSnapshot = useMemo(
+    () =>
+      lastFiveDateTables.find((item) => item.date === expandedSnapshotDate) ??
+      null,
+    [lastFiveDateTables, expandedSnapshotDate]
+  );
 
   function handleParticipantCsvDownload() {
     const lines = [
@@ -4375,159 +4398,107 @@ export default function ClientDashboard({
               <div className="card">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    Last 5 Dates OI Snapshot
+                    Last 5 Days Participant OI (Photo Format)
                   </h3>
-                  <span className="text-[11px] text-muted">Auto-updated (visual)</span>
+                  <span className="text-[11px] text-muted">Tap to enlarge</span>
                 </div>
-                <div className="mt-1 text-[11px] text-muted">
-                  Preview only. Use date selector below to load full table.
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  {lastFiveDateOi.map((row) => (
-                    <div
-                      key={row.date}
-                      className={`rounded-xl border px-3 py-3 ${
-                        participantViewDate === row.date
-                          ? "border-sky-400 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(14,165,233,0.08))] dark:bg-sky-500/10"
-                          : "border-slate-200 bg-[linear-gradient(135deg,rgba(226,232,240,0.6),rgba(241,245,249,0.6))] dark:border-white/10 dark:bg-white/5"
-                      }`}
+                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                  {lastFiveDateTables.map((table) => (
+                    <button
+                      key={table.date}
+                      type="button"
+                      onClick={() => setExpandedSnapshotDate(table.date)}
+                      className="overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                          {row.display}
-                        </div>
-                        {participantViewDate === row.date ? (
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                            Active
-                          </span>
-                        ) : null}
+                      <div className="bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                        {table.display} - Participant Wise Open Interest and Changes
                       </div>
-                      {!row.ready ? (
-                        <div className="mt-2 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                          No data yet for this date
-                        </div>
-                      ) : (
-                        <>
-                          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                            <div
-                              className="h-full rounded-full bg-[linear-gradient(90deg,#22c55e,#0ea5e9)]"
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  Math.max(
-                                    18,
-                                    Math.round(
-                                      ((Math.abs(row.futures) + Math.abs(row.ce) + Math.abs(row.pe)) /
-                                        250000) *
-                                        100
-                                    )
-                                  )
-                                )}%`
-                              }}
-                            />
-                          </div>
-                          <div className="mt-2 text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                            Fut:{" "}
-                            {row.futures > 0
-                              ? `+${row.futures.toLocaleString()}`
-                              : row.futures.toLocaleString()}
-                          </div>
-                          <div className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                            CE:{" "}
-                            {row.ce > 0 ? `+${row.ce.toLocaleString()}` : row.ce.toLocaleString()}
-                          </div>
-                          <div className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                            PE:{" "}
-                            {row.pe > 0 ? `+${row.pe.toLocaleString()}` : row.pe.toLocaleString()}
-                          </div>
-                          <div
-                            className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              row.trend === "Bullish"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : row.trend === "Bearish"
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-slate-200 text-slate-700"
-                            }`}
-                          >
-                            {row.trend}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-slate-200">
+                          <tr>
+                            <th className="px-2 py-1 text-left font-semibold">Participant</th>
+                            <th className="px-2 py-1 text-left font-semibold">Inst</th>
+                            <th className="px-2 py-1 text-right font-semibold">Change</th>
+                            <th className="px-2 py-1 text-left font-semibold">Activity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {table.rows.map((row, index) => (
+                            <tr key={`${table.date}-${row.participant}-${row.instrument}`} className="border-t border-slate-200">
+                              {index % 3 === 0 ? (
+                                <td className="px-2 py-1 font-semibold" rowSpan={3}>
+                                  {row.label}
+                                </td>
+                              ) : null}
+                              <td className="px-2 py-1">{row.instrument}</td>
+                              <td className="px-2 py-1 text-right font-semibold">
+                                {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
+                              </td>
+                              <td className="px-2 py-1">{row.activity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="flex items-center justify-between border-t border-slate-300 bg-slate-950 px-3 py-2 text-[11px] text-white">
+                        <span>OVERALL TREND</span>
+                        <span>{table.overallTrend}</span>
+                      </div>
+                    </button>
                   ))}
                 </div>
               </div>
-
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    Participant Wise OI (Visual)
-                  </h3>
-                  <span className="text-[11px] text-muted">
-                    {participantViewDateDisplay}
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {participantPhotoCards.map((item) => (
-                    <div
-                      key={item.key}
-                      className="relative overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(150deg,rgba(30,41,59,0.92),rgba(15,23,42,0.98))] p-4 text-white shadow-sm"
-                    >
-                      <div className="absolute inset-0 bg-candles opacity-35" />
-                      <div className="relative">
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-semibold tracking-wide">
-                            {item.label}
-                          </div>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              item.trend === "Bullish"
-                                ? "bg-emerald-500/20 text-emerald-200"
-                                : item.trend === "Bearish"
-                                  ? "bg-rose-500/20 text-rose-200"
-                                  : "bg-slate-500/20 text-slate-100"
-                            }`}
-                          >
-                            {item.trend}
-                          </span>
-                        </div>
-                        <div className="mt-3 space-y-1 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-300">Future</span>
-                            <span className="font-semibold">
-                              {item.future
-                                ? item.future.change > 0
-                                  ? `+${item.future.change.toLocaleString()}`
-                                  : item.future.change.toLocaleString()
-                                : "—"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-300">CE</span>
-                            <span className="font-semibold">
-                              {item.ce
-                                ? item.ce.change > 0
-                                  ? `+${item.ce.change.toLocaleString()}`
-                                  : item.ce.change.toLocaleString()
-                                : "—"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-300">PE</span>
-                            <span className="font-semibold">
-                              {item.pe
-                                ? item.pe.change > 0
-                                  ? `+${item.pe.change.toLocaleString()}`
-                                  : item.pe.change.toLocaleString()
-                                : "—"}
-                            </span>
-                          </div>
-                        </div>
+              {expandedSnapshot && (
+                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/65 p-4">
+                  <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-300 bg-white shadow-2xl">
+                    <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
+                      <div className="text-sm font-semibold">
+                        {expandedSnapshot.display} - Participant Wise Open Interest and Changes
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSnapshotDate(null)}
+                        className="rounded-full border border-white/40 px-3 py-1 text-xs"
+                      >
+                        Close
+                      </button>
                     </div>
-                  ))}
+                    <div className="overflow-x-auto p-4">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-slate-200 text-slate-900">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">Participant</th>
+                            <th className="px-3 py-2 text-left font-semibold">Instrument</th>
+                            <th className="px-3 py-2 text-right font-semibold">Change</th>
+                            <th className="px-3 py-2 text-left font-semibold">Activity</th>
+                            <th className="px-3 py-2 text-left font-semibold">Trend</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expandedSnapshot.rows.map((row, index) => (
+                            <tr key={`${expandedSnapshot.date}-${row.participant}-${row.instrument}`} className="border-t border-slate-200">
+                              {index % 3 === 0 ? (
+                                <td className="px-3 py-2 font-semibold" rowSpan={3}>
+                                  {row.label}
+                                </td>
+                              ) : null}
+                              <td className="px-3 py-2">{row.instrument}</td>
+                              <td className="px-3 py-2 text-right font-semibold">
+                                {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">{row.activity}</td>
+                              <td className="px-3 py-2">{row.trend}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-xs font-semibold text-white">
+                      <span>OVERALL TREND</span>
+                      <span>{expandedSnapshot.overallTrend}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="card">
                 <div className="flex flex-wrap items-center justify-between gap-3">
