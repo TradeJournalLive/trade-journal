@@ -147,6 +147,25 @@ function pairFromRow(
   return { buy: 0, sell: 0, ok: false };
 }
 
+function calcDoDIndexChange(
+  row: Record<string, unknown>,
+  longKey: string,
+  shortKey: string,
+  prevLongKey: string,
+  prevShortKey: string
+) {
+  const currentLong = toNumber(getExact(row, [longKey]));
+  const currentShort = toNumber(getExact(row, [shortKey]));
+  const prevLong = toNumber(getExact(row, [prevLongKey]));
+  const prevShort = toNumber(getExact(row, [prevShortKey]));
+  return currentLong - currentShort - (prevLong - prevShort);
+}
+
+function changeToPair(change: number) {
+  if (change >= 0) return { buy: change, sell: 0 };
+  return { buy: 0, sell: Math.abs(change) };
+}
+
 export async function GET(request: Request) {
   const requestDate = new URL(request.url).searchParams.get("date") ?? "";
   const targetDate = toIso(requestDate);
@@ -232,35 +251,31 @@ export async function GET(request: Request) {
           getExact(row, ["clientType", "client_type", "participant", "category", "client"])
         );
         if (!participant) return null;
-
-        const future = pairFromRow(
+        const futureChange = calcDoDIndexChange(
           row,
-          ["futureIndexBuy", "futureBuy", "futureBought", "futureLong", "futureContractsBuy"],
-          ["futureIndexSell", "futureSell", "futureSold", "futureShort", "futureContractsSell"],
-          [
-            "futureChange",
-            "futureNetChange",
-            "future_contract_change",
-            "futureContractsChange",
-            "futChange",
-            "futureOiChange"
-          ]
+          "future_index_long",
+          "future_index_short",
+          "prev_future_index_long",
+          "prev_future_index_short"
         );
-        const ce = pairFromRow(
+        const ceChange = calcDoDIndexChange(
           row,
-          ["ceIndexBuy", "ceBuy", "callBuy", "callLong", "optionCallBuy"],
-          ["ceIndexSell", "ceSell", "callSell", "callShort", "optionCallSell"],
-          ["ceChange", "callChange", "ceNetChange", "ceContractsChange", "callOiChange"]
+          "option_index_call_long",
+          "option_index_call_short",
+          "prev_option_index_call_long",
+          "prev_option_index_call_short"
         );
-        const pe = pairFromRow(
+        const peChange = calcDoDIndexChange(
           row,
-          ["peIndexBuy", "peBuy", "putBuy", "putLong", "optionPutBuy"],
-          ["peIndexSell", "peSell", "putSell", "putShort", "optionPutSell"],
-          ["peChange", "putChange", "peNetChange", "peContractsChange", "putOiChange"]
+          "option_index_put_long",
+          "option_index_put_short",
+          "prev_option_index_put_long",
+          "prev_option_index_put_short"
         );
 
-        // Strict mode: require each instrument pair to be discoverable from exact keys.
-        if (!future.ok || !ce.ok || !pe.ok) return null;
+        const future = changeToPair(futureChange);
+        const ce = changeToPair(ceChange);
+        const pe = changeToPair(peChange);
 
         return {
           id: `NT-${targetDate}-${participant}-${index}`,
