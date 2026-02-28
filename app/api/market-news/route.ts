@@ -15,24 +15,39 @@ function decodeEntities(value: string) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCodePoint(Number(code))
+    )
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) =>
+      String.fromCodePoint(Number.parseInt(code, 16))
+    );
+}
+
+function sanitizeText(value: string) {
+  return decodeEntities(value)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getTag(block: string, tag: string) {
   const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
-  return decodeEntities((match?.[1] ?? "").trim());
+  return sanitizeText((match?.[1] ?? "").trim());
 }
 
 function getAttr(block: string, tag: string, attr: string) {
   const regex = new RegExp(`<${tag}[^>]*${attr}=["']([^"']+)["'][^>]*>`, "i");
   const match = block.match(regex);
-  return decodeEntities((match?.[1] ?? "").trim());
+  return sanitizeText((match?.[1] ?? "").trim());
 }
 
 function getDescriptionImage(block: string) {
-  const desc = getTag(block, "description");
+  const raw = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i);
+  const desc = decodeEntities((raw?.[1] ?? "").trim());
   const img = desc.match(/<img[^>]*src=["']([^"']+)["']/i);
-  return decodeEntities((img?.[1] ?? "").trim());
+  return sanitizeText((img?.[1] ?? "").trim());
 }
 
 function toImpact(title: string): "High" | "Medium" {
