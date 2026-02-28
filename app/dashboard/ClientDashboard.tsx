@@ -4414,8 +4414,13 @@ export default function ClientDashboard({
                       className="w-[290px] min-w-[290px] overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
                     >
                       <div className="bg-slate-900 px-3 py-1.5 text-[11px] text-white">
-                        <div className="font-semibold">{table.display}</div>
-                        <div className="text-slate-300">Participant Wise OI Changes</div>
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold">Participant Wise OI Changes</div>
+                          <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold">
+                            {table.display}
+                          </span>
+                        </div>
+                        <div className="text-slate-300">Date: {table.display}</div>
                       </div>
                       <table className="w-full text-[10px]">
                         <thead className="bg-slate-200">
