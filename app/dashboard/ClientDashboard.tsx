@@ -4402,18 +4402,22 @@ export default function ClientDashboard({
                   </h3>
                   <span className="text-[11px] text-muted">Tap to enlarge</span>
                 </div>
-                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <div className="mt-2 text-[11px] text-muted">
+                  Date-wise snapshots (latest 5): {lastFiveDateTables.map((item) => item.display).join(" • ")}
+                </div>
+                <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
                   {lastFiveDateTables.map((table) => (
                     <button
                       key={table.date}
                       type="button"
                       onClick={() => setExpandedSnapshotDate(table.date)}
-                      className="overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
+                      className="w-[290px] min-w-[290px] overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
                     >
-                      <div className="bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
-                        {table.display} - Participant Wise Open Interest and Changes
+                      <div className="bg-slate-900 px-3 py-1.5 text-[11px] text-white">
+                        <div className="font-semibold">{table.display}</div>
+                        <div className="text-slate-300">Participant Wise OI Changes</div>
                       </div>
-                      <table className="w-full text-[11px]">
+                      <table className="w-full text-[10px]">
                         <thead className="bg-slate-200">
                           <tr>
                             <th className="px-2 py-1 text-left font-semibold">Participant</th>
@@ -4434,14 +4438,34 @@ export default function ClientDashboard({
                               <td className="px-2 py-1 text-right font-semibold">
                                 {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
                               </td>
-                              <td className="px-2 py-1">{row.activity}</td>
+                              <td
+                                className={`px-2 py-1 ${
+                                  row.trend === "Bullish"
+                                    ? "text-emerald-700"
+                                    : row.trend === "Bearish"
+                                      ? "text-rose-700"
+                                      : "text-slate-700"
+                                }`}
+                              >
+                                {row.activity}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      <div className="flex items-center justify-between border-t border-slate-300 bg-slate-950 px-3 py-2 text-[11px] text-white">
+                      <div className="flex items-center justify-between border-t border-slate-300 bg-slate-950 px-3 py-1.5 text-[10px] text-white">
                         <span>OVERALL TREND</span>
-                        <span>{table.overallTrend}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-semibold ${
+                            table.overallTrend === "Bullish"
+                              ? "bg-emerald-500/20 text-emerald-200"
+                              : table.overallTrend === "Bearish"
+                                ? "bg-rose-500/20 text-rose-200"
+                                : "bg-slate-500/25 text-slate-100"
+                          }`}
+                        >
+                          {table.overallTrend}
+                        </span>
                       </div>
                     </button>
                   ))}
@@ -4486,7 +4510,19 @@ export default function ClientDashboard({
                                 {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
                               </td>
                               <td className="px-3 py-2">{row.activity}</td>
-                              <td className="px-3 py-2">{row.trend}</td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                    row.trend === "Bullish"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : row.trend === "Bearish"
+                                        ? "bg-rose-100 text-rose-700"
+                                        : "bg-slate-200 text-slate-700"
+                                  }`}
+                                >
+                                  {row.trend}
+                                </span>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -4494,7 +4530,17 @@ export default function ClientDashboard({
                     </div>
                     <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-xs font-semibold text-white">
                       <span>OVERALL TREND</span>
-                      <span>{expandedSnapshot.overallTrend}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 ${
+                          expandedSnapshot.overallTrend === "Bullish"
+                            ? "bg-emerald-500/20 text-emerald-200"
+                            : expandedSnapshot.overallTrend === "Bearish"
+                              ? "bg-rose-500/20 text-rose-200"
+                              : "bg-slate-500/25 text-slate-100"
+                        }`}
+                      >
+                        {expandedSnapshot.overallTrend}
+                      </span>
                     </div>
                   </div>
                 </div>
