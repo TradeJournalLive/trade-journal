@@ -4331,38 +4331,66 @@ export default function ClientDashboard({
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                     Last 5 Dates OI Snapshot
                   </h3>
-                  <span className="text-[11px] text-muted">Auto-updated</span>
+                  <span className="text-[11px] text-muted">Auto-updated (visual)</span>
+                </div>
+                <div className="mt-1 text-[11px] text-muted">
+                  Preview only. Use date selector below to load full table.
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {lastFiveDateOi.map((row) => (
-                    <button
+                    <div
                       key={row.date}
-                      type="button"
-                      onClick={() => {
-                        setParticipantViewDate(row.date);
-                        setFlowDate(row.date);
-                      }}
-                      className={`rounded-xl border px-3 py-3 text-left transition ${
+                      className={`rounded-xl border px-3 py-3 ${
                         participantViewDate === row.date
-                          ? "border-sky-400 bg-sky-50 dark:bg-sky-500/10"
-                          : "border-slate-200 bg-white hover:border-sky-300 dark:border-white/10 dark:bg-white/5"
+                          ? "border-sky-400 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(14,165,233,0.08))] dark:bg-sky-500/10"
+                          : "border-slate-200 bg-[linear-gradient(135deg,rgba(226,232,240,0.6),rgba(241,245,249,0.6))] dark:border-white/10 dark:bg-white/5"
                       }`}
                     >
-                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {row.display}
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {row.display}
+                        </div>
+                        {participantViewDate === row.date ? (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                            Active
+                          </span>
+                        ) : null}
                       </div>
                       {!row.ready ? (
                         <div className="mt-2 text-[11px] text-muted">Loading OI...</div>
                       ) : (
                         <>
+                          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                            <div
+                              className="h-full rounded-full bg-[linear-gradient(90deg,#22c55e,#0ea5e9)]"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    18,
+                                    Math.round(
+                                      ((Math.abs(row.futures) + Math.abs(row.ce) + Math.abs(row.pe)) /
+                                        250000) *
+                                        100
+                                    )
+                                  )
+                                )}%`
+                              }}
+                            />
+                          </div>
                           <div className="mt-2 text-[11px] text-muted">
-                            Fut: {row.futures > 0 ? `+${row.futures.toLocaleString()}` : row.futures.toLocaleString()}
+                            Fut:{" "}
+                            {row.futures > 0
+                              ? `+${row.futures.toLocaleString()}`
+                              : row.futures.toLocaleString()}
                           </div>
                           <div className="text-[11px] text-muted">
-                            CE: {row.ce > 0 ? `+${row.ce.toLocaleString()}` : row.ce.toLocaleString()}
+                            CE:{" "}
+                            {row.ce > 0 ? `+${row.ce.toLocaleString()}` : row.ce.toLocaleString()}
                           </div>
                           <div className="text-[11px] text-muted">
-                            PE: {row.pe > 0 ? `+${row.pe.toLocaleString()}` : row.pe.toLocaleString()}
+                            PE:{" "}
+                            {row.pe > 0 ? `+${row.pe.toLocaleString()}` : row.pe.toLocaleString()}
                           </div>
                           <div
                             className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -4377,7 +4405,7 @@ export default function ClientDashboard({
                           </div>
                         </>
                       )}
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
