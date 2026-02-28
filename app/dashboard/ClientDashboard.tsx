@@ -2636,9 +2636,25 @@ export default function ClientDashboard({
     return `${day}/${month}/${year}`;
   }, [participantViewDate]);
 
+  const snapshotDates = useMemo(() => {
+    const available = Array.from(new Set(participantFlows.map((item) => item.date))).sort(
+      (a, b) => b.localeCompare(a)
+    );
+    if (available.length >= 5) {
+      return available.slice(0, 5);
+    }
+    const fallback = getRecentTradingDates(10);
+    const merged = [...available];
+    for (const date of fallback) {
+      if (merged.includes(date)) continue;
+      merged.push(date);
+      if (merged.length >= 5) break;
+    }
+    return merged.slice(0, 5);
+  }, [participantFlows]);
+
   const lastFiveDateOi = useMemo(() => {
-    const targetDates = getRecentTradingDates(5);
-    return targetDates.map((date) => {
+    return snapshotDates.map((date) => {
       const dayRows = participantFlows.filter((item) => item.date === date);
       const futures = dayRows.reduce(
         (sum, row) => sum + row.futureBoughtQty - row.futureSoldQty,
@@ -2665,7 +2681,7 @@ export default function ClientDashboard({
         ready: dayRows.length > 0
       };
     });
-  }, [participantFlows]);
+  }, [participantFlows, snapshotDates]);
 
   function handleParticipantCsvDownload() {
     const lines = [
@@ -4357,7 +4373,9 @@ export default function ClientDashboard({
                         ) : null}
                       </div>
                       {!row.ready ? (
-                        <div className="mt-2 text-[11px] text-muted">Loading OI...</div>
+                        <div className="mt-2 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                          No data yet for this date
+                        </div>
                       ) : (
                         <>
                           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -4378,17 +4396,17 @@ export default function ClientDashboard({
                               }}
                             />
                           </div>
-                          <div className="mt-2 text-[11px] text-muted">
+                          <div className="mt-2 text-[11px] font-medium text-slate-700 dark:text-slate-200">
                             Fut:{" "}
                             {row.futures > 0
                               ? `+${row.futures.toLocaleString()}`
                               : row.futures.toLocaleString()}
                           </div>
-                          <div className="text-[11px] text-muted">
+                          <div className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
                             CE:{" "}
                             {row.ce > 0 ? `+${row.ce.toLocaleString()}` : row.ce.toLocaleString()}
                           </div>
-                          <div className="text-[11px] text-muted">
+                          <div className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
                             PE:{" "}
                             {row.pe > 0 ? `+${row.pe.toLocaleString()}` : row.pe.toLocaleString()}
                           </div>
