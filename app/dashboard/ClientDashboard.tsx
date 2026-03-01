@@ -204,6 +204,12 @@ function getRecentTradingDates(count: number) {
   return dates;
 }
 
+function isWeekdayDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00`);
+  const day = parsed.getDay();
+  return day !== 0 && day !== 6;
+}
+
 function buildParticipantActivityRows(
   flows: ParticipantFlow[],
   date: string
@@ -1313,6 +1319,7 @@ export default function ClientDashboard({
   const [newsPage, setNewsPage] = useState(1);
   const [newsHasMore, setNewsHasMore] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
+  const [shareLink, setShareLink] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const participantsTableRef = useRef<HTMLTableElement | null>(null);
 
@@ -2026,26 +2033,34 @@ export default function ClientDashboard({
       setTimeout(() => setShareStatus(""), 1800);
       return;
     }
-    const lines = monthBreakdown.map(
-      (row) => `${row.label}: ${signedMoney0.format(row.value)}`
-    );
-    const text = [
-      "Monthly P&L Summary",
-      ...lines,
-      `Total: ${signedMoney0.format(summary.totalPl)}`
-    ].join("\n");
+    const payload = {
+      currency,
+      totalPl: summary.totalPl,
+      generatedAt: new Date().toISOString(),
+      months: monthBreakdown.map((row) => ({
+        label: row.label,
+        value: row.value
+      }))
+    };
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const link = `${window.location.origin}/share/monthly?data=${encoded}`;
+    setShareLink(link);
     try {
       if (navigator.share) {
         await navigator.share({
           title: "Trade Journal - Monthly P&L",
-          text
+          text: "Monthly P&L report",
+          url: link
         });
-        setShareStatus("Shared successfully.");
+        setShareStatus("Share link generated and shared.");
       } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        setShareStatus("Monthly P&L copied. Share it anywhere.");
+        await navigator.clipboard.writeText(link);
+        setShareStatus("Share link copied.");
       } else {
-        setShareStatus("Share not supported on this device.");
+        setShareStatus("Share link generated.");
       }
     } catch {
       setShareStatus("Share cancelled.");
@@ -2695,9 +2710,13 @@ export default function ClientDashboard({
 
   const participantDateOptions = useMemo(
     () =>
-      Array.from(new Set(participantFlows.map((item) => item.date))).sort((a, b) =>
-        b.localeCompare(a)
-      ),
+      Array.from(
+        new Set(
+          participantFlows
+            .map((item) => item.date)
+            .filter((date) => isWeekdayDate(date))
+        )
+      ).sort((a, b) => b.localeCompare(a)),
     [participantFlows]
   );
 
@@ -2733,6 +2752,7 @@ export default function ClientDashboard({
   const snapshotDates = useMemo(() => {
     const byDate = new Map<string, ParticipantFlow[]>();
     participantFlows.forEach((item) => {
+      if (!isWeekdayDate(item.date)) return;
       const current = byDate.get(item.date) ?? [];
       current.push(item);
       byDate.set(item.date, current);
@@ -3750,6 +3770,27 @@ export default function ClientDashboard({
                 <div className="mt-4">
                   <BarList rows={monthBreakdown} formatValue={signedMoney0.format} />
                 </div>
+                {shareLink ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shareLink}
+                      className="w-full rounded-lg border border-white/10 bg-ink px-3 py-1.5 text-[11px] text-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!shareLink) return;
+                        await navigator.clipboard.writeText(shareLink);
+                        setShareStatus("Share link copied.");
+                        setTimeout(() => setShareStatus(""), 1800);
+                      }}
+                      className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                ) : null}
                 {shareStatus ? (
                   <div className="mt-2 text-[11px] text-muted">{shareStatus}</div>
                 ) : null}
