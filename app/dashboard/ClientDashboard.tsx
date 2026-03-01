@@ -1312,6 +1312,7 @@ export default function ClientDashboard({
   const [newsError, setNewsError] = useState("");
   const [newsPage, setNewsPage] = useState(1);
   const [newsHasMore, setNewsHasMore] = useState(false);
+  const [shareStatus, setShareStatus] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const participantsTableRef = useRef<HTMLTableElement | null>(null);
 
@@ -2019,6 +2020,39 @@ export default function ClientDashboard({
     { label: "Max drawdown", value: signedMoney2.format(summary.maxDrawdown) }
   ];
 
+  async function handleShareMonthlyPnl() {
+    if (!monthBreakdown.length) {
+      setShareStatus("No monthly data to share yet.");
+      setTimeout(() => setShareStatus(""), 1800);
+      return;
+    }
+    const lines = monthBreakdown.map(
+      (row) => `${row.label}: ${signedMoney0.format(row.value)}`
+    );
+    const text = [
+      "Monthly P&L Summary",
+      ...lines,
+      `Total: ${signedMoney0.format(summary.totalPl)}`
+    ].join("\n");
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Trade Journal - Monthly P&L",
+          text
+        });
+        setShareStatus("Shared successfully.");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Monthly P&L copied. Share it anywhere.");
+      } else {
+        setShareStatus("Share not supported on this device.");
+      }
+    } catch {
+      setShareStatus("Share cancelled.");
+    }
+    setTimeout(() => setShareStatus(""), 2200);
+  }
+
   const sectionNavIds: DashboardSection[] = [
     "overview",
     "performance",
@@ -2696,13 +2730,39 @@ export default function ClientDashboard({
     return `${day}/${month}/${year}`;
   }, [participantViewDate]);
 
-  const snapshotDates = useMemo(
-    () =>
-      Array.from(new Set(participantFlows.map((item) => item.date)))
-        .sort((a, b) => b.localeCompare(a))
-        .slice(0, 5),
-    [participantFlows]
-  );
+  const snapshotDates = useMemo(() => {
+    const byDate = new Map<string, ParticipantFlow[]>();
+    participantFlows.forEach((item) => {
+      const current = byDate.get(item.date) ?? [];
+      current.push(item);
+      byDate.set(item.date, current);
+    });
+
+    const validDates = Array.from(byDate.entries())
+      .filter(([, rows]) => {
+        const participants = new Set(rows.map((row) => row.participant));
+        const hasAllParticipants =
+          participants.has("FII") &&
+          participants.has("DII") &&
+          participants.has("Pro") &&
+          participants.has("Client");
+        if (!hasAllParticipants) return false;
+
+        const totalAbsChange = rows.reduce(
+          (sum, row) =>
+            sum +
+            Math.abs(row.futureBoughtQty - row.futureSoldQty) +
+            Math.abs(row.callBoughtQty - row.callSoldQty) +
+            Math.abs(row.putBoughtQty - row.putSoldQty),
+          0
+        );
+        return totalAbsChange > 0;
+      })
+      .map(([date]) => date)
+      .sort((a, b) => b.localeCompare(a));
+
+    return validDates.slice(0, 5);
+  }, [participantFlows]);
 
   const [expandedSnapshotDate, setExpandedSnapshotDate] = useState<
     string | null
@@ -3677,10 +3737,22 @@ export default function ClientDashboard({
                 </div>
               </div>
               <div className="card">
-                <h3 className="text-sm text-muted">Monthly P/L</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm text-muted">Monthly P/L</h3>
+                  <button
+                    type="button"
+                    onClick={handleShareMonthlyPnl}
+                    className="rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                  >
+                    Share
+                  </button>
+                </div>
                 <div className="mt-4">
                   <BarList rows={monthBreakdown} formatValue={signedMoney0.format} />
                 </div>
+                {shareStatus ? (
+                  <div className="mt-2 text-[11px] text-muted">{shareStatus}</div>
+                ) : null}
               </div>
             </div>
 
