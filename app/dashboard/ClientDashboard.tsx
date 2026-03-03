@@ -3072,8 +3072,8 @@ export default function ClientDashboard({
               const isActive = activeSection === item.id;
               const classes = `w-full rounded-lg px-3 py-2 text-left transition ${
                 isActive
-                  ? "bg-primary/10 text-white"
-                  : "text-muted hover:bg-primary/10 hover:text-white"
+                  ? "bg-[linear-gradient(135deg,rgba(37,99,235,0.18),rgba(20,184,166,0.18))] text-slate-900 dark:text-white border border-sky-300/60 dark:border-sky-400/40"
+                  : "text-muted hover:bg-[linear-gradient(135deg,rgba(37,99,235,0.12),rgba(20,184,166,0.12))] hover:text-slate-900 dark:hover:text-white"
               }`;
               if (isOverviewView && isSection) {
                 return (
@@ -3111,14 +3111,14 @@ export default function ClientDashboard({
                   <button
                     type="button"
                     onClick={() => handleSectionNav("overview")}
-                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
+                    className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-slate-700"
                   >
                     Home
                   </button>
                 ) : (
                   <Link
                     href="/dashboard#overview"
-                    className="rounded-full border border-white/10 px-4 py-2 text-muted"
+                    className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-slate-700"
                   >
                     Home
                   </Link>
