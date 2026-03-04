@@ -2733,12 +2733,20 @@ export default function ClientDashboard({
   );
 
   const participantOverallTrend = useMemo(() => {
+    const fiiProRows = participantActivityRows.filter(
+      (row) => row.participant === "FII" || row.participant === "Pro"
+    );
     const score = participantActivityRows.reduce(
       (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
       0
     );
-    if (score > 0) return "Bullish";
-    if (score < 0) return "Bearish";
+    const scopedScore = fiiProRows.reduce(
+      (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
+      0
+    );
+    const finalScore = fiiProRows.length ? scopedScore : score;
+    if (finalScore > 0) return "Bullish";
+    if (finalScore < 0) return "Bearish";
     return "Neutral";
   }, [participantActivityRows]);
 
@@ -2791,16 +2799,25 @@ export default function ClientDashboard({
   const lastFiveDateTables = useMemo(() => {
     return snapshotDates.map((date) => {
       const rows = buildParticipantActivityRows(participantFlows, date);
+      const fiiProRows = rows.filter(
+        (row) => row.participant === "FII" || row.participant === "Pro"
+      );
       const score = rows.reduce(
         (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
         0
       );
+      const scopedScore = fiiProRows.reduce(
+        (sum, row) => sum + row.score * Math.max(1, Math.abs(row.change)),
+        0
+      );
+      const finalScore = fiiProRows.length ? scopedScore : score;
       return {
         date,
         display: date.split("-").reverse().join("/"),
         rows,
         ready: rows.some((row) => row.change !== 0),
-        overallTrend: score > 0 ? "Bullish" : score < 0 ? "Bearish" : "Neutral"
+        overallTrend:
+          finalScore > 0 ? "Bullish" : finalScore < 0 ? "Bearish" : "Neutral"
       };
     });
   }, [participantFlows, snapshotDates]);
