@@ -100,6 +100,7 @@ type DashboardView =
   | "day"
   | "behavior"
   | "news"
+  | "opportunities"
   | "setup"
   | "instruments"
   | "participants"
@@ -1673,31 +1674,27 @@ export default function ClientDashboard({
     void loadMarketNews({ page: 1, append: false, pageSize });
   }, [view, loadMarketNews]);
 
+  const loadStockSuggestions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/stock-suggestions", {
+        cache: "no-store"
+      });
+      const payload = (await response.json()) as {
+        items?: StockSuggestionItem[];
+        disclaimer?: string;
+      };
+      setStockSuggestions(Array.isArray(payload.items) ? payload.items : []);
+      setStockSuggestionStatus(payload.disclaimer ?? "");
+    } catch {
+      setStockSuggestions([]);
+      setStockSuggestionStatus("Could not load stock suggestions right now.");
+    }
+  }, []);
+
   useEffect(() => {
-    if (view !== "overview") return;
-    let active = true;
-    (async () => {
-      try {
-        const response = await fetch("/api/stock-suggestions", {
-          cache: "no-store"
-        });
-        const payload = (await response.json()) as {
-          items?: StockSuggestionItem[];
-          disclaimer?: string;
-        };
-        if (!active) return;
-        setStockSuggestions(Array.isArray(payload.items) ? payload.items : []);
-        setStockSuggestionStatus(payload.disclaimer ?? "");
-      } catch {
-        if (!active) return;
-        setStockSuggestions([]);
-        setStockSuggestionStatus("Could not load stock suggestions right now.");
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [view]);
+    if (view !== "overview" && view !== "opportunities") return;
+    void loadStockSuggestions();
+  }, [view, loadStockSuggestions]);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -3072,6 +3069,7 @@ export default function ClientDashboard({
     { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
     { label: "AI Summary", href: "/dashboard#ai-summary", id: "ai-summary" },
     { label: "Market News", href: "/dashboard/news", id: "news" },
+    { label: "Opportunities", href: "/dashboard/opportunities", id: "opportunities" },
     { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
     { label: "Participants", href: "/dashboard/participants", id: "participants" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
@@ -5044,6 +5042,118 @@ export default function ClientDashboard({
                   {!newsLoading && !newsError && !newsHasMore && marketNews.length > 0 && (
                     <div className="text-xs text-slate-500">No more headlines.</div>
                   )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {view === "opportunities" && (
+            <section
+              id="opportunities"
+              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">Live Opportunities</h2>
+                <p className="section-lead">
+                  Rule-based opportunities from live price/volume structure.
+                </p>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">
+                    Stock Suggestions (Intraday / Swing)
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">
+                      Target 10-25%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void loadStockSuggestions()}
+                      className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:brightness-105"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-[1100px] w-full text-xs">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Symbol</th>
+                        <th className="px-3 py-2 text-left font-semibold">Style</th>
+                        <th className="px-3 py-2 text-left font-semibold">Entry Zone</th>
+                        <th className="px-3 py-2 text-left font-semibold">Exit Price</th>
+                        <th className="px-3 py-2 text-left font-semibold">SL</th>
+                        <th className="px-3 py-2 text-left font-semibold">Target %</th>
+                        <th className="px-3 py-2 text-left font-semibold">R:R</th>
+                        <th className="px-3 py-2 text-left font-semibold">Conviction</th>
+                        <th className="px-3 py-2 text-left font-semibold">Reason</th>
+                        <th className="px-3 py-2 text-left font-semibold">Timeframe</th>
+                        <th className="px-3 py-2 text-left font-semibold">Size %</th>
+                        <th className="px-3 py-2 text-left font-semibold">Valid Till</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockSuggestions.map((item) => (
+                        <tr
+                          key={`${item.symbol}-${item.style}`}
+                          className="border-t border-slate-200"
+                        >
+                          <td className="px-3 py-2 font-semibold">{item.symbol}</td>
+                          <td className="px-3 py-2">{item.style}</td>
+                          <td className="px-3 py-2">{item.entryZone}</td>
+                          <td className="px-3 py-2">{item.exitPrice}</td>
+                          <td className="px-3 py-2">
+                            {item.stopLossPrice} ({item.stopLossPct}%)
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.targetMinPct}% - {item.targetMaxPct}%
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-sky-700">
+                            {item.riskReward}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                item.convictionScore >= 8
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : item.convictionScore >= 6
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-rose-100 text-rose-700"
+                              }`}
+                            >
+                              {item.convictionScore}/10
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="font-medium">{item.convictionReason}</div>
+                            <div className="text-[11px] text-muted">
+                              Trigger: {item.entryTrigger}
+                            </div>
+                            <div className="text-[11px] text-muted">
+                              Invalidation: {item.invalidation}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">{item.timeframe}</td>
+                          <td className="px-3 py-2">{item.positionSizePct}%</td>
+                          <td className="px-3 py-2">{item.validTill}</td>
+                        </tr>
+                      ))}
+                      {stockSuggestions.length === 0 ? (
+                        <tr>
+                          <td colSpan={12} className="px-3 py-4 text-center text-muted">
+                            No live opportunities matched the current model.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  {stockSuggestionStatus ||
+                    "Educational watchlist only. Use your own risk management."}
                 </div>
               </div>
             </section>

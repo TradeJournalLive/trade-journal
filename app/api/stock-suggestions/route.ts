@@ -22,141 +22,228 @@ type Suggestion = {
   note: string;
 };
 
-const IDEAS: Suggestion[] = [
-  {
-    symbol: "RELIANCE",
-    style: "Swing",
-    entryZone: "₹2,920 - ₹2,965",
-    entryTrigger: "Daily breakout above ₹2,965 with volume",
-    stopLossPrice: "₹2,835",
-    setup: "Breakout above prior range with volume",
-    exitPrice: "Partial near ₹3,210, trail above ₹3,280",
-    targetMinPct: 10,
-    targetMaxPct: 18,
-    riskReward: "1:2.4",
-    stopLossPct: 4,
-    convictionScore: 7,
-    confidence: "Medium",
-    timeframe: "2-5 weeks",
-    positionSizePct: 8,
-    validTill: "5 sessions",
-    invalidation: "Close below ₹2,835",
-    convictionReason: "Range expansion + index leadership",
-    note: "Wait for daily close confirmation."
-  },
-  {
-    symbol: "HDFCBANK",
-    style: "Swing",
-    entryZone: "₹1,790 - ₹1,812",
-    entryTrigger: "Higher-low hold + close above ₹1,812",
-    stopLossPrice: "₹1,750",
-    setup: "Higher-low continuation setup",
-    exitPrice: "Book near ₹1,980 and ₹2,050",
-    targetMinPct: 10,
-    targetMaxPct: 15,
-    riskReward: "1:2.2",
-    stopLossPct: 3,
-    convictionScore: 6,
-    confidence: "Medium",
-    timeframe: "3-6 weeks",
-    positionSizePct: 7,
-    validTill: "7 sessions",
-    invalidation: "Break and close below ₹1,750",
-    convictionReason: "Banking strength + structure",
-    note: "Avoid entries against index weakness."
-  },
-  {
-    symbol: "TATASTEEL",
-    style: "Swing",
-    entryZone: "₹186 - ₹190",
-    entryTrigger: "Momentum candle close above ₹190",
-    stopLossPrice: "₹178",
-    setup: "Momentum expansion after base",
-    exitPrice: "Scale out at ₹208 and ₹225",
-    targetMinPct: 12,
-    targetMaxPct: 20,
-    riskReward: "1:2.0",
-    stopLossPct: 5,
-    convictionScore: 5,
-    confidence: "Low",
-    timeframe: "2-4 weeks",
-    positionSizePct: 5,
-    validTill: "4 sessions",
-    invalidation: "Daily close below ₹178",
-    convictionReason: "High beta momentum",
-    note: "Higher beta; size smaller."
-  },
-  {
-    symbol: "ICICIBANK",
-    style: "Intraday",
-    entryZone: "₹1,265 - ₹1,272",
-    entryTrigger: "Opening range breakout",
-    stopLossPrice: "₹1,249",
-    setup: "Opening range breakout",
-    exitPrice: "Exit near ₹1,360 or by EOD",
-    targetMinPct: 10,
-    targetMaxPct: 12,
-    riskReward: "1:1.8",
-    stopLossPct: 1.8,
-    convictionScore: 4,
-    confidence: "Low",
-    timeframe: "Same day",
-    positionSizePct: 4,
-    validTill: "Today only",
-    invalidation: "Break below OR low",
-    convictionReason: "Momentum dependent setup",
-    note: "Aggressive; use strict stop-loss."
-  },
-  {
-    symbol: "SBIN",
-    style: "Intraday",
-    entryZone: "₹902 - ₹910",
-    entryTrigger: "VWAP reclaim + higher high",
-    stopLossPrice: "₹892",
-    setup: "VWAP reclaim + trend continuation",
-    exitPrice: "Exit near ₹1,000 or trailing VWAP",
-    targetMinPct: 10,
-    targetMaxPct: 14,
-    riskReward: "1:2.0",
-    stopLossPct: 2,
-    convictionScore: 5,
-    confidence: "Low",
-    timeframe: "Same day",
-    positionSizePct: 4,
-    validTill: "Today only",
-    invalidation: "Loss of VWAP with volume",
-    convictionReason: "Bank index breadth confirmation",
-    note: "Only with strong bank index breadth."
-  },
-  {
-    symbol: "LT",
-    style: "Swing",
-    entryZone: "₹3,880 - ₹3,940",
-    entryTrigger: "Pullback hold + reversal candle",
-    stopLossPrice: "₹3,760",
-    setup: "Trend pullback into support",
-    exitPrice: "Book near ₹4,320 and ₹4,520",
-    targetMinPct: 10,
-    targetMaxPct: 16,
-    riskReward: "1:2.5",
-    stopLossPct: 3.5,
-    convictionScore: 7,
-    confidence: "Medium",
-    timeframe: "3-5 weeks",
-    positionSizePct: 7,
-    validTill: "6 sessions",
-    invalidation: "Close below ₹3,760",
-    convictionReason: "Trend + support confluence",
-    note: "Enter in 2 tranches."
-  }
+type CandlePoint = {
+  close: number;
+  high: number;
+  low: number;
+  volume: number;
+};
+
+const UNIVERSE = [
+  "RELIANCE.NS",
+  "HDFCBANK.NS",
+  "ICICIBANK.NS",
+  "SBIN.NS",
+  "LT.NS",
+  "TATASTEEL.NS",
+  "INFY.NS",
+  "TCS.NS",
+  "AXISBANK.NS",
+  "BAJFINANCE.NS",
+  "MARUTI.NS",
+  "HINDUNILVR.NS"
 ];
 
-export async function GET() {
-  const day = new Date().getUTCDate();
-  const rotated = [...IDEAS.slice(day % IDEAS.length), ...IDEAS.slice(0, day % IDEAS.length)];
-  return NextResponse.json({
-    items: rotated.slice(0, 5),
-    disclaimer:
-      "Educational watchlist only. No return is guaranteed. Use your own risk management."
-  });
+function round(value: number, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
+
+function sma(values: number[], period: number) {
+  if (values.length < period) return null;
+  const slice = values.slice(values.length - period);
+  const sum = slice.reduce((acc, value) => acc + value, 0);
+  return sum / period;
+}
+
+function rsi(values: number[], period = 14) {
+  if (values.length <= period) return null;
+  let gains = 0;
+  let losses = 0;
+  for (let index = values.length - period; index < values.length; index += 1) {
+    const delta = values[index] - values[index - 1];
+    if (delta >= 0) gains += delta;
+    else losses += Math.abs(delta);
+  }
+  if (losses === 0) return 100;
+  const rs = gains / losses;
+  return 100 - 100 / (1 + rs);
+}
+
+function atr(points: CandlePoint[], period = 14) {
+  if (points.length <= period) return null;
+  const trs: number[] = [];
+  for (let index = points.length - period; index < points.length; index += 1) {
+    const current = points[index];
+    const prevClose = points[index - 1].close;
+    const tr = Math.max(
+      current.high - current.low,
+      Math.abs(current.high - prevClose),
+      Math.abs(current.low - prevClose)
+    );
+    trs.push(tr);
+  }
+  const sum = trs.reduce((acc, value) => acc + value, 0);
+  return sum / trs.length;
+}
+
+function money(value: number) {
+  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+}
+
+async function fetchCandles(ticker: string) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo`;
+  const response = await fetch(url, {
+    next: { revalidate: 1800 },
+    headers: { "user-agent": "Mozilla/5.0 TradeJournal/1.0" }
+  });
+  if (!response.ok) throw new Error(`${ticker} fetch failed`);
+  const payload = (await response.json()) as {
+    chart?: {
+      result?: Array<{
+        indicators?: {
+          quote?: Array<{
+            close?: Array<number | null>;
+            high?: Array<number | null>;
+            low?: Array<number | null>;
+            volume?: Array<number | null>;
+          }>;
+        };
+      }>;
+    };
+  };
+  const quote = payload.chart?.result?.[0]?.indicators?.quote?.[0];
+  const closes = quote?.close ?? [];
+  const highs = quote?.high ?? [];
+  const lows = quote?.low ?? [];
+  const volumes = quote?.volume ?? [];
+
+  const points: CandlePoint[] = [];
+  for (let index = 0; index < closes.length; index += 1) {
+    const close = closes[index];
+    const high = highs[index];
+    const low = lows[index];
+    const volume = volumes[index];
+    if (
+      typeof close === "number" &&
+      typeof high === "number" &&
+      typeof low === "number" &&
+      typeof volume === "number"
+    ) {
+      points.push({ close, high, low, volume });
+    }
+  }
+  return points;
+}
+
+function buildSuggestion(ticker: string, points: CandlePoint[]): Suggestion | null {
+  if (points.length < 60) return null;
+  const symbol = ticker.replace(".NS", "");
+  const closes = points.map((point) => point.close);
+  const volumes = points.map((point) => point.volume);
+  const last = points[points.length - 1];
+  const close = last.close;
+  const sma20 = sma(closes, 20);
+  const sma50 = sma(closes, 50);
+  const rsi14 = rsi(closes, 14);
+  const atr14 = atr(points, 14);
+  if (sma20 === null || sma50 === null || rsi14 === null || atr14 === null) {
+    return null;
+  }
+
+  const avgVolume20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const volumeRatio = avgVolume20 > 0 ? last.volume / avgVolume20 : 1;
+  const recentHigh20 = Math.max(...closes.slice(-20));
+  const breakoutStrength = close / recentHigh20;
+
+  const trendStrong = close > sma20 && sma20 > sma50;
+  const momentumHealthy = rsi14 >= 52 && rsi14 <= 74;
+  const volumeSupport = volumeRatio >= 1.1;
+  const nearBreakout = breakoutStrength >= 0.98;
+
+  let score = 0;
+  if (trendStrong) score += 3;
+  if (momentumHealthy) score += 2;
+  if (volumeSupport) score += 2;
+  if (nearBreakout) score += 2;
+  if (close > closes[closes.length - 2]) score += 1;
+
+  if (score < 5) return null;
+
+  const style: "Intraday" | "Swing" = score >= 7 ? "Swing" : "Intraday";
+  const stopLoss = close - atr14 * (style === "Swing" ? 1.6 : 1.1);
+  const riskPct = ((close - stopLoss) / close) * 100;
+  const targetMinPct = style === "Swing" ? 10 : 10;
+  const targetMaxPct = style === "Swing" ? Math.min(25, 10 + score * 2) : 12;
+  const targetPrice = close * (1 + targetMaxPct / 100);
+  const rr = (targetPrice - close) / Math.max(close - stopLoss, 1);
+  const convictionScore = Math.min(10, Math.max(4, score + (style === "Swing" ? 1 : 0)));
+  const confidence: "Low" | "Medium" | "High" =
+    convictionScore >= 8 ? "High" : convictionScore >= 6 ? "Medium" : "Low";
+
+  return {
+    symbol,
+    style,
+    entryZone: `${money(close * 0.995)} - ${money(close * 1.005)}`,
+    entryTrigger:
+      style === "Swing"
+        ? "Daily close above breakout level with volume"
+        : "Opening range breakout with trend support",
+    stopLossPrice: money(stopLoss),
+    setup:
+      style === "Swing"
+        ? "Trend continuation + breakout strength"
+        : "Intraday momentum continuation",
+    exitPrice: money(targetPrice),
+    targetMinPct,
+    targetMaxPct,
+    riskReward: `1:${round(rr, 2)}`,
+    stopLossPct: round(Math.max(1, riskPct), 2),
+    convictionScore,
+    confidence,
+    timeframe: style === "Swing" ? "2-5 weeks" : "Same day",
+    positionSizePct: style === "Swing" ? 6 : 3,
+    validTill: style === "Swing" ? "Next 3 sessions" : "Today session",
+    invalidation: `Close below ${money(stopLoss)}`,
+    convictionReason: `Trend ${close > sma20 ? "above" : "below"} 20DMA, RSI ${round(rsi14, 1)}, volume ${round(volumeRatio, 2)}x`,
+    note:
+      "Model-based idea from public price/volume data. Use your own risk controls."
+  };
+}
+
+export async function GET() {
+  try {
+    const results = await Promise.allSettled(
+      UNIVERSE.map(async (ticker) => {
+        const points = await fetchCandles(ticker);
+        return buildSuggestion(ticker, points);
+      })
+    );
+
+    const ideas = results
+      .filter(
+        (result): result is PromiseFulfilledResult<Suggestion | null> =>
+          result.status === "fulfilled"
+      )
+      .map((result) => result.value)
+      .filter((item): item is Suggestion => Boolean(item))
+      .sort((a, b) => b.convictionScore - a.convictionScore)
+      .slice(0, 8);
+
+    return NextResponse.json({
+      items: ideas,
+      disclaimer:
+        "Signal model uses daily price/volume structure (trend, RSI, volume, breakout). Educational only, not investment advice."
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        items: [],
+        disclaimer:
+          "Could not fetch live opportunities right now. Try refresh in a minute."
+      },
+      { status: 200 }
+    );
+  }
+}
+
