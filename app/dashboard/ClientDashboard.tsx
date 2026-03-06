@@ -1343,6 +1343,11 @@ export default function ClientDashboard({
   const [newsHasMore, setNewsHasMore] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [shareLink, setShareLink] = useState("");
+  const [journalSummaryDate, setJournalSummaryDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [journalSummaryLink, setJournalSummaryLink] = useState("");
+  const [journalSummaryStatus, setJournalSummaryStatus] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockSuggestionItem[]>([]);
   const [stockSuggestionStatus, setStockSuggestionStatus] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2113,6 +2118,63 @@ export default function ClientDashboard({
       setShareStatus("Share cancelled.");
     }
     setTimeout(() => setShareStatus(""), 2200);
+  }
+
+  async function handleGenerateJournalSummaryLink() {
+    const tradesForDate = deriveTrades(
+      tradeList.filter((trade) => trade.date === journalSummaryDate)
+    ).map((trade) => ({
+      tradeId: trade.tradeId,
+      instrument: trade.instrument,
+      strategy: trade.strategy,
+      direction: trade.direction,
+      entryPrice: trade.entryPrice,
+      exitPrice: trade.exitPrice,
+      pl: trade.pl,
+      exitReason: trade.exitReason,
+      chartUrl: trade.chartUrl ?? "",
+      remarks: trade.remarks ?? ""
+    }));
+
+    if (!tradesForDate.length) {
+      setJournalSummaryStatus("No trades found for selected date.");
+      setTimeout(() => setJournalSummaryStatus(""), 1800);
+      return;
+    }
+
+    const quotes = [
+      "Discipline compounds faster than profits.",
+      "Protect capital first, profits follow.",
+      "A good trade is process-first, not outcome-first.",
+      "One setup, one plan, one execution.",
+      "Consistency beats intensity in trading."
+    ];
+    const quoteIndex =
+      journalSummaryDate
+        .split("")
+        .reduce((sum, char) => sum + char.charCodeAt(0), 0) % quotes.length;
+
+    const payload = {
+      date: journalSummaryDate,
+      quote: quotes[quoteIndex],
+      generatedAt: new Date().toISOString(),
+      trades: tradesForDate
+    };
+
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const link = `${window.location.origin}/share/journal-daily?data=${encoded}`;
+    setJournalSummaryLink(link);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setJournalSummaryStatus("Summary link generated and copied.");
+    } catch {
+      setJournalSummaryStatus("Summary link generated.");
+    }
+    setTimeout(() => setJournalSummaryStatus(""), 2200);
   }
 
   const sectionNavIds: DashboardSection[] = [
@@ -5347,6 +5409,56 @@ export default function ClientDashboard({
                 return null;
               }}
             />
+
+            <div className="card">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Daily Journal Summary Link</h3>
+                  <p className="text-sm text-muted">
+                    Includes date-wise trades, exit reason, chart links, and daily motivation quote.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={journalSummaryDate}
+                    onChange={(event) => setJournalSummaryDate(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateJournalSummaryLink}
+                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
+                  >
+                    Generate Link
+                  </button>
+                </div>
+              </div>
+              {journalSummaryLink ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={journalSummaryLink}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-[11px] text-muted"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!journalSummaryLink) return;
+                      await navigator.clipboard.writeText(journalSummaryLink);
+                      setJournalSummaryStatus("Summary link copied.");
+                      setTimeout(() => setJournalSummaryStatus(""), 1600);
+                    }}
+                    className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Copy
+                  </button>
+                </div>
+              ) : null}
+              {journalSummaryStatus ? (
+                <div className="mt-2 text-xs text-muted">{journalSummaryStatus}</div>
+              ) : null}
+            </div>
 
             <div className="card">
               <div className="flex flex-wrap items-center justify-between gap-4">
