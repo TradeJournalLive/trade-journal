@@ -56,9 +56,39 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     maximumFractionDigits: 2
   });
 
+  const topQuotes = [
+    "Protect capital first. Big days come from consistency.",
+    "Trade your plan, not your emotion.",
+    "Small disciplined wins beat random big bets.",
+    "Good risk management is the real edge.",
+    "Focus on process. P&L is the byproduct."
+  ];
+  const topQuote =
+    activeDay
+      ? topQuotes[
+          activeDay.date
+            .split("")
+            .reduce((sum, char) => sum + char.charCodeAt(0), 0) % topQuotes.length
+        ]
+      : topQuotes[0];
+
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/40 bg-primary/20 text-sm font-semibold">
+            TJ
+          </div>
+          <div className="text-lg font-semibold tracking-tight">Trade Journal</div>
+        </div>
+
+        <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-black">
+          <div className="text-xs font-semibold uppercase tracking-wide text-black/70">
+            Motivation
+          </div>
+          <div className="mt-1 text-base font-bold">{topQuote}</div>
+        </div>
+
         <div className="rounded-2xl border border-white/10 bg-panel/60 p-4">
           <h1 className="text-lg font-semibold sm:text-xl">
             Journal Summary - {payload.month}
@@ -131,7 +161,6 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     <th className="px-3 py-2 text-right font-semibold">P/L</th>
                     <th className="px-3 py-2 text-left font-semibold">Reason</th>
                     <th className="px-3 py-2 text-left font-semibold">Chart</th>
-                    <th className="px-3 py-2 text-left font-semibold">Motivation Quote</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,7 +184,6 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                           "—"
                         )}
                       </td>
-                      <td className="px-3 py-2 text-amber-200">{trade.quote}</td>
                     </tr>
                   ))}
                 </tbody>
