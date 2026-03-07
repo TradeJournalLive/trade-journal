@@ -2227,10 +2227,29 @@ export default function ClientDashboard({
       }
     };
 
-    const encoded = compressToEncodedURIComponent(JSON.stringify(payload));
-    const link = `${window.location.origin}/share/journal-daily?s=${encoded}`;
-    setJournalSummaryLink(link);
+    let link = "";
+    try {
+      const response = await fetch("/api/share-journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload })
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { id?: string };
+        if (data.id) {
+          link = `${window.location.origin}/share/journal-daily?id=${data.id}`;
+        }
+      }
+    } catch {
+      // fallback handled below
+    }
 
+    if (!link) {
+      const encoded = compressToEncodedURIComponent(JSON.stringify(payload));
+      link = `${window.location.origin}/share/journal-daily?s=${encoded}`;
+    }
+
+    setJournalSummaryLink(link);
     try {
       await navigator.clipboard.writeText(link);
       setJournalSummaryStatus("Summary link generated and copied.");

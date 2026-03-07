@@ -1,19 +1,7 @@
 import JournalDailyClient from "./JournalDailyClient";
+import JournalDailyLoader from "./JournalDailyLoader";
 import { decompressFromEncodedURIComponent } from "lz-string";
-
-type SharedTrade = {
-  tradeId: string;
-  instrument: string;
-  strategy: string;
-  direction: "Long" | "Short";
-  entryPrice: number;
-  exitPrice: number;
-  pl: number;
-  exitReason: string;
-  chartUrl: string;
-  remarks: string;
-  quote: string;
-};
+import type { SharedPayload, SharedTrade } from "./types";
 
 type LegacyPayload = {
   date: string;
@@ -22,25 +10,7 @@ type LegacyPayload = {
   trades: SharedTrade[];
 };
 
-type NewPayload = {
-  month: string;
-  currency: "INR" | "USD";
-  generatedAt: string;
-  days: Array<{
-    date: string;
-    trades: SharedTrade[];
-    summary: { totalTrades: number; totalPl: number; winRate: number };
-  }>;
-  monthlySummary: {
-    totalTrades: number;
-    totalPl: number;
-    wins: number;
-    losses: number;
-    winRate: number;
-    bestDay: { date: string; totalPl: number } | null;
-    worstDay: { date: string; totalPl: number } | null;
-  };
-};
+type NewPayload = SharedPayload;
 
 function decodeRaw(input: string): unknown {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
@@ -113,8 +83,11 @@ function decodePayload(input: string): NewPayload | null {
 export default function JournalDailySharePage({
   searchParams
 }: {
-  searchParams?: { data?: string; s?: string };
+  searchParams?: { data?: string; s?: string; id?: string };
 }) {
+  if (searchParams?.id) {
+    return <JournalDailyLoader id={searchParams.id} />;
+  }
   const raw = searchParams?.s ?? searchParams?.data ?? "";
   const payload = raw ? decodePayload(raw) : null;
 

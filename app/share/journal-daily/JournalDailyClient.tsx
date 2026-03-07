@@ -1,46 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
-type SharedTrade = {
-  tradeId: string;
-  instrument: string;
-  strategy: string;
-  direction: "Long" | "Short";
-  entryPrice: number;
-  exitPrice: number;
-  pl: number;
-  exitReason: string;
-  chartUrl: string;
-  remarks: string;
-  quote: string;
-};
-
-type SharedDay = {
-  date: string;
-  trades: SharedTrade[];
-  summary: {
-    totalTrades: number;
-    totalPl: number;
-    winRate: number;
-  };
-};
-
-type SharedPayload = {
-  month: string;
-  currency: "INR" | "USD";
-  generatedAt: string;
-  days: SharedDay[];
-  monthlySummary: {
-    totalTrades: number;
-    totalPl: number;
-    wins: number;
-    losses: number;
-    winRate: number;
-    bestDay: { date: string; totalPl: number } | null;
-    worstDay: { date: string; totalPl: number } | null;
-  };
-};
+import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
   const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
