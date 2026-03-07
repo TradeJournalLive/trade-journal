@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 function randomId(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(length));
@@ -95,6 +97,12 @@ export async function GET(request: Request) {
   if (!rows.length) {
     return NextResponse.json({ error: "Share link not found." }, { status: 404 });
   }
-  return NextResponse.json({ payload: rows[0].payload });
+  return NextResponse.json(
+    { payload: rows[0].payload },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400"
+      }
+    }
+  );
 }
-

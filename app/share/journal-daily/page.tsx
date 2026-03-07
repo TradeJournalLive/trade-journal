@@ -1,5 +1,4 @@
 import JournalDailyClient from "./JournalDailyClient";
-import JournalDailyLoader from "./JournalDailyLoader";
 import { decompressFromEncodedURIComponent } from "lz-string";
 import type { SharedPayload, SharedTrade } from "./types";
 
@@ -80,16 +79,42 @@ function decodePayload(input: string): NewPayload | null {
   }
 }
 
-export default function JournalDailySharePage({
+async function fetchPayloadById(id: string): Promise<NewPayload | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/shared_journal_links?select=payload&id=eq.${encodeURIComponent(
+        id
+      )}&limit=1`,
+      {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`
+        },
+        next: { revalidate: 3600 }
+      }
+    );
+    if (!response.ok) return null;
+    const rows = (await response.json()) as Array<{ payload: unknown }>;
+    if (!rows.length) return null;
+    return normalizePayload(rows[0].payload);
+  } catch {
+    return null;
+  }
+}
+
+export default async function JournalDailySharePage({
   searchParams
 }: {
   searchParams?: { data?: string; s?: string; id?: string };
 }) {
-  if (searchParams?.id) {
-    return <JournalDailyLoader id={searchParams.id} />;
-  }
+  const id = searchParams?.id ?? "";
   const raw = searchParams?.s ?? searchParams?.data ?? "";
-  const payload = raw ? decodePayload(raw) : null;
+  const payload = id ? await fetchPayloadById(id) : raw ? decodePayload(raw) : null;
 
   if (!payload) {
     return (
