@@ -1,4 +1,5 @@
 import JournalDailyClient from "./JournalDailyClient";
+import { decompressFromEncodedURIComponent } from "lz-string";
 
 type SharedTrade = {
   tradeId: string;
@@ -97,6 +98,11 @@ function normalizePayload(parsed: unknown): NewPayload | null {
 
 function decodePayload(input: string): NewPayload | null {
   try {
+    const compressed = decompressFromEncodedURIComponent(input);
+    if (compressed) {
+      const parsed = JSON.parse(compressed) as unknown;
+      return normalizePayload(parsed);
+    }
     const parsed = decodeRaw(input);
     return normalizePayload(parsed);
   } catch {
@@ -107,9 +113,10 @@ function decodePayload(input: string): NewPayload | null {
 export default function JournalDailySharePage({
   searchParams
 }: {
-  searchParams?: { data?: string };
+  searchParams?: { data?: string; s?: string };
 }) {
-  const payload = searchParams?.data ? decodePayload(searchParams.data) : null;
+  const raw = searchParams?.s ?? searchParams?.data ?? "";
+  const payload = raw ? decodePayload(raw) : null;
 
   if (!payload) {
     return (

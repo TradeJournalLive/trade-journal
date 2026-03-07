@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
+import { compressToEncodedURIComponent } from "lz-string";
 import { trades as seedTrades, type Trade } from "../data/trades";
 import {
   breakdownByDay,
@@ -2226,11 +2227,8 @@ export default function ClientDashboard({
       }
     };
 
-    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const link = `${window.location.origin}/share/journal-daily?data=${encoded}`;
+    const encoded = compressToEncodedURIComponent(JSON.stringify(payload));
+    const link = `${window.location.origin}/share/journal-daily?s=${encoded}`;
     setJournalSummaryLink(link);
 
     try {
