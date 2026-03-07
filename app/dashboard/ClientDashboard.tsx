@@ -1343,8 +1343,8 @@ export default function ClientDashboard({
   const [newsHasMore, setNewsHasMore] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [shareLink, setShareLink] = useState("");
-  const [journalSummaryDate, setJournalSummaryDate] = useState(
-    new Date().toISOString().slice(0, 10)
+  const [journalSummaryMonth, setJournalSummaryMonth] = useState(
+    new Date().toISOString().slice(0, 7)
   );
   const [journalSummaryLink, setJournalSummaryLink] = useState("");
   const [journalSummaryStatus, setJournalSummaryStatus] = useState("");
@@ -2121,23 +2121,13 @@ export default function ClientDashboard({
   }
 
   async function handleGenerateJournalSummaryLink() {
-    const tradesForDate = deriveTrades(
-      tradeList.filter((trade) => trade.date === journalSummaryDate)
-    ).map((trade) => ({
-      tradeId: trade.tradeId,
-      instrument: trade.instrument,
-      strategy: trade.strategy,
-      direction: trade.direction,
-      entryPrice: trade.entryPrice,
-      exitPrice: trade.exitPrice,
-      pl: trade.pl,
-      exitReason: trade.exitReason,
-      chartUrl: trade.chartUrl ?? "",
-      remarks: trade.remarks ?? ""
-    }));
+    const monthPrefix = `${journalSummaryMonth}-`;
+    const monthTrades = deriveTrades(
+      tradeList.filter((trade) => trade.date.startsWith(monthPrefix))
+    );
 
-    if (!tradesForDate.length) {
-      setJournalSummaryStatus("No trades found for selected date.");
+    if (!monthTrades.length) {
+      setJournalSummaryStatus("No trades found for selected month.");
       setTimeout(() => setJournalSummaryStatus(""), 1800);
       return;
     }
@@ -2149,16 +2139,91 @@ export default function ClientDashboard({
       "One setup, one plan, one execution.",
       "Consistency beats intensity in trading."
     ];
-    const quoteIndex =
-      journalSummaryDate
-        .split("")
-        .reduce((sum, char) => sum + char.charCodeAt(0), 0) % quotes.length;
+    const quoteForTrade = (tradeId: string, date: string) => {
+      const key = `${tradeId}${date}`;
+      const quoteIndex =
+        key.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+        quotes.length;
+      return quotes[quoteIndex];
+    };
+
+    const grouped = new Map<
+      string,
+      Array<{
+        tradeId: string;
+        instrument: string;
+        strategy: string;
+        direction: "Long" | "Short";
+        entryPrice: number;
+        exitPrice: number;
+        pl: number;
+        exitReason: string;
+        chartUrl: string;
+        remarks: string;
+        quote: string;
+      }>
+    >();
+    monthTrades.forEach((trade) => {
+      const current = grouped.get(trade.date) ?? [];
+      current.push({
+        tradeId: trade.tradeId,
+        instrument: trade.instrument,
+        strategy: trade.strategy,
+        direction: trade.direction,
+        entryPrice: trade.entryPrice,
+        exitPrice: trade.exitPrice,
+        pl: trade.pl,
+        exitReason: trade.exitReason,
+        chartUrl: trade.chartUrl ?? "",
+        remarks: trade.remarks ?? "",
+        quote: quoteForTrade(trade.tradeId, trade.date)
+      });
+      grouped.set(trade.date, current);
+    });
+
+    const days = Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, trades]) => {
+        const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
+        const wins = trades.filter((trade) => trade.pl > 0).length;
+        const winRate = trades.length ? (wins / trades.length) * 100 : 0;
+        return {
+          date,
+          trades,
+          summary: {
+            totalTrades: trades.length,
+            totalPl,
+            winRate
+          }
+        };
+      });
+
+    const totalTrades = monthTrades.length;
+    const totalPl = monthTrades.reduce((sum, trade) => sum + trade.pl, 0);
+    const wins = monthTrades.filter((trade) => trade.pl > 0).length;
+    const losses = monthTrades.filter((trade) => trade.pl < 0).length;
+    const winRate = totalTrades ? (wins / totalTrades) * 100 : 0;
+    const bestDay = [...days].sort((a, b) => b.summary.totalPl - a.summary.totalPl)[0];
+    const worstDay = [...days].sort((a, b) => a.summary.totalPl - b.summary.totalPl)[0];
 
     const payload = {
-      date: journalSummaryDate,
-      quote: quotes[quoteIndex],
+      month: journalSummaryMonth,
+      currency,
       generatedAt: new Date().toISOString(),
-      trades: tradesForDate
+      days,
+      monthlySummary: {
+        totalTrades,
+        totalPl,
+        wins,
+        losses,
+        winRate,
+        bestDay: bestDay
+          ? { date: bestDay.date, totalPl: bestDay.summary.totalPl }
+          : null,
+        worstDay: worstDay
+          ? { date: worstDay.date, totalPl: worstDay.summary.totalPl }
+          : null
+      }
     };
 
     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
@@ -5413,16 +5478,16 @@ export default function ClientDashboard({
             <div className="card">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold">Daily Journal Summary Link</h3>
+                  <h3 className="text-lg font-semibold">Monthly Journal Summary Link</h3>
                   <p className="text-sm text-muted">
-                    Includes date-wise trades, exit reason, chart links, and daily motivation quote.
+                    Includes date-wise tabs, monthly summary, chart links, and motivation quote for each trade.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
-                    type="date"
-                    value={journalSummaryDate}
-                    onChange={(event) => setJournalSummaryDate(event.target.value)}
+                    type="month"
+                    value={journalSummaryMonth}
+                    onChange={(event) => setJournalSummaryMonth(event.target.value)}
                     className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
                   />
                   <button
