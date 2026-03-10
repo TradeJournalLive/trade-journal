@@ -44,6 +44,9 @@ function normalizePayload(parsed: unknown): NewPayload | null {
       ...next,
       days: next.days.map((day) => ({
         ...day,
+        motivationQuote:
+          day.motivationQuote ||
+          "Protect capital first. Big days come from consistency.",
         trades: day.trades.map((trade) => ({
           ...trade,
           entryTime: trade.entryTime ?? "—",
@@ -83,6 +86,8 @@ function normalizePayload(parsed: unknown): NewPayload | null {
       days: [
         {
           date: legacy.date,
+          motivationQuote:
+            "Protect capital first. Big days come from consistency.",
           trades,
           summary: {
             totalTrades: trades.length,

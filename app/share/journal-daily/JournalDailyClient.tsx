@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
   const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
-  const [topQuote, setTopQuote] = useState(
-    "Protect capital first. Big days come from consistency."
-  );
 
   const activeDay = useMemo(
     () => payload.days.find((day) => day.date === activeDate) ?? payload.days[0],
@@ -20,24 +17,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     maximumFractionDigits: 2
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const response = await fetch("/api/motivation-quote", { cache: "no-store" });
-        const data = (await response.json()) as { quote?: string };
-        if (!cancelled && data.quote) {
-          setTopQuote(data.quote);
-        }
-      } catch {
-        // Keep local fallback.
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+
 
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
@@ -53,7 +33,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
           <div className="text-xs font-semibold uppercase tracking-wide text-black/70">
             Motivation
           </div>
-          <div className="mt-1 text-base font-bold">{topQuote}</div>
+          <div className="mt-1 text-base font-bold">{activeDay?.motivationQuote || "Protect capital first. Big days come from consistency."}</div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-panel/60 p-4">

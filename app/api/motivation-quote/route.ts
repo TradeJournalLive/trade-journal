@@ -7,18 +7,30 @@ const FALLBACK_QUOTES = [
   "Trade your plan, not your emotion.",
   "Small disciplined wins beat random big bets.",
   "Good risk management is the real edge.",
-  "Focus on process. P&L is the byproduct."
+  "Focus on process. P&L is the byproduct.",
+  "Patience compounds faster than aggression.",
+  "Clarity before entry, discipline after entry.",
+  "Your edge is execution quality, not prediction."
 ];
 
-function fallbackQuote() {
-  const index = Math.floor(Math.random() * FALLBACK_QUOTES.length);
-  return FALLBACK_QUOTES[index];
+function hashSeed(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
 }
 
-export async function GET() {
+function pickDeterministic(quotes: string[], date: string, seed: string) {
+  const key = `${date || "today"}|${seed || "default"}`;
+  const index = hashSeed(key) % Math.max(quotes.length, 1);
+  return quotes[index] || FALLBACK_QUOTES[0];
+}
+
+async function fetchWebQuotes() {
   const sources = [
-    "https://zenquotes.io/api/random",
-    "https://api.quotable.io/random?tags=motivational%7Cinspirational"
+    "https://zenquotes.io/api/quotes",
+    "https://zenquotes.io/api/today"
   ];
 
   for (const url of sources) {
@@ -29,24 +41,33 @@ export async function GET() {
       });
       if (!response.ok) continue;
       const data = (await response.json()) as unknown;
+      if (!Array.isArray(data)) continue;
 
-      if (url.includes("zenquotes") && Array.isArray(data) && data.length > 0) {
-        const row = data[0] as { q?: string; a?: string };
-        if (row.q) {
-          return NextResponse.json({ quote: row.q, author: row.a ?? "Unknown" });
-        }
-      }
+      const quotes = data
+        .map((item) => {
+          const row = item as { q?: string };
+          return (row.q ?? "").trim();
+        })
+        .filter((quote) => quote.length > 0);
 
-      if (!url.includes("zenquotes") && data && typeof data === "object") {
-        const row = data as { content?: string; author?: string };
-        if (row.content) {
-          return NextResponse.json({ quote: row.content, author: row.author ?? "Unknown" });
-        }
+      if (quotes.length > 0) {
+        return quotes;
       }
     } catch {
       continue;
     }
   }
 
-  return NextResponse.json({ quote: fallbackQuote(), author: "PulseJournal" });
+  return FALLBACK_QUOTES;
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get("date") ?? "";
+  const seed = searchParams.get("seed") ?? "";
+
+  const quotes = await fetchWebQuotes();
+  const quote = pickDeterministic(quotes, date, seed);
+
+  return NextResponse.json({ quote });
 }

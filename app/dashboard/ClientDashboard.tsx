@@ -2358,6 +2358,19 @@ export default function ClientDashboard({
     setTimeout(() => setMarketSnapshotStatus(""), 2600);
   }
 
+  async function fetchMotivationQuoteForDay(date: string, seed: string) {
+    try {
+      const response = await fetch(
+        `/api/motivation-quote?date=${encodeURIComponent(date)}&seed=${encodeURIComponent(seed)}`,
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as { quote?: string };
+      return payload.quote || "Protect capital first. Big days come from consistency.";
+    } catch {
+      return "Protect capital first. Big days come from consistency.";
+    }
+  }
+
   async function handleGenerateJournalSummaryLink() {
     const monthPrefix = `${journalSummaryMonth}-`;
     const monthTrades = deriveTrades(
@@ -2432,14 +2445,20 @@ export default function ClientDashboard({
       grouped.set(trade.date, current);
     });
 
-    const days = Array.from(grouped.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, trades]) => {
+    const quoteSeed = session?.user?.id || "local";
+    const sortedGroupedEntries = Array.from(grouped.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+
+    const days = await Promise.all(
+      sortedGroupedEntries.map(async ([date, trades]) => {
         const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
         const wins = trades.filter((trade) => trade.pl > 0).length;
         const winRate = trades.length ? (wins / trades.length) * 100 : 0;
+        const motivationQuote = await fetchMotivationQuoteForDay(date, quoteSeed);
         return {
           date,
+          motivationQuote,
           trades,
           summary: {
             totalTrades: trades.length,
@@ -2459,7 +2478,8 @@ export default function ClientDashboard({
             notes: journalDailyInputs[date]?.notes.trim() || ""
           }
         };
-      });
+      })
+    );
 
     const totalTrades = monthTrades.length;
     const totalPl = monthTrades.reduce((sum, trade) => sum + trade.pl, 0);
@@ -2473,6 +2493,7 @@ export default function ClientDashboard({
       month: journalSummaryMonth,
       currency,
       generatedAt: new Date().toISOString(),
+      quoteSeed,
       days,
       monthlySummary: {
         totalTrades,

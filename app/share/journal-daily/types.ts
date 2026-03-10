@@ -32,6 +32,7 @@ export type SharedDailyChecklist = {
 
 export type SharedDay = {
   date: string;
+  motivationQuote: string;
   trades: SharedTrade[];
   summary: { totalTrades: number; totalPl: number; winRate: number };
   marketSnapshot: SharedMarketSnapshotRow[];
@@ -42,6 +43,7 @@ export type SharedPayload = {
   month: string;
   currency: "INR" | "USD";
   generatedAt: string;
+  quoteSeed?: string;
   days: SharedDay[];
   monthlySummary: {
     totalTrades: number;
