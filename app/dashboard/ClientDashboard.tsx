@@ -2218,19 +2218,29 @@ export default function ClientDashboard({
     setMarketSnapshotStatus("Loading market snapshot...");
     try {
       const response = await fetch("/api/market-snapshot", { cache: "no-store" });
-      const payload = (await response.json()) as { rows?: MarketSnapshotRow[] };
-      if (Array.isArray(payload.rows) && payload.rows.length) {
-        setMarketSnapshotRows(payload.rows);
+      const payload = (await response.json()) as {
+        rows?: MarketSnapshotRow[];
+        hasData?: boolean;
+      };
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      const hasFilledValues = rows.some(
+        (row) => row.previous !== null && row.current !== null
+      );
+
+      if (response.ok && rows.length && (payload.hasData || hasFilledValues)) {
+        setMarketSnapshotRows(rows);
         setMarketSnapshotStatus("Snapshot auto-filled from web.");
       } else {
         setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-        setMarketSnapshotStatus("Using empty snapshot rows.");
+        setMarketSnapshotStatus(
+          "Live market data not available right now. Try again in a few seconds."
+        );
       }
     } catch {
       setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
       setMarketSnapshotStatus("Could not fetch market snapshot right now.");
     }
-    setTimeout(() => setMarketSnapshotStatus(""), 2200);
+    setTimeout(() => setMarketSnapshotStatus(""), 2600);
   }
 
   async function handleGenerateJournalSummaryLink() {
@@ -2248,10 +2258,17 @@ export default function ClientDashboard({
     let snapshotRows = marketSnapshotRows;
     try {
       const response = await fetch("/api/market-snapshot", { cache: "no-store" });
-      const payload = (await response.json()) as { rows?: MarketSnapshotRow[] };
-      if (Array.isArray(payload.rows) && payload.rows.length) {
-        snapshotRows = payload.rows;
-        setMarketSnapshotRows(payload.rows);
+      const payload = (await response.json()) as {
+        rows?: MarketSnapshotRow[];
+        hasData?: boolean;
+      };
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      const hasFilledValues = rows.some(
+        (row) => row.previous !== null && row.current !== null
+      );
+      if (response.ok && rows.length && (payload.hasData || hasFilledValues)) {
+        snapshotRows = rows;
+        setMarketSnapshotRows(rows);
       }
     } catch {
       snapshotRows = marketSnapshotRows;
