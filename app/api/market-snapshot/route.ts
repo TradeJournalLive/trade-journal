@@ -78,7 +78,11 @@ async function fetchYahooQuoteRows() {
   });
 }
 
-async function fetchYahooChartRow(symbol: string, label: string): Promise<SnapshotRow> {
+async function fetchYahooChartRow(
+  symbol: string,
+  label: string,
+  options?: { excludeToday?: boolean }
+): Promise<SnapshotRow> {
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
   )}?range=5d&interval=1d`;
@@ -97,6 +101,7 @@ async function fetchYahooChartRow(symbol: string, label: string): Promise<Snapsh
   const payload = (await response.json()) as {
     chart?: {
       result?: Array<{
+        timestamp?: number[];
         indicators?: {
           quote?: Array<{
             close?: Array<number | null>;
@@ -106,8 +111,31 @@ async function fetchYahooChartRow(symbol: string, label: string): Promise<Snapsh
     };
   };
 
+  const timestamps = payload.chart?.result?.[0]?.timestamp ?? [];
   const closes = payload.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
-  const valid = closes.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const now = new Date();
+  const todayUtc = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+
+  const valid = closes
+    .map((close, index) => {
+      const ts = timestamps[index];
+      if (typeof close !== "number" || !Number.isFinite(close)) return null;
+      if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
+      const rowDate = new Date(ts * 1000);
+      const rowUtc = Date.UTC(
+        rowDate.getUTCFullYear(),
+        rowDate.getUTCMonth(),
+        rowDate.getUTCDate()
+      );
+      if (options?.excludeToday && rowUtc >= todayUtc) return null;
+      return close;
+    })
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+
   if (!valid.length) return toRow(label, null, null);
   const current = valid[valid.length - 1] ?? null;
   const previous = valid.length >= 2 ? valid[valid.length - 2] : null;
@@ -121,9 +149,25 @@ async function fetchYahooChartRows() {
   return rows;
 }
 
+async function fetchMixedRows() {
+  const quoteRows = await fetchYahooQuoteRows();
+  const quoteByLabel = new Map(quoteRows.map((row) => [row.label, row]));
+
+  const rows = await Promise.all(
+    SYMBOLS.map(async (item) => {
+      if (item.label === "INDIA VIX") {
+        return quoteByLabel.get(item.label) ?? toRow(item.label, null, null);
+      }
+      return fetchYahooChartRow(item.symbol, item.label, { excludeToday: true });
+    })
+  );
+
+  return rows;
+}
+
 export async function GET() {
   try {
-    let rows = await fetchYahooQuoteRows();
+    let rows = await fetchMixedRows();
     const hasData = rows.some((row) => row.current !== null && row.previous !== null);
 
     if (!hasData) {
