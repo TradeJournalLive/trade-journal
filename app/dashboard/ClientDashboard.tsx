@@ -5993,7 +5993,7 @@ export default function ClientDashboard({
                   <button
                     type="button"
                     onClick={handleSaveMarketSnapshot}
-                    className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                    className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25"
                     disabled={!journalDailyDate}
                   >
                     Save Snapshot
@@ -6169,6 +6169,16 @@ export default function ClientDashboard({
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveMarketSnapshot}
+                      className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25"
+                      disabled={!journalDailyDate}
+                    >
+                      Save Snapshot
+                    </button>
                   </div>
                 </div>
               </div>
