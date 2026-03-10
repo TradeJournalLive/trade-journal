@@ -28,6 +28,7 @@ const STRATEGIES_KEY = "pulsejournal_strategies";
 const PROFILE_KEY = "pulsejournal_profile";
 const PARTICIPANTS_KEY = "pulsejournal_participants";
 const JOURNAL_DAILY_INPUTS_KEY = "pulsejournal_daily_inputs";
+const MARKET_SNAPSHOT_KEY = "pulsejournal_market_snapshot";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -1551,6 +1552,13 @@ export default function ClientDashboard({
     return JOURNAL_DAILY_INPUTS_KEY;
   }, [dataSource, session?.user?.id]);
 
+  const marketSnapshotStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${MARKET_SNAPSHOT_KEY}_${session.user.id}`;
+    }
+    return MARKET_SNAPSHOT_KEY;
+  }, [dataSource, session?.user?.id]);
+
   const loadMarketNews = useCallback(async ({
     page = 1,
     append = false,
@@ -2387,6 +2395,50 @@ export default function ClientDashboard({
     );
   }
 
+  function marketSnapshotMonthKey(month: string) {
+    return `${marketSnapshotStorageKey}_${month}`;
+  }
+
+  function readSavedMarketSnapshot(month: string): MarketSnapshotRow[] | null {
+    try {
+      const raw = localStorage.getItem(marketSnapshotMonthKey(month));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as MarketSnapshotRow[];
+      if (!Array.isArray(parsed)) return null;
+      return parsed.map((row) => ({
+        label: String(row.label),
+        previous:
+          typeof row.previous === "number" && Number.isFinite(row.previous)
+            ? row.previous
+            : null,
+        current:
+          typeof row.current === "number" && Number.isFinite(row.current)
+            ? row.current
+            : null,
+        diffPct:
+          typeof row.diffPct === "number" && Number.isFinite(row.diffPct)
+            ? row.diffPct
+            : null
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  function handleSaveMarketSnapshot() {
+    try {
+      localStorage.setItem(
+        marketSnapshotMonthKey(journalSummaryMonth),
+        JSON.stringify(marketSnapshotRows)
+      );
+      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
+      setMarketSnapshotStatus("Snapshot saved and form reset.");
+    } catch {
+      setMarketSnapshotStatus("Could not save snapshot.");
+    }
+    setTimeout(() => setMarketSnapshotStatus(""), 1800);
+  }
+
   async function loadMarketSnapshot() {
     setMarketSnapshotStatus("Loading market snapshot...");
     try {
@@ -2441,7 +2493,8 @@ export default function ClientDashboard({
       return;
     }
 
-    const snapshotRows = marketSnapshotRows;
+    const savedSnapshotRows = readSavedMarketSnapshot(journalSummaryMonth);
+    const snapshotRows = savedSnapshotRows ?? marketSnapshotRows;
 
     const grouped = new Map<
       string,
@@ -5885,10 +5938,10 @@ export default function ClientDashboard({
                   />
                   <button
                     type="button"
-                    onClick={loadMarketSnapshot}
+                    onClick={handleSaveMarketSnapshot}
                     className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
                   >
-                    Auto-fill Market
+                    Save Snapshot
                   </button>
                   <button
                     type="button"
