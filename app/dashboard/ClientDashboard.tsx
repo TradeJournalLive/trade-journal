@@ -1541,7 +1541,6 @@ export default function ClientDashboard({
   const [marketSnapshotsByDate, setMarketSnapshotsByDate] = useState<
     Record<string, MarketSnapshotRow[]>
   >({});
-  const [marketSnapshotStatus, setMarketSnapshotStatus] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockSuggestionItem[]>([]);
   const [stockSuggestionStatus, setStockSuggestionStatus] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2422,12 +2421,24 @@ export default function ClientDashboard({
   }
 
 
-  function handleSaveChecklist() {
+  function handleSaveChecklistAndSnapshot() {
+    if (!journalDailyDate) {
+      setChecklistSaveStatus("Select a date first.");
+      setTimeout(() => setChecklistSaveStatus(""), 1800);
+      return;
+    }
     try {
       localStorage.setItem(checklistStorageKey, JSON.stringify(journalDailyInputs));
-      setChecklistSaveStatus("Checklist saved.");
+      const next = {
+        ...marketSnapshotsByDate,
+        [journalDailyDate]: normalizeSnapshotRows(marketSnapshotRows)
+      };
+      setMarketSnapshotsByDate(next);
+      localStorage.setItem(marketSnapshotStorageKey, JSON.stringify(next));
+      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
+      setChecklistSaveStatus("Checklist + snapshot saved. Snapshot form reset.");
     } catch {
-      setChecklistSaveStatus("Could not save checklist.");
+      setChecklistSaveStatus("Could not save.");
     }
     setTimeout(() => setChecklistSaveStatus(""), 1800);
   }
@@ -2468,55 +2479,7 @@ export default function ClientDashboard({
     }
   }
 
-  function handleSaveMarketSnapshot() {
-    if (!journalDailyDate) {
-      setMarketSnapshotStatus("Select a date first.");
-      setTimeout(() => setMarketSnapshotStatus(""), 1800);
-      return;
-    }
-    try {
-      const next = {
-        ...marketSnapshotsByDate,
-        [journalDailyDate]: normalizeSnapshotRows(marketSnapshotRows)
-      };
-      setMarketSnapshotsByDate(next);
-      localStorage.setItem(marketSnapshotStorageKey, JSON.stringify(next));
-      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-      setMarketSnapshotStatus(`Snapshot saved for ${journalDailyDate} and form reset.`);
-    } catch {
-      setMarketSnapshotStatus("Could not save snapshot.");
-    }
-    setTimeout(() => setMarketSnapshotStatus(""), 1800);
-  }
-
-  async function loadMarketSnapshot() {
-    setMarketSnapshotStatus("Loading market snapshot...");
-    try {
-      const response = await fetch("/api/market-snapshot", { cache: "no-store" });
-      const payload = (await response.json()) as {
-        rows?: MarketSnapshotRow[];
-        hasData?: boolean;
-      };
-      const rows = Array.isArray(payload.rows) ? payload.rows : [];
-      const hasFilledValues = rows.some(
-        (row) => row.previous !== null && row.current !== null
-      );
-
-      if (response.ok && rows.length && (payload.hasData || hasFilledValues)) {
-        setMarketSnapshotRows(rows);
-        setMarketSnapshotStatus("Snapshot auto-filled from web.");
-      } else {
-        setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-        setMarketSnapshotStatus(
-          "Live market data not available right now. Try again in a few seconds."
-        );
-      }
-    } catch {
-      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-      setMarketSnapshotStatus("Could not fetch market snapshot right now.");
-    }
-    setTimeout(() => setMarketSnapshotStatus(""), 2600);
-  }
+  
 
   async function fetchMotivationQuoteForDay(date: string, seed: string) {
     try {
@@ -5992,14 +5955,6 @@ export default function ClientDashboard({
                   />
                   <button
                     type="button"
-                    onClick={handleSaveMarketSnapshot}
-                    className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25"
-                    disabled={!journalDailyDate}
-                  >
-                    Save Snapshot
-                  </button>
-                  <button
-                    type="button"
                     onClick={handleGenerateJournalSummaryLink}
                     className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
                   >
@@ -6007,10 +5962,6 @@ export default function ClientDashboard({
                   </button>
                 </div>
               </div>
-
-              {marketSnapshotStatus ? (
-                <div className="mt-2 text-xs text-muted">{marketSnapshotStatus}</div>
-              ) : null}
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
@@ -6097,11 +6048,11 @@ export default function ClientDashboard({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={handleSaveChecklist}
+                        onClick={handleSaveChecklistAndSnapshot}
                         className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/10 dark:text-white"
                         disabled={!journalDailyDate}
                       >
-                        Save Checklist
+                        Save
                       </button>
                       {checklistSaveStatus ? (
                         <span className="text-[11px] text-muted">{checklistSaveStatus}</span>
@@ -6169,16 +6120,6 @@ export default function ClientDashboard({
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveMarketSnapshot}
-                      className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25"
-                      disabled={!journalDailyDate}
-                    >
-                      Save Snapshot
-                    </button>
                   </div>
                 </div>
               </div>
