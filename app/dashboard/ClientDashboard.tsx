@@ -193,6 +193,34 @@ const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
   { label: "BITCOIN", previous: null, current: null, diffPct: null }
 ];
 
+function normalizeSnapshotRows(input: unknown): MarketSnapshotRow[] {
+  const rows = Array.isArray(input) ? input : [];
+  const byLabel = new Map<string, MarketSnapshotRow>();
+  rows.forEach((item) => {
+    const row = item as Partial<MarketSnapshotRow>;
+    const label = String(row.label ?? "").trim();
+    if (!label) return;
+    const previous =
+      typeof row.previous === "number" && Number.isFinite(row.previous)
+        ? row.previous
+        : null;
+    const current =
+      typeof row.current === "number" && Number.isFinite(row.current)
+        ? row.current
+        : null;
+    const diffPct =
+      current !== null && previous !== null && previous !== 0
+        ? ((current - previous) / previous) * 100
+        : null;
+    byLabel.set(label, { label, previous, current, diffPct });
+  });
+
+  return DEFAULT_MARKET_SNAPSHOT_ROWS.map((base) => {
+    const found = byLabel.get(base.label);
+    return found ?? { ...base };
+  });
+}
+
 const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
   sentimentToday: "",
   viewOutcome: "",
@@ -1510,6 +1538,9 @@ export default function ClientDashboard({
   const [marketSnapshotRows, setMarketSnapshotRows] = useState<MarketSnapshotRow[]>(
     DEFAULT_MARKET_SNAPSHOT_ROWS
   );
+  const [marketSnapshotsByDate, setMarketSnapshotsByDate] = useState<
+    Record<string, MarketSnapshotRow[]>
+  >({});
   const [marketSnapshotStatus, setMarketSnapshotStatus] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockSuggestionItem[]>([]);
   const [stockSuggestionStatus, setStockSuggestionStatus] = useState("");
@@ -1753,6 +1784,29 @@ export default function ClientDashboard({
   }, [checklistStorageKey]);
 
   useEffect(() => {
+    const stored = localStorage.getItem(marketSnapshotStorageKey);
+    if (!stored) {
+      setMarketSnapshotsByDate({});
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") {
+        setMarketSnapshotsByDate({});
+        return;
+      }
+      const normalized: Record<string, MarketSnapshotRow[]> = {};
+      Object.entries(parsed).forEach(([date, rows]) => {
+        normalized[date] = normalizeSnapshotRows(rows);
+      });
+      setMarketSnapshotsByDate(normalized);
+    } catch (error) {
+      console.error("Failed to load saved market snapshots", error);
+      setMarketSnapshotsByDate({});
+    }
+  }, [marketSnapshotStorageKey]);
+
+  useEffect(() => {
     const stored = localStorage.getItem(participantsStorageKey);
     if (!stored) {
       setParticipantFlows([]);
@@ -1989,6 +2043,15 @@ export default function ClientDashboard({
       setJournalDailyDate(journalMonthDates[0]);
     }
   }, [journalMonthDates, journalDailyDate]);
+
+  useEffect(() => {
+    if (!journalDailyDate) {
+      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
+      return;
+    }
+    const saved = marketSnapshotsByDate[journalDailyDate];
+    setMarketSnapshotRows(saved ?? DEFAULT_MARKET_SNAPSHOT_ROWS);
+  }, [journalDailyDate, marketSnapshotsByDate]);
 
   const summary = useMemo(() => computeSummary(derived), [derived]);
   const dayBreakdown = useMemo(() => breakdownByDay(derived), [derived]);
@@ -2395,44 +2458,31 @@ export default function ClientDashboard({
     );
   }
 
-  function marketSnapshotMonthKey(month: string) {
-    return `${marketSnapshotStorageKey}_${month}`;
-  }
-
-  function readSavedMarketSnapshot(month: string): MarketSnapshotRow[] | null {
+  function readLegacySavedMarketSnapshot(month: string): MarketSnapshotRow[] | null {
     try {
-      const raw = localStorage.getItem(marketSnapshotMonthKey(month));
+      const raw = localStorage.getItem(`${marketSnapshotStorageKey}_${month}`);
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as MarketSnapshotRow[];
-      if (!Array.isArray(parsed)) return null;
-      return parsed.map((row) => ({
-        label: String(row.label),
-        previous:
-          typeof row.previous === "number" && Number.isFinite(row.previous)
-            ? row.previous
-            : null,
-        current:
-          typeof row.current === "number" && Number.isFinite(row.current)
-            ? row.current
-            : null,
-        diffPct:
-          typeof row.diffPct === "number" && Number.isFinite(row.diffPct)
-            ? row.diffPct
-            : null
-      }));
+      return normalizeSnapshotRows(JSON.parse(raw));
     } catch {
       return null;
     }
   }
 
   function handleSaveMarketSnapshot() {
+    if (!journalDailyDate) {
+      setMarketSnapshotStatus("Select a date first.");
+      setTimeout(() => setMarketSnapshotStatus(""), 1800);
+      return;
+    }
     try {
-      localStorage.setItem(
-        marketSnapshotMonthKey(journalSummaryMonth),
-        JSON.stringify(marketSnapshotRows)
-      );
+      const next = {
+        ...marketSnapshotsByDate,
+        [journalDailyDate]: normalizeSnapshotRows(marketSnapshotRows)
+      };
+      setMarketSnapshotsByDate(next);
+      localStorage.setItem(marketSnapshotStorageKey, JSON.stringify(next));
       setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-      setMarketSnapshotStatus("Snapshot saved and form reset.");
+      setMarketSnapshotStatus(`Snapshot saved for ${journalDailyDate} and form reset.`);
     } catch {
       setMarketSnapshotStatus("Could not save snapshot.");
     }
@@ -2493,8 +2543,7 @@ export default function ClientDashboard({
       return;
     }
 
-    const savedSnapshotRows = readSavedMarketSnapshot(journalSummaryMonth);
-    const snapshotRows = savedSnapshotRows ?? marketSnapshotRows;
+    const legacySnapshotRows = readLegacySavedMarketSnapshot(journalSummaryMonth);
 
     const grouped = new Map<
       string,
@@ -2566,7 +2615,12 @@ export default function ClientDashboard({
             totalPl,
             winRate
           },
-          marketSnapshot: snapshotRows,
+          marketSnapshot:
+            marketSnapshotsByDate[date] ??
+            legacySnapshotRows ??
+            (journalDailyDate === date
+              ? normalizeSnapshotRows(marketSnapshotRows)
+              : DEFAULT_MARKET_SNAPSHOT_ROWS),
           checklist: {
             sentimentToday:
               journalDailyInputs[date]?.sentimentToday.trim() || "—",
@@ -5940,6 +5994,7 @@ export default function ClientDashboard({
                     type="button"
                     onClick={handleSaveMarketSnapshot}
                     className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                    disabled={!journalDailyDate}
                   >
                     Save Snapshot
                   </button>
