@@ -162,15 +162,18 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       {activeDay.checklist.previousDayMarket || "—"}
                     </span>
                   </div>
-                  {activeDay.checklist.observations ? (
-                    <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
-                      <div className="font-semibold text-slate-100">Today's Observations:</div>
-                      <div className="mt-1">{linkifyText(activeDay.checklist.observations)}</div>
+                  <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
+                    <div className="font-semibold text-slate-100">Today's Observations:</div>
+                    <div className="mt-1">
+                      {activeDay.checklist.observations
+                        ? linkifyText(activeDay.checklist.observations)
+                        : "—"}
                     </div>
-                  ) : null}
+                  </div>
                   {activeDay.checklist.notes ? (
                     <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
-                      {linkifyText(activeDay.checklist.notes)}
+                      <div className="font-semibold text-slate-100">Notes:</div>
+                      <div className="mt-1">{linkifyText(activeDay.checklist.notes)}</div>
                     </div>
                   ) : null}
                 </div>

@@ -184,12 +184,12 @@ type JournalDailyInput = {
 };
 
 const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
-  { label: "DXY", previous: null, current: null, diffPct: null },
+  { label: "DXY Capital", previous: null, current: null, diffPct: null },
   { label: "INDIA VIX", previous: null, current: null, diffPct: null },
   { label: "DJI", previous: null, current: null, diffPct: null },
-  { label: "NASDAQ", previous: null, current: null, diffPct: null },
-  { label: "GOLD", previous: null, current: null, diffPct: null },
-  { label: "BITCOIN", previous: null, current: null, diffPct: null }
+  { label: "NDX 100", previous: null, current: null, diffPct: null },
+  { label: "XAU USD", previous: null, current: null, diffPct: null },
+  { label: "BTCUSD Crypto", previous: null, current: null, diffPct: null }
 ];
 
 const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
