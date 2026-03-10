@@ -30,6 +30,28 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
   const hasMedia = (trade: SharedPayload["days"][number]["trades"][number]) =>
     Boolean(normalizeMediaUrl(trade.chartUrl) || normalizeMediaUrl(trade.pnlScreenshotUrl));
 
+  const linkifyText = (value: string) => {
+    const source = value || "";
+    const regex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    const parts = source.split(regex);
+    return parts.map((part, index) => {
+      if (/^(https?:\/\/|www\.)/i.test(part)) {
+        const href = part.startsWith("http") ? part : `https://${part}`;
+        return (
+          <a
+            key={`${part}-${index}`}
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-cyan-300 underline"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={`${part}-${index}`}>{part}</span>;
+    });
+  };
 
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
@@ -136,12 +158,12 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                   {activeDay.checklist.observations ? (
                     <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
                       <span className="font-semibold text-slate-100">Today's Observations:</span>{" "}
-                      {activeDay.checklist.observations}
+                      {linkifyText(activeDay.checklist.observations)}
                     </div>
                   ) : null}
                   {activeDay.checklist.notes ? (
                     <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
-                      {activeDay.checklist.notes}
+                      {linkifyText(activeDay.checklist.notes)}
                     </div>
                   ) : null}
                 </div>
