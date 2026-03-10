@@ -238,8 +238,12 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       </td>
                       <td className="px-3 py-2">
                         {trade.pnlScreenshotUrl ? (
-                          <a href={trade.pnlScreenshotUrl} target="_blank" rel="noreferrer" className="text-emerald-300 underline">
-                            Open
+                          <a href={trade.pnlScreenshotUrl} target="_blank" rel="noreferrer" className="block w-fit">
+                            <img
+                              src={trade.pnlScreenshotUrl}
+                              alt={`PnL ${trade.tradeId}`}
+                              className="h-10 w-14 rounded border border-white/15 object-cover"
+                            />
                           </a>
                         ) : (
                           "—"

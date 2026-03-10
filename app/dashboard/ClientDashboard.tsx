@@ -1018,6 +1018,38 @@ function AddTradeForm({
     }
   }
 
+  async function handlePnlScreenshotUpload(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload a valid image for PnL screenshot.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("PnL screenshot is too large. Keep it under 4 MB.");
+      return;
+    }
+
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === "string" ? reader.result : "";
+          if (!result) {
+            reject(new Error("Upload failed"));
+            return;
+          }
+          resolve(result);
+        };
+        reader.onerror = () => reject(new Error("Upload failed"));
+        reader.readAsDataURL(file);
+      });
+      setPnlScreenshotUrl(dataUrl);
+      setError("");
+    } catch {
+      setError("Could not read screenshot file. Try again.");
+    }
+  }
+
   return (
     <form id="trade-form" onSubmit={handleSubmit} className="card">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1250,12 +1282,40 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <input
-          placeholder="PnL screenshot link (optional)"
-          value={pnlScreenshotUrl}
-          onChange={(event) => setPnlScreenshotUrl(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
+        <div className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/10">
+              Upload PnL Screenshot
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  void handlePnlScreenshotUpload(event.target.files?.[0] ?? null);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            {pnlScreenshotUrl ? (
+              <button
+                type="button"
+                className="rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/10"
+                onClick={() => setPnlScreenshotUrl("")}
+              >
+                Remove Screenshot
+              </button>
+            ) : null}
+          </div>
+          {pnlScreenshotUrl ? (
+            <img
+              src={pnlScreenshotUrl}
+              alt="PnL screenshot preview"
+              className="mt-2 h-16 w-24 rounded-md border border-white/10 object-cover"
+            />
+          ) : (
+            <div className="mt-2 text-[11px] text-muted">No screenshot uploaded</div>
+          )}
+        </div>
         <select
           value={tradeType}
           onChange={(event) =>
@@ -2661,6 +2721,32 @@ export default function ClientDashboard({
     setSession(null);
     setTradeList([]);
     router.replace("/sign-in");
+  }
+
+  async function handleClearAllTrades() {
+    if (!window.confirm("Clear all trades? This cannot be undone.")) {
+      return;
+    }
+
+    if (dataSource === "supabase") {
+      if (!supabase) return;
+      if (!session) return;
+      const { error } = await supabase
+        .from("trades")
+        .delete()
+        .eq("user_id", session.user.id)
+        .is("team_id", null);
+      if (error) {
+        setImportStatus(`Supabase clear failed: ${error.message}`);
+        return;
+      }
+      setTradeList([]);
+      setImportStatus("All trades cleared.");
+      return;
+    }
+
+    setTradeList([]);
+    setImportStatus("All trades cleared.");
   }
 
   function handleEditTrade(trade: Trade) {
@@ -5935,11 +6021,7 @@ export default function ClientDashboard({
                 </button>
                 <button
                   className="rounded-full border border-white/10 px-4 py-2"
-                  onClick={() => {
-                    if (window.confirm("Clear all trades? This cannot be undone.")) {
-                      setTradeList([]);
-                    }
-                  }}
+                  onClick={handleClearAllTrades}
                 >
                   Clear all
                 </button>
