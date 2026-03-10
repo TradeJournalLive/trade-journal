@@ -29,6 +29,7 @@ const PROFILE_KEY = "pulsejournal_profile";
 const PARTICIPANTS_KEY = "pulsejournal_participants";
 const JOURNAL_DAILY_INPUTS_KEY = "pulsejournal_daily_inputs";
 const MARKET_SNAPSHOT_KEY = "pulsejournal_market_snapshot";
+const SHARE_LINK_IDS_KEY = "pulsejournal_share_link_ids";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -2647,16 +2648,49 @@ export default function ClientDashboard({
       }
     };
 
+    const shareLinkMapKey =
+      dataSource === "supabase" && session?.user?.id
+        ? `${SHARE_LINK_IDS_KEY}_${session.user.id}`
+        : SHARE_LINK_IDS_KEY;
+    let existingId = "";
+    try {
+      const raw = localStorage.getItem(shareLinkMapKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        existingId = String(parsed?.[journalSummaryMonth] ?? "");
+      }
+    } catch {
+      existingId = "";
+    }
+    if (!existingId && journalSummaryLink.includes("id=")) {
+      try {
+        const currentId = new URL(journalSummaryLink).searchParams.get("id") ?? "";
+        existingId = currentId.trim();
+      } catch {
+        // ignore parse errors
+      }
+    }
+
     let link = "";
     try {
       const response = await fetch("/api/share-journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload })
+        body: JSON.stringify({ payload, id: existingId || undefined })
       });
       if (response.ok) {
         const data = (await response.json()) as { id?: string };
         if (data.id) {
+          try {
+            const raw = localStorage.getItem(shareLinkMapKey);
+            const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+            localStorage.setItem(
+              shareLinkMapKey,
+              JSON.stringify({ ...parsed, [journalSummaryMonth]: data.id })
+            );
+          } catch {
+            // ignore local mapping write failures
+          }
           link = `${window.location.origin}/share/journal-daily?id=${data.id}`;
         }
       }

@@ -28,19 +28,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as { payload?: unknown };
+  const body = (await request.json()) as { payload?: unknown; id?: string };
   if (!body.payload) {
     return NextResponse.json({ error: "Missing payload." }, { status: 400 });
   }
 
-  const id = randomId(10);
-  const response = await fetch(`${url}/rest/v1/shared_journal_links`, {
+  const requestedId = (body.id ?? "").trim();
+  const id = requestedId || randomId(10);
+  const response = await fetch(
+    `${url}/rest/v1/shared_journal_links?on_conflict=id`,
+    {
     method: "POST",
     headers: {
       apikey: key,
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
-      Prefer: "return=minimal"
+      Prefer: "return=minimal,resolution=merge-duplicates"
     },
     body: JSON.stringify([
       {
@@ -48,7 +51,8 @@ export async function POST(request: Request) {
         payload: body.payload
       }
     ])
-  });
+    }
+  );
 
   if (!response.ok) {
     const message = await response.text();
