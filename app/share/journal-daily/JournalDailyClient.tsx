@@ -5,6 +5,8 @@ import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
   const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
+  const [activeMediaTrade, setActiveMediaTrade] =
+    useState<SharedPayload["days"][number]["trades"][number] | null>(null);
 
   const activeDay = useMemo(
     () => payload.days.find((day) => day.date === activeDate) ?? payload.days[0],
@@ -17,39 +19,16 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     maximumFractionDigits: 2
   });
 
-  const escapeHtml = (value: string) =>
-    value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  const openTradeMedia = (trade: SharedPayload["days"][number]["trades"][number]) => {
-    const chart = trade.chartUrl?.trim();
-    const pnl = trade.pnlScreenshotUrl?.trim();
-    if (!chart && !pnl) return;
-
-    const popup = window.open("", "_blank", "noopener,noreferrer");
-    if (!popup) return;
-
-    const body = [
-      `<div style="font-family:system-ui;padding:20px;background:#0b1220;color:#e2e8f0;min-height:100vh">`,
-      `<h2 style="margin:0 0 14px;font-size:18px">Trade Media · ${escapeHtml(trade.tradeId)}</h2>`,
-      chart
-        ? `<p><a href="${escapeHtml(chart)}" target="_blank" rel="noreferrer" style="color:#38bdf8">Open Chart Link</a></p>`
-        : `<p style="opacity:.7">No chart link</p>`,
-      pnl
-        ? `<div style="margin-top:12px"><div style="margin-bottom:8px;font-weight:600">PnL Screenshot</div><img src="${escapeHtml(pnl)}" style="max-width:100%;border-radius:8px;border:1px solid #334155" /></div>`
-        : `<p style="opacity:.7">No PnL screenshot</p>`,
-      `</div>`
-    ].join("");
-
-    popup.document.open();
-    popup.document.write(`<!doctype html><html><head><title>Trade Media</title></head><body style="margin:0">${body}</body></html>`);
-    popup.document.close();
+  const normalizeMediaUrl = (value?: string) => {
+    const raw = (value ?? "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("https://data:")) return raw.replace("https://", "");
+    if (raw.startsWith("http://data:")) return raw.replace("http://", "");
+    return raw;
   };
 
+  const hasMedia = (trade: SharedPayload["days"][number]["trades"][number]) =>
+    Boolean(normalizeMediaUrl(trade.chartUrl) || normalizeMediaUrl(trade.pnlScreenshotUrl));
 
 
   return (
@@ -240,10 +219,10 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       </td>
                       <td className="px-3 py-2">{trade.remarks || trade.exitReason || "—"}</td>
                       <td className="px-3 py-2">
-                        {trade.chartUrl || trade.pnlScreenshotUrl ? (
+                        {hasMedia(trade) ? (
                           <button
                             type="button"
-                            onClick={() => openTradeMedia(trade)}
+                            onClick={() => setActiveMediaTrade(trade)}
                             className="rounded-full border border-cyan-300/50 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 hover:bg-cyan-500/20"
                           >
                             Open
@@ -256,6 +235,60 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        ) : null}
+
+        {activeMediaTrade ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+            <div className="w-full max-w-3xl rounded-2xl border border-white/15 bg-[#0b1220] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-sm font-semibold text-slate-100">
+                  Trade Media · {activeMediaTrade.tradeId}
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10"
+                  onClick={() => setActiveMediaTrade(null)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="space-y-4">
+                {!normalizeMediaUrl(activeMediaTrade.chartUrl) &&
+                !normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl) ? (
+                  <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    No media found in this shared record. Generate a new share link after saving screenshot.
+                  </div>
+                ) : null}
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Chart</div>
+                  {normalizeMediaUrl(activeMediaTrade.chartUrl) ? (
+                    <a
+                      href={normalizeMediaUrl(activeMediaTrade.chartUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-cyan-300 underline"
+                    >
+                      Open Chart Link
+                    </a>
+                  ) : (
+                    <div className="text-xs text-muted">No chart link</div>
+                  )}
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">PnL Screenshot</div>
+                  {normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl) ? (
+                    <img
+                      src={normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl)}
+                      alt={`PnL ${activeMediaTrade.tradeId}`}
+                      className="max-h-[420px] w-full rounded-lg border border-white/15 object-contain"
+                    />
+                  ) : (
+                    <div className="text-xs text-muted">No PnL screenshot</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
