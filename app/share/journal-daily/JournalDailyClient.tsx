@@ -17,6 +17,39 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     maximumFractionDigits: 2
   });
 
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const openTradeMedia = (trade: SharedPayload["days"][number]["trades"][number]) => {
+    const chart = trade.chartUrl?.trim();
+    const pnl = trade.pnlScreenshotUrl?.trim();
+    if (!chart && !pnl) return;
+
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    if (!popup) return;
+
+    const body = [
+      `<div style="font-family:system-ui;padding:20px;background:#0b1220;color:#e2e8f0;min-height:100vh">`,
+      `<h2 style="margin:0 0 14px;font-size:18px">Trade Media · ${escapeHtml(trade.tradeId)}</h2>`,
+      chart
+        ? `<p><a href="${escapeHtml(chart)}" target="_blank" rel="noreferrer" style="color:#38bdf8">Open Chart Link</a></p>`
+        : `<p style="opacity:.7">No chart link</p>`,
+      pnl
+        ? `<div style="margin-top:12px"><div style="margin-bottom:8px;font-weight:600">PnL Screenshot</div><img src="${escapeHtml(pnl)}" style="max-width:100%;border-radius:8px;border:1px solid #334155" /></div>`
+        : `<p style="opacity:.7">No PnL screenshot</p>`,
+      `</div>`
+    ].join("");
+
+    popup.document.open();
+    popup.document.write(`<!doctype html><html><head><title>Trade Media</title></head><body style="margin:0">${body}</body></html>`);
+    popup.document.close();
+  };
+
 
 
   return (
@@ -188,8 +221,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     <th className="px-3 py-2 text-right font-semibold">Exit</th>
                     <th className="px-3 py-2 text-right font-semibold">P/L</th>
                     <th className="px-3 py-2 text-left font-semibold">Reason</th>
-                    <th className="px-3 py-2 text-left font-semibold">Chart</th>
-                    <th className="px-3 py-2 text-left font-semibold">PnL SS</th>
+                    <th className="px-3 py-2 text-left font-semibold">Media</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -208,23 +240,14 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       </td>
                       <td className="px-3 py-2">{trade.remarks || trade.exitReason || "—"}</td>
                       <td className="px-3 py-2">
-                        {trade.chartUrl ? (
-                          <a href={trade.chartUrl} target="_blank" rel="noreferrer" className="text-sky-300 underline">
+                        {trade.chartUrl || trade.pnlScreenshotUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => openTradeMedia(trade)}
+                            className="rounded-full border border-cyan-300/50 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 hover:bg-cyan-500/20"
+                          >
                             Open
-                          </a>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {trade.pnlScreenshotUrl ? (
-                          <a href={trade.pnlScreenshotUrl} target="_blank" rel="noreferrer" className="block w-fit">
-                            <img
-                              src={trade.pnlScreenshotUrl}
-                              alt={`PnL ${trade.tradeId}`}
-                              className="h-10 w-14 rounded border border-white/15 object-cover"
-                            />
-                          </a>
+                          </button>
                         ) : (
                           "—"
                         )}

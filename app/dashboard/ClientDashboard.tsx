@@ -498,7 +498,7 @@ function normalizeTime(value: string) {
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^(https?:\/\/|data:|blob:)/i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
 }
 
