@@ -1282,9 +1282,9 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-ink px-3 py-2 text-white">
-          <label className="inline-flex cursor-pointer items-center rounded-full border border-white/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10">
-            PnL SS
+        <div className="flex h-10 items-center justify-between rounded-lg border border-white/10 bg-ink px-2 text-white">
+          <label className="inline-flex cursor-pointer items-center rounded-full border border-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10 whitespace-nowrap">
+            Upload SS
             <input
               type="file"
               accept="image/*"
@@ -1295,23 +1295,17 @@ function AddTradeForm({
               }}
             />
           </label>
-          <div className="flex items-center gap-2">
-            {pnlScreenshotUrl ? (
-              <img
-                src={pnlScreenshotUrl}
-                alt="PnL screenshot preview"
-                className="h-8 w-10 rounded border border-white/15 object-cover"
-              />
-            ) : (
-              <span className="text-[10px] text-muted">No SS</span>
-            )}
+          <div className="ml-2 flex shrink-0 items-center gap-1">
+            <span className={`text-[10px] ${pnlScreenshotUrl ? "text-emerald-300" : "text-muted"}`}>
+              {pnlScreenshotUrl ? "Added" : "No SS"}
+            </span>
             {pnlScreenshotUrl ? (
               <button
                 type="button"
-                className="rounded-full border border-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10"
+                className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10"
                 onClick={() => setPnlScreenshotUrl("")}
               >
-                Clear
+                X
               </button>
             ) : null}
           </div>
@@ -1330,6 +1324,17 @@ function AddTradeForm({
           <option value="Risky">Risky</option>
         </select>
       </div>
+
+      {pnlScreenshotUrl ? (
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+          <img
+            src={pnlScreenshotUrl}
+            alt="PnL screenshot preview"
+            className="h-9 w-12 rounded border border-white/15 object-cover"
+          />
+          <span>PnL screenshot selected</span>
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center gap-2">
