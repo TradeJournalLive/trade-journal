@@ -904,7 +904,6 @@ function AddTradeForm({
       !market ||
       !entryTime ||
       !exitTime ||
-      !strategyChoice ||
       !direction ||
       !lots ||
       !entryPrice ||
@@ -1118,8 +1117,8 @@ function AddTradeForm({
           onChange={(event) => setStrategyChoice(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         >
-          <option value="" disabled>
-            Select strategy
+          <option value="">
+            Strategy (optional)
           </option>
           {strategies.map((strategy) => (
             <option key={strategy.id} value={strategy.name}>
