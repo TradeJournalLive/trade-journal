@@ -27,6 +27,7 @@ const INSTRUMENTS_KEY = "pulsejournal_instruments";
 const STRATEGIES_KEY = "pulsejournal_strategies";
 const PROFILE_KEY = "pulsejournal_profile";
 const PARTICIPANTS_KEY = "pulsejournal_participants";
+const JOURNAL_DAILY_INPUTS_KEY = "pulsejournal_daily_inputs";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -1498,6 +1499,7 @@ export default function ClientDashboard({
   );
   const [journalSummaryLink, setJournalSummaryLink] = useState("");
   const [journalSummaryStatus, setJournalSummaryStatus] = useState("");
+  const [checklistSaveStatus, setChecklistSaveStatus] = useState("");
   const [journalDailyDate, setJournalDailyDate] = useState("");
   const [journalDailyInputs, setJournalDailyInputs] = useState<
     Record<string, JournalDailyInput>
@@ -1537,6 +1539,14 @@ export default function ClientDashboard({
       return `${PARTICIPANTS_KEY}_${session.user.id}`;
     }
     return PARTICIPANTS_KEY;
+  }, [dataSource, session?.user?.id]);
+
+
+  const checklistStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${JOURNAL_DAILY_INPUTS_KEY}_${session.user.id}`;
+    }
+    return JOURNAL_DAILY_INPUTS_KEY;
   }, [dataSource, session?.user?.id]);
 
   const loadMarketNews = useCallback(async ({
@@ -1717,6 +1727,20 @@ export default function ClientDashboard({
   useEffect(() => {
     localStorage.setItem(strategyStorageKey, JSON.stringify(strategies));
   }, [strategyStorageKey, strategies]);
+
+
+  useEffect(() => {
+    const stored = localStorage.getItem(checklistStorageKey);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as Record<string, JournalDailyInput>;
+      if (parsed && typeof parsed === "object") {
+        setJournalDailyInputs(parsed);
+      }
+    } catch (error) {
+      console.error("Failed to load checklist inputs", error);
+    }
+  }, [checklistStorageKey]);
 
   useEffect(() => {
     const stored = localStorage.getItem(participantsStorageKey);
@@ -2327,6 +2351,17 @@ export default function ClientDashboard({
         }
       };
     });
+  }
+
+
+  function handleSaveChecklist() {
+    try {
+      localStorage.setItem(checklistStorageKey, JSON.stringify(journalDailyInputs));
+      setChecklistSaveStatus("Checklist saved.");
+    } catch {
+      setChecklistSaveStatus("Could not save checklist.");
+    }
+    setTimeout(() => setChecklistSaveStatus(""), 1800);
   }
 
   async function loadMarketSnapshot() {
@@ -5195,7 +5230,7 @@ export default function ClientDashboard({
                       <button
                         type="button"
                         onClick={() => setExpandedSnapshotDate(null)}
-                        className="rounded-full border border-white/40 px-3 py-1 text-xs"
+                        className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/40 dark:bg-white/10 dark:text-white"
                       >
                         Close
                       </button>
@@ -5914,6 +5949,19 @@ export default function ClientDashboard({
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
                       disabled={!journalDailyDate}
                     />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveChecklist}
+                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/10 dark:text-white"
+                        disabled={!journalDailyDate}
+                      >
+                        Save Checklist
+                      </button>
+                      {checklistSaveStatus ? (
+                        <span className="text-[11px] text-muted">{checklistSaveStatus}</span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 

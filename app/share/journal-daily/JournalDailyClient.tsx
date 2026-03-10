@@ -223,7 +223,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                           <button
                             type="button"
                             onClick={() => setActiveMediaTrade(trade)}
-                            className="rounded-full border border-cyan-300/50 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 hover:bg-cyan-500/20"
+                            className="rounded-full border border-cyan-300 bg-cyan-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-800 hover:bg-cyan-200 dark:border-cyan-300/50 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
                           >
                             Open
                           </button>
@@ -248,7 +248,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                 </div>
                 <button
                   type="button"
-                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10"
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/10 dark:text-white"
                   onClick={() => setActiveMediaTrade(null)}
                 >
                   Close
