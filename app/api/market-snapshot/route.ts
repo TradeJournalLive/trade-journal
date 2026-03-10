@@ -10,12 +10,12 @@ type SnapshotRow = {
 };
 
 const SYMBOLS = [
-  { label: "DXY Capital", tvSymbol: "TVC:DXY", live: false },
+  { label: "DXY", tvSymbol: "TVC:DXY", live: false },
   { label: "INDIA VIX", tvSymbol: "NSE:INDIAVIX", live: true },
   { label: "DJI", tvSymbol: "TVC:DJI", live: false },
-  { label: "NDX 100", tvSymbol: "TVC:IXIC", live: false },
-  { label: "XAU USD", tvSymbol: "COMEX:GC1!", live: false },
-  { label: "BTCUSD Crypto", tvSymbol: "BINANCE:BTCUSDT", live: false }
+  { label: "NASDAQ", tvSymbol: "TVC:IXIC", live: false },
+  { label: "GOLD", tvSymbol: "COMEX:GC1!", live: false },
+  { label: "BITCOIN", tvSymbol: "BINANCE:BTCUSDT", live: false }
 ] as const;
 
 function fallbackRows(): SnapshotRow[] {

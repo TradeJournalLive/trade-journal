@@ -184,12 +184,12 @@ type JournalDailyInput = {
 };
 
 const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
-  { label: "DXY Capital", previous: null, current: null, diffPct: null },
+  { label: "DXY", previous: null, current: null, diffPct: null },
   { label: "INDIA VIX", previous: null, current: null, diffPct: null },
   { label: "DJI", previous: null, current: null, diffPct: null },
-  { label: "NDX 100", previous: null, current: null, diffPct: null },
-  { label: "XAU USD", previous: null, current: null, diffPct: null },
-  { label: "BTCUSD Crypto", previous: null, current: null, diffPct: null }
+  { label: "NASDAQ", previous: null, current: null, diffPct: null },
+  { label: "GOLD", previous: null, current: null, diffPct: null },
+  { label: "BITCOIN", previous: null, current: null, diffPct: null }
 ];
 
 const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
@@ -1857,11 +1857,6 @@ export default function ClientDashboard({
   }, [view, presetInstrument, globalInstrument]);
 
   useEffect(() => {
-    if (view !== "journal") return;
-    void loadMarketSnapshot();
-  }, [view]);
-
-  useEffect(() => {
     if (view !== "overview" && view !== "news") return;
     setNewsPage(1);
     const pageSize = view === "news" ? 10 : 6;
@@ -2366,6 +2361,32 @@ export default function ClientDashboard({
     setTimeout(() => setChecklistSaveStatus(""), 1800);
   }
 
+  function handleMarketSnapshotInput(
+    label: string,
+    field: "previous" | "current",
+    rawValue: string
+  ) {
+    const trimmed = rawValue.trim();
+    const parsed = trimmed === "" ? null : Number(trimmed);
+    const value = Number.isFinite(parsed as number) ? (parsed as number) : null;
+    setMarketSnapshotRows((prev) =>
+      prev.map((row) => {
+        if (row.label !== label) return row;
+        const nextRow: MarketSnapshotRow = {
+          ...row,
+          [field]: value
+        };
+        nextRow.diffPct =
+          nextRow.current !== null &&
+          nextRow.previous !== null &&
+          nextRow.previous !== 0
+            ? ((nextRow.current - nextRow.previous) / nextRow.previous) * 100
+            : null;
+        return nextRow;
+      })
+    );
+  }
+
   async function loadMarketSnapshot() {
     setMarketSnapshotStatus("Loading market snapshot...");
     try {
@@ -2420,24 +2441,7 @@ export default function ClientDashboard({
       return;
     }
 
-    let snapshotRows = marketSnapshotRows;
-    try {
-      const response = await fetch("/api/market-snapshot", { cache: "no-store" });
-      const payload = (await response.json()) as {
-        rows?: MarketSnapshotRow[];
-        hasData?: boolean;
-      };
-      const rows = Array.isArray(payload.rows) ? payload.rows : [];
-      const hasFilledValues = rows.some(
-        (row) => row.previous !== null && row.current !== null
-      );
-      if (response.ok && rows.length && (payload.hasData || hasFilledValues)) {
-        snapshotRows = rows;
-        setMarketSnapshotRows(rows);
-      }
-    } catch {
-      snapshotRows = marketSnapshotRows;
-    }
+    const snapshotRows = marketSnapshotRows;
 
     const grouped = new Map<
       string,
@@ -6000,7 +6004,7 @@ export default function ClientDashboard({
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Auto-Filled Market Snapshot (Top Right)
+                    Market Snapshot (Manual) (Top Right)
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs">
@@ -6016,11 +6020,35 @@ export default function ClientDashboard({
                         {marketSnapshotRows.map((row) => (
                           <tr key={row.label} className="border-t border-white/10">
                             <td className="px-2 py-1">{row.label}</td>
-                            <td className="px-2 py-1 text-right">
-                              {row.previous === null ? "—" : row.previous.toFixed(3)}
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                step="any"
+                                value={row.previous ?? ""}
+                                onChange={(event) =>
+                                  handleMarketSnapshotInput(
+                                    row.label,
+                                    "previous",
+                                    event.target.value
+                                  )
+                                }
+                                className="w-full rounded-md border border-white/15 bg-ink px-2 py-1 text-right text-white"
+                              />
                             </td>
-                            <td className="px-2 py-1 text-right">
-                              {row.current === null ? "—" : row.current.toFixed(3)}
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                step="any"
+                                value={row.current ?? ""}
+                                onChange={(event) =>
+                                  handleMarketSnapshotInput(
+                                    row.label,
+                                    "current",
+                                    event.target.value
+                                  )
+                                }
+                                className="w-full rounded-md border border-white/15 bg-ink px-2 py-1 text-right text-white"
+                              />
                             </td>
                             <td
                               className={`px-2 py-1 text-right font-semibold ${
