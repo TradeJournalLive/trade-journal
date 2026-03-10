@@ -164,8 +164,8 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                   </div>
                   {activeDay.checklist.observations ? (
                     <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
-                      <span className="font-semibold text-slate-100">Today's Observations:</span>{" "}
-                      {linkifyText(activeDay.checklist.observations)}
+                      <div className="font-semibold text-slate-100">Today's Observations:</div>
+                      <div className="mt-1">{linkifyText(activeDay.checklist.observations)}</div>
                     </div>
                   ) : null}
                   {activeDay.checklist.notes ? (
@@ -211,9 +211,6 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       ))}
                     </tbody>
                   </table>
-                </div>
-                <div className="mt-2 text-[11px] text-muted">
-                  INDIA VIX is live. Other rows use last two completed market closes.
                 </div>
               </div>
             </div>

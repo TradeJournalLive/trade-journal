@@ -6033,9 +6033,6 @@ export default function ClientDashboard({
                         ))}
                       </tbody>
                     </table>
-                    <div className="mt-2 text-[11px] text-muted">
-                      INDIA VIX is live. Other rows use last two completed market closes.
-                    </div>
                   </div>
                 </div>
               </div>
