@@ -31,6 +31,24 @@ function validNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function toIstDateKeyFromUnix(tsSeconds: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(tsSeconds * 1000));
+}
+
+function currentIstDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
 function toRow(label: string, previous: number | null, current: number | null): SnapshotRow {
   const diffPct =
     current !== null && previous !== null && previous !== 0
@@ -113,25 +131,15 @@ async function fetchYahooChartRow(
 
   const timestamps = payload.chart?.result?.[0]?.timestamp ?? [];
   const closes = payload.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
-  const now = new Date();
-  const todayUtc = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate()
-  );
+  const todayIst = currentIstDateKey();
 
   const valid = closes
     .map((close, index) => {
       const ts = timestamps[index];
       if (typeof close !== "number" || !Number.isFinite(close)) return null;
       if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
-      const rowDate = new Date(ts * 1000);
-      const rowUtc = Date.UTC(
-        rowDate.getUTCFullYear(),
-        rowDate.getUTCMonth(),
-        rowDate.getUTCDate()
-      );
-      if (options?.excludeToday && rowUtc >= todayUtc) return null;
+      const rowIst = toIstDateKeyFromUnix(ts);
+      if (options?.excludeToday && rowIst >= todayIst) return null;
       return close;
     })
     .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -145,6 +153,17 @@ async function fetchYahooChartRow(
 async function fetchYahooChartRows() {
   const rows = await Promise.all(
     SYMBOLS.map((item) => fetchYahooChartRow(item.symbol, item.label))
+  );
+  return rows;
+}
+
+async function fetchChartRowsWithRule() {
+  const rows = await Promise.all(
+    SYMBOLS.map((item) =>
+      fetchYahooChartRow(item.symbol, item.label, {
+        excludeToday: item.label !== "INDIA VIX"
+      })
+    )
   );
   return rows;
 }
@@ -171,7 +190,7 @@ export async function GET() {
     const hasData = rows.some((row) => row.current !== null && row.previous !== null);
 
     if (!hasData) {
-      rows = await fetchYahooChartRows();
+      rows = await fetchChartRowsWithRule();
     }
 
     const finalHasData = rows.some(
@@ -181,7 +200,7 @@ export async function GET() {
     return NextResponse.json({ rows, hasData: finalHasData });
   } catch {
     try {
-      const rows = await fetchYahooChartRows();
+      const rows = await fetchChartRowsWithRule();
       const hasData = rows.some(
         (row) => row.current !== null && row.previous !== null
       );

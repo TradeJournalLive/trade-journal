@@ -39,8 +39,10 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     const source = value || "";
     const regex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
     const parts = source.split(regex);
+    let linkCounter = 0;
     return parts.map((part, index) => {
       if (/^(https?:\/\/|www\.)/i.test(part)) {
+        linkCounter += 1;
         const href = part.startsWith("http") ? part : `https://${part}`;
         return (
           <a
@@ -48,9 +50,9 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="text-cyan-300 underline"
+            className="font-semibold text-sky-400 underline decoration-2 underline-offset-2 hover:text-sky-300"
           >
-            {part}
+            Open Link {linkCounter}
           </a>
         );
       }
@@ -183,8 +185,8 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     <thead className="text-muted">
                       <tr>
                         <th className="px-2 py-1 text-left font-semibold">Index</th>
-                        <th className="px-2 py-1 text-right font-semibold">Yesterday</th>
-                        <th className="px-2 py-1 text-right font-semibold">Today</th>
+                        <th className="px-2 py-1 text-right font-semibold">Prev Close</th>
+                        <th className="px-2 py-1 text-right font-semibold">Last Close</th>
                         <th className="px-2 py-1 text-right font-semibold">Diff</th>
                       </tr>
                     </thead>
@@ -209,6 +211,9 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="mt-2 text-[11px] text-muted">
+                  INDIA VIX is live. Other rows use last two completed market closes.
                 </div>
               </div>
             </div>

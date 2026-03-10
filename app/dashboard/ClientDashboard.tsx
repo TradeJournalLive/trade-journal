@@ -5942,18 +5942,23 @@ export default function ClientDashboard({
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
                       disabled={!journalDailyDate}
                     />
-                    <textarea
-                      placeholder="Today's observations (while adding view)"
-                      value={selectedJournalDailyInput.observations}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          observations: event.target.value
-                        })
-                      }
-                      rows={2}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
+                    <div>
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                        Today&apos;s Observations
+                      </div>
+                      <textarea
+                        placeholder="Add observations. Paste links too."
+                        value={selectedJournalDailyInput.observations}
+                        onChange={(event) =>
+                          updateJournalDailyInput(journalDailyDate, {
+                            observations: event.target.value
+                          })
+                        }
+                        rows={2}
+                        className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                        disabled={!journalDailyDate}
+                      />
+                    </div>
                     <input
                       placeholder="Previous day market (Bullish/Bearish/Neutral)"
                       value={selectedJournalDailyInput.previousDayMarket}
@@ -6002,8 +6007,8 @@ export default function ClientDashboard({
                       <thead className="text-muted">
                         <tr>
                           <th className="px-2 py-1 text-left font-semibold">Index</th>
-                          <th className="px-2 py-1 text-right font-semibold">Yesterday</th>
-                          <th className="px-2 py-1 text-right font-semibold">Today</th>
+                          <th className="px-2 py-1 text-right font-semibold">Prev Close</th>
+                          <th className="px-2 py-1 text-right font-semibold">Last Close</th>
                           <th className="px-2 py-1 text-right font-semibold">Diff</th>
                         </tr>
                       </thead>
@@ -6028,6 +6033,9 @@ export default function ClientDashboard({
                         ))}
                       </tbody>
                     </table>
+                    <div className="mt-2 text-[11px] text-muted">
+                      INDIA VIX is live. Other rows use last two completed market closes.
+                    </div>
                   </div>
                 </div>
               </div>
