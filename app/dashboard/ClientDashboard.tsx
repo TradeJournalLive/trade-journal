@@ -5702,6 +5702,18 @@ export default function ClientDashboard({
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
                       disabled={!journalDailyDate}
                     />
+                    <textarea
+                      placeholder="Today's observations (while adding view)"
+                      value={selectedJournalDailyInput.observations}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          observations: event.target.value
+                        })
+                      }
+                      rows={2}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
                     <input
                       placeholder="Previous day market (Bullish/Bearish/Neutral)"
                       value={selectedJournalDailyInput.previousDayMarket}
@@ -5721,18 +5733,6 @@ export default function ClientDashboard({
                           pnlScreenshotUrl: event.target.value
                         })
                       }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <textarea
-                      placeholder="Today's observations"
-                      value={selectedJournalDailyInput.observations}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          observations: event.target.value
-                        })
-                      }
-                      rows={2}
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
                       disabled={!journalDailyDate}
                     />
