@@ -1282,39 +1282,39 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <div className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/10">
-              Upload PnL Screenshot
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => {
-                  void handlePnlScreenshotUpload(event.target.files?.[0] ?? null);
-                  event.currentTarget.value = "";
-                }}
+        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-ink px-3 py-2 text-white">
+          <label className="inline-flex cursor-pointer items-center rounded-full border border-white/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10">
+            PnL SS
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                void handlePnlScreenshotUpload(event.target.files?.[0] ?? null);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            {pnlScreenshotUrl ? (
+              <img
+                src={pnlScreenshotUrl}
+                alt="PnL screenshot preview"
+                className="h-8 w-10 rounded border border-white/15 object-cover"
               />
-            </label>
+            ) : (
+              <span className="text-[10px] text-muted">No SS</span>
+            )}
             {pnlScreenshotUrl ? (
               <button
                 type="button"
-                className="rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/10"
+                className="rounded-full border border-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10"
                 onClick={() => setPnlScreenshotUrl("")}
               >
-                Remove Screenshot
+                Clear
               </button>
             ) : null}
           </div>
-          {pnlScreenshotUrl ? (
-            <img
-              src={pnlScreenshotUrl}
-              alt="PnL screenshot preview"
-              className="mt-2 h-16 w-24 rounded-md border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="mt-2 text-[11px] text-muted">No screenshot uploaded</div>
-          )}
         </div>
         <select
           value={tradeType}
