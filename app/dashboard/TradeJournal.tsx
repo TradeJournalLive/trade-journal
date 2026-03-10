@@ -437,7 +437,10 @@ export default function TradeJournal({
                       <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[10px] text-white">
                         ✎
                       </span>
-                      <span>{trade.remarks}</span>
+                      <span>
+                        <span className="font-semibold text-slate-300">Entry reason:</span>{" "}
+                        {trade.remarks}
+                      </span>
                     </div>
                   )}
                 </div>

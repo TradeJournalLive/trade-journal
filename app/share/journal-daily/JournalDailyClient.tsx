@@ -1,17 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
   const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
   const [activeMediaTrade, setActiveMediaTrade] =
     useState<SharedPayload["days"][number]["trades"][number] | null>(null);
+  const [mediaZoom, setMediaZoom] = useState(1);
 
   const activeDay = useMemo(
     () => payload.days.find((day) => day.date === activeDate) ?? payload.days[0],
     [activeDate, payload.days]
   );
+
+  useEffect(() => {
+    setMediaZoom(1);
+  }, [activeMediaTrade?.tradeId]);
 
   const money = new Intl.NumberFormat(payload.currency === "INR" ? "en-IN" : "en-US", {
     style: "currency",
@@ -55,7 +60,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
 
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto w-full max-w-[92rem] space-y-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/40 bg-primary/20 text-sm font-semibold">
             TJ
@@ -208,8 +213,8 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-[1180px] text-xs">
+            <div className="hidden md:block">
+              <table className="w-full table-fixed text-xs">
                 <thead className="bg-white/5 text-muted">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Trade ID</th>
@@ -221,7 +226,8 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     <th className="px-3 py-2 text-right font-semibold">Entry</th>
                     <th className="px-3 py-2 text-right font-semibold">Exit</th>
                     <th className="px-3 py-2 text-right font-semibold">P/L</th>
-                    <th className="px-3 py-2 text-left font-semibold">Reason</th>
+                    <th className="px-3 py-2 text-left font-semibold">Entry Reason</th>
+                    <th className="px-3 py-2 text-left font-semibold">Exit Reason</th>
                     <th className="px-3 py-2 text-left font-semibold">Media</th>
                   </tr>
                 </thead>
@@ -239,7 +245,8 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       <td className={`px-3 py-2 text-right font-semibold ${trade.pl >= 0 ? "text-positive" : "text-negative"}`}>
                         {money.format(trade.pl)}
                       </td>
-                      <td className="px-3 py-2">{trade.remarks || trade.exitReason || "—"}</td>
+                      <td className="px-3 py-2">{trade.remarks || "—"}</td>
+                      <td className="px-3 py-2">{trade.exitReason || "—"}</td>
                       <td className="px-3 py-2">
                         {hasMedia(trade) ? (
                           <button
@@ -257,6 +264,40 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="grid gap-3 md:hidden">
+              {activeDay.trades.map((trade) => (
+                <div key={trade.tradeId} className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="font-semibold">{trade.tradeId}</div>
+                    <div className={trade.pl >= 0 ? "font-semibold text-positive" : "font-semibold text-negative"}>
+                      {money.format(trade.pl)}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-muted">
+                    <div>Instrument: <span className="text-white">{trade.instrument}</span></div>
+                    <div>Direction: <span className="text-white">{trade.direction}</span></div>
+                    <div>Entry: <span className="text-white">{trade.entryPrice}</span></div>
+                    <div>Exit: <span className="text-white">{trade.exitPrice}</span></div>
+                    <div>Entry Time: <span className="text-white">{trade.entryTime || "—"}</span></div>
+                    <div>Exit Time: <span className="text-white">{trade.exitTime || "—"}</span></div>
+                    <div>Duration: <span className="text-white">{trade.tradeDuration || "—"}</span></div>
+                    <div>Exit Reason: <span className="text-white">{trade.exitReason || "—"}</span></div>
+                  </div>
+                  <div className="mt-2 text-muted">
+                    Entry Reason: <span className="text-white">{trade.remarks || "—"}</span>
+                  </div>
+                  {hasMedia(trade) ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveMediaTrade(trade)}
+                      className="mt-3 rounded-full border border-cyan-300 bg-cyan-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-800 hover:bg-cyan-200 dark:border-cyan-300/50 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
+                    >
+                      Open Media
+                    </button>
+                  ) : null}
+                </div>
+              ))}
             </div>
           </div>
         ) : null}
@@ -299,13 +340,43 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                   )}
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">PnL Screenshot</div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted">PnL Screenshot</div>
+                    {normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl) ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setMediaZoom((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))}
+                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                        >
+                          Zoom -
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMediaZoom(1)}
+                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                        >
+                          Reset
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMediaZoom((prev) => Math.min(3, Number((prev + 0.1).toFixed(2))))}
+                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                        >
+                          Zoom +
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                   {normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl) ? (
-                    <img
-                      src={normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl)}
-                      alt={`PnL ${activeMediaTrade.tradeId}`}
-                      className="max-h-[420px] w-full rounded-lg border border-white/15 object-contain"
-                    />
+                    <div className="max-h-[520px] overflow-auto rounded-lg border border-white/15 bg-black/20">
+                      <img
+                        src={normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl)}
+                        alt={`PnL ${activeMediaTrade.tradeId}`}
+                        className="mx-auto w-full origin-top object-contain transition-transform duration-150"
+                        style={{ transform: `scale(${mediaZoom})` }}
+                      />
+                    </div>
                   ) : (
                     <div className="text-xs text-muted">No PnL screenshot</div>
                   )}

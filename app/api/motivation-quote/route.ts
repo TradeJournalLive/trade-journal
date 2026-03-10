@@ -3,14 +3,26 @@ import { NextResponse } from "next/server";
 export const runtime = "edge";
 
 const FALLBACK_QUOTES = [
-  "Protect capital first. Big days come from consistency.",
-  "Trade your plan, not your emotion.",
-  "Small disciplined wins beat random big bets.",
-  "Good risk management is the real edge.",
-  "Focus on process. P&L is the byproduct.",
-  "Patience compounds faster than aggression.",
-  "Clarity before entry, discipline after entry.",
-  "Your edge is execution quality, not prediction."
+  "Hard work beats hype. Show up, execute, repeat.",
+  "Discipline is hard work made visible.",
+  "Put in the work every day; confidence follows preparation.",
+  "Success in trading is earned through routine, not luck.",
+  "Outwork your excuses. Respect your process.",
+  "Consistent hard work compounds faster than random big wins.",
+  "The market rewards preparation, patience, and effort.",
+  "Work hard on risk first; profits will follow."
+];
+
+const HARD_WORK_KEYWORDS = [
+  "hard work",
+  "work hard",
+  "discipline",
+  "effort",
+  "consisten",
+  "grind",
+  "focus",
+  "process",
+  "patience"
 ];
 
 function hashSeed(input: string) {
@@ -25,6 +37,14 @@ function pickDeterministic(quotes: string[], date: string, seed: string) {
   const key = `${date || "today"}|${seed || "default"}`;
   const index = hashSeed(key) % Math.max(quotes.length, 1);
   return quotes[index] || FALLBACK_QUOTES[0];
+}
+
+function filterHardWorkQuotes(quotes: string[]) {
+  const filtered = quotes.filter((quote) => {
+    const normalized = quote.toLowerCase();
+    return HARD_WORK_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  });
+  return filtered.length > 0 ? filtered : FALLBACK_QUOTES;
 }
 
 async function fetchWebQuotes() {
@@ -51,7 +71,7 @@ async function fetchWebQuotes() {
         .filter((quote) => quote.length > 0);
 
       if (quotes.length > 0) {
-        return quotes;
+        return filterHardWorkQuotes(quotes);
       }
     } catch {
       continue;

@@ -180,6 +180,7 @@ type JournalDailyInput = {
   previousDayMarket: string;
   observations: string;
   notes: string;
+  motivationQuote?: string;
 };
 
 const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
@@ -196,7 +197,8 @@ const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
   viewOutcome: "",
   previousDayMarket: "",
   observations: "",
-  notes: ""
+  notes: "",
+  motivationQuote: ""
 };
 
 function formatPercent(value: number) {
@@ -1411,7 +1413,7 @@ function AddTradeForm({
 
       <div className="mt-3">
         <textarea
-          placeholder="Remarks (optional)"
+          placeholder="Entry Reason (optional)"
           value={remarks}
           onChange={(event) => setRemarks(event.target.value)}
           rows={3}
@@ -2400,9 +2402,9 @@ export default function ClientDashboard({
         { cache: "no-store" }
       );
       const payload = (await response.json()) as { quote?: string };
-      return payload.quote || "Protect capital first. Big days come from consistency.";
+      return payload.quote || "Hard work beats hype. Show up, execute, repeat.";
     } catch {
-      return "Protect capital first. Big days come from consistency.";
+      return "Hard work beats hype. Show up, execute, repeat.";
     }
   }
 
@@ -2485,12 +2487,19 @@ export default function ClientDashboard({
       a[0].localeCompare(b[0])
     );
 
+    const lockedQuotesByDate: Record<string, string> = {};
+
     const days = await Promise.all(
       sortedGroupedEntries.map(async ([date, trades]) => {
         const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
         const wins = trades.filter((trade) => trade.pl > 0).length;
         const winRate = trades.length ? (wins / trades.length) * 100 : 0;
-        const motivationQuote = await fetchMotivationQuoteForDay(date, quoteSeed);
+        const existingQuote = journalDailyInputs[date]?.motivationQuote?.trim() ?? "";
+        const motivationQuote =
+          existingQuote || (await fetchMotivationQuoteForDay(date, quoteSeed));
+        if (!existingQuote) {
+          lockedQuotesByDate[date] = motivationQuote;
+        }
         return {
           date,
           motivationQuote,
@@ -2515,6 +2524,25 @@ export default function ClientDashboard({
         };
       })
     );
+
+    if (Object.keys(lockedQuotesByDate).length > 0) {
+      setJournalDailyInputs((prev) => {
+        const next = { ...prev };
+        Object.entries(lockedQuotesByDate).forEach(([date, quote]) => {
+          const current = next[date] ?? EMPTY_JOURNAL_DAILY_INPUT;
+          next[date] = {
+            ...current,
+            motivationQuote: quote
+          };
+        });
+        try {
+          localStorage.setItem(checklistStorageKey, JSON.stringify(next));
+        } catch {
+          // best-effort local persistence for fixed daily quotes
+        }
+        return next;
+      });
+    }
 
     const totalTrades = monthTrades.length;
     const totalPl = monthTrades.reduce((sum, trade) => sum + trade.pl, 0);
