@@ -347,21 +347,21 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                         <button
                           type="button"
                           onClick={() => setMediaZoom((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))}
-                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                          className="rounded border border-sky-700 bg-sky-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-sky-700"
                         >
                           Zoom -
                         </button>
                         <button
                           type="button"
                           onClick={() => setMediaZoom(1)}
-                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                          className="rounded border border-slate-500 bg-slate-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
                         >
                           Reset
                         </button>
                         <button
                           type="button"
                           onClick={() => setMediaZoom((prev) => Math.min(3, Number((prev + 0.1).toFixed(2))))}
-                          className="rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
+                          className="rounded border border-sky-700 bg-sky-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-sky-700"
                         >
                           Zoom +
                         </button>
@@ -369,12 +369,12 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     ) : null}
                   </div>
                   {normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl) ? (
-                    <div className="max-h-[520px] overflow-auto rounded-lg border border-white/15 bg-black/20">
+                    <div className="max-h-[420px] overflow-auto rounded-lg border border-white/15">
                       <img
                         src={normalizeMediaUrl(activeMediaTrade.pnlScreenshotUrl)}
                         alt={`PnL ${activeMediaTrade.tradeId}`}
-                        className="mx-auto w-full origin-top object-contain transition-transform duration-150"
-                        style={{ transform: `scale(${mediaZoom})` }}
+                        className="mx-auto w-full rounded-lg object-contain transition-transform duration-150"
+                        style={{ transform: `scale(${mediaZoom})`, transformOrigin: "top center" }}
                       />
                     </div>
                   ) : (
