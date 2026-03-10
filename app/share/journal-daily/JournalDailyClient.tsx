@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
   const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
+  const [topQuote, setTopQuote] = useState(
+    "Protect capital first. Big days come from consistency."
+  );
 
   const activeDay = useMemo(
     () => payload.days.find((day) => day.date === activeDate) ?? payload.days[0],
@@ -17,21 +20,24 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     maximumFractionDigits: 2
   });
 
-  const topQuotes = [
-    "Protect capital first. Big days come from consistency.",
-    "Trade your plan, not your emotion.",
-    "Small disciplined wins beat random big bets.",
-    "Good risk management is the real edge.",
-    "Focus on process. P&L is the byproduct."
-  ];
-  const topQuote =
-    activeDay
-      ? topQuotes[
-          activeDay.date
-            .split("")
-            .reduce((sum, char) => sum + char.charCodeAt(0), 0) % topQuotes.length
-        ]
-      : topQuotes[0];
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const response = await fetch("/api/motivation-quote", { cache: "no-store" });
+        const data = (await response.json()) as { quote?: string };
+        if (!cancelled && data.quote) {
+          setTopQuote(data.quote);
+        }
+      } catch {
+        // Keep local fallback.
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
@@ -110,13 +116,107 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                 </span>
               </div>
             </div>
+
+            <div className="mb-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Pre-Market Checklist
+                </div>
+                <div className="grid gap-2 text-xs">
+                  <div className="rounded-lg border border-white/10 px-3 py-2">
+                    <span className="text-muted">Sentiment Today:</span>{" "}
+                    <span className="font-semibold">
+                      {activeDay.checklist.sentimentToday || "—"}
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-white/10 px-3 py-2">
+                    <span className="text-muted">View Right/Wrong:</span>{" "}
+                    <span className="font-semibold">
+                      {activeDay.checklist.viewOutcome || "—"}
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-white/10 px-3 py-2">
+                    <span className="text-muted">Previous Day Market:</span>{" "}
+                    <span className="font-semibold">
+                      {activeDay.checklist.previousDayMarket || "—"}
+                    </span>
+                  </div>
+                  {activeDay.checklist.observations ? (
+                    <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
+                      <span className="font-semibold text-slate-100">Today's Observations:</span>{" "}
+                      {activeDay.checklist.observations}
+                    </div>
+                  ) : null}
+                  {activeDay.checklist.notes ? (
+                    <div className="rounded-lg border border-white/10 px-3 py-2 text-muted">
+                      {activeDay.checklist.notes}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Market Snapshot
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="text-muted">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-semibold">Index</th>
+                        <th className="px-2 py-1 text-right font-semibold">Yesterday</th>
+                        <th className="px-2 py-1 text-right font-semibold">Today</th>
+                        <th className="px-2 py-1 text-right font-semibold">Diff</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeDay.marketSnapshot.map((row) => (
+                        <tr key={row.label} className="border-t border-white/10">
+                          <td className="px-2 py-1">{row.label}</td>
+                          <td className="px-2 py-1 text-right">
+                            {row.previous === null ? "—" : row.previous.toFixed(3)}
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            {row.current === null ? "—" : row.current.toFixed(3)}
+                          </td>
+                          <td
+                            className={`px-2 py-1 text-right font-semibold ${
+                              (row.diffPct ?? 0) >= 0 ? "text-positive" : "text-negative"
+                            }`}
+                          >
+                            {row.diffPct === null ? "—" : `${row.diffPct.toFixed(2)}%`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {activeDay.checklist.pnlScreenshotUrl ? (
+              <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  PnL Screenshot
+                </div>
+                <img
+                  src={activeDay.checklist.pnlScreenshotUrl}
+                  alt={`PnL screenshot ${activeDay.date}`}
+                  className="max-h-80 w-full rounded-lg object-contain"
+                />
+              </div>
+            ) : null}
+
             <div className="overflow-x-auto">
-              <table className="min-w-[980px] text-xs">
+              <table className="min-w-[1180px] text-xs">
                 <thead className="bg-white/5 text-muted">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Trade ID</th>
                     <th className="px-3 py-2 text-left font-semibold">Instrument</th>
                     <th className="px-3 py-2 text-left font-semibold">Direction</th>
+                    <th className="px-3 py-2 text-left font-semibold">Entry Time</th>
+                    <th className="px-3 py-2 text-left font-semibold">Exit Time</th>
+                    <th className="px-3 py-2 text-left font-semibold">Duration</th>
                     <th className="px-3 py-2 text-right font-semibold">Entry</th>
                     <th className="px-3 py-2 text-right font-semibold">Exit</th>
                     <th className="px-3 py-2 text-right font-semibold">P/L</th>
@@ -130,6 +230,9 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       <td className="px-3 py-2 font-semibold">{trade.tradeId}</td>
                       <td className="px-3 py-2">{trade.instrument}</td>
                       <td className="px-3 py-2">{trade.direction}</td>
+                      <td className="px-3 py-2">{trade.entryTime || "—"}</td>
+                      <td className="px-3 py-2">{trade.exitTime || "—"}</td>
+                      <td className="px-3 py-2">{trade.tradeDuration || "—"}</td>
                       <td className="px-3 py-2 text-right">{trade.entryPrice}</td>
                       <td className="px-3 py-2 text-right">{trade.exitPrice}</td>
                       <td className={`px-3 py-2 text-right font-semibold ${trade.pl >= 0 ? "text-positive" : "text-negative"}`}>

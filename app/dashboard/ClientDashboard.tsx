@@ -166,6 +166,40 @@ type StockSuggestionItem = {
   note: string;
 };
 
+type MarketSnapshotRow = {
+  label: string;
+  previous: number | null;
+  current: number | null;
+  diffPct: number | null;
+};
+
+type JournalDailyInput = {
+  sentimentToday: string;
+  viewOutcome: string;
+  previousDayMarket: string;
+  observations: string;
+  notes: string;
+  pnlScreenshotUrl: string;
+};
+
+const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
+  { label: "DXY", previous: null, current: null, diffPct: null },
+  { label: "INDIA VIX", previous: null, current: null, diffPct: null },
+  { label: "DJI", previous: null, current: null, diffPct: null },
+  { label: "NASDAQ", previous: null, current: null, diffPct: null },
+  { label: "GOLD", previous: null, current: null, diffPct: null },
+  { label: "BITCOIN", previous: null, current: null, diffPct: null }
+];
+
+const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
+  sentimentToday: "",
+  viewOutcome: "",
+  previousDayMarket: "",
+  observations: "",
+  notes: "",
+  pnlScreenshotUrl: ""
+};
+
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -1349,6 +1383,14 @@ export default function ClientDashboard({
   );
   const [journalSummaryLink, setJournalSummaryLink] = useState("");
   const [journalSummaryStatus, setJournalSummaryStatus] = useState("");
+  const [journalDailyDate, setJournalDailyDate] = useState("");
+  const [journalDailyInputs, setJournalDailyInputs] = useState<
+    Record<string, JournalDailyInput>
+  >({});
+  const [marketSnapshotRows, setMarketSnapshotRows] = useState<MarketSnapshotRow[]>(
+    DEFAULT_MARKET_SNAPSHOT_ROWS
+  );
+  const [marketSnapshotStatus, setMarketSnapshotStatus] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockSuggestionItem[]>([]);
   const [stockSuggestionStatus, setStockSuggestionStatus] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1674,6 +1716,11 @@ export default function ClientDashboard({
   }, [view, presetInstrument, globalInstrument]);
 
   useEffect(() => {
+    if (view !== "journal") return;
+    void loadMarketSnapshot();
+  }, [view]);
+
+  useEffect(() => {
     if (view !== "overview" && view !== "news") return;
     setNewsPage(1);
     const pageSize = view === "news" ? 10 : 6;
@@ -1770,6 +1817,35 @@ export default function ClientDashboard({
   );
 
   const derived = useMemo(() => deriveTrades(filteredTrades), [filteredTrades]);
+  const journalMonthDates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tradeList
+            .filter((trade) => trade.date.startsWith(`${journalSummaryMonth}-`))
+            .map((trade) => trade.date)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [tradeList, journalSummaryMonth]
+  );
+  const selectedJournalDailyInput = useMemo(
+    () =>
+      journalDailyDate
+        ? journalDailyInputs[journalDailyDate] ?? EMPTY_JOURNAL_DAILY_INPUT
+        : EMPTY_JOURNAL_DAILY_INPUT,
+    [journalDailyDate, journalDailyInputs]
+  );
+
+  useEffect(() => {
+    if (!journalMonthDates.length) {
+      setJournalDailyDate("");
+      return;
+    }
+    if (!journalMonthDates.includes(journalDailyDate)) {
+      setJournalDailyDate(journalMonthDates[0]);
+    }
+  }, [journalMonthDates, journalDailyDate]);
+
   const summary = useMemo(() => computeSummary(derived), [derived]);
   const dayBreakdown = useMemo(() => breakdownByDay(derived), [derived]);
   const weekBreakdown = useMemo(() => breakdownByWeek(derived), [derived]);
@@ -2121,6 +2197,42 @@ export default function ClientDashboard({
     setTimeout(() => setShareStatus(""), 2200);
   }
 
+  function updateJournalDailyInput(
+    date: string,
+    patch: Partial<JournalDailyInput>
+  ) {
+    if (!date) return;
+    setJournalDailyInputs((prev) => {
+      const current = prev[date] ?? EMPTY_JOURNAL_DAILY_INPUT;
+      return {
+        ...prev,
+        [date]: {
+          ...current,
+          ...patch
+        }
+      };
+    });
+  }
+
+  async function loadMarketSnapshot() {
+    setMarketSnapshotStatus("Loading market snapshot...");
+    try {
+      const response = await fetch("/api/market-snapshot", { cache: "no-store" });
+      const payload = (await response.json()) as { rows?: MarketSnapshotRow[] };
+      if (Array.isArray(payload.rows) && payload.rows.length) {
+        setMarketSnapshotRows(payload.rows);
+        setMarketSnapshotStatus("Snapshot auto-filled from web.");
+      } else {
+        setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
+        setMarketSnapshotStatus("Using empty snapshot rows.");
+      }
+    } catch {
+      setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
+      setMarketSnapshotStatus("Could not fetch market snapshot right now.");
+    }
+    setTimeout(() => setMarketSnapshotStatus(""), 2200);
+  }
+
   async function handleGenerateJournalSummaryLink() {
     const monthPrefix = `${journalSummaryMonth}-`;
     const monthTrades = deriveTrades(
@@ -2133,20 +2245,17 @@ export default function ClientDashboard({
       return;
     }
 
-    const quotes = [
-      "Discipline compounds faster than profits.",
-      "Protect capital first, profits follow.",
-      "A good trade is process-first, not outcome-first.",
-      "One setup, one plan, one execution.",
-      "Consistency beats intensity in trading."
-    ];
-    const quoteForTrade = (tradeId: string, date: string) => {
-      const key = `${tradeId}${date}`;
-      const quoteIndex =
-        key.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) %
-        quotes.length;
-      return quotes[quoteIndex];
-    };
+    let snapshotRows = marketSnapshotRows;
+    try {
+      const response = await fetch("/api/market-snapshot", { cache: "no-store" });
+      const payload = (await response.json()) as { rows?: MarketSnapshotRow[] };
+      if (Array.isArray(payload.rows) && payload.rows.length) {
+        snapshotRows = payload.rows;
+        setMarketSnapshotRows(payload.rows);
+      }
+    } catch {
+      snapshotRows = marketSnapshotRows;
+    }
 
     const grouped = new Map<
       string,
@@ -2155,6 +2264,9 @@ export default function ClientDashboard({
         instrument: string;
         strategy: string;
         direction: "Long" | "Short";
+        entryTime: string;
+        exitTime: string;
+        tradeDuration: string;
         entryPrice: number;
         exitPrice: number;
         pl: number;
@@ -2171,13 +2283,19 @@ export default function ClientDashboard({
         instrument: trade.instrument,
         strategy: trade.strategy,
         direction: trade.direction,
+        entryTime: trade.entryTime,
+        exitTime: trade.exitTime,
+        tradeDuration:
+          typeof trade.tradeDuration === "number"
+            ? `${trade.tradeDuration}m`
+            : String(trade.tradeDuration ?? "—"),
         entryPrice: trade.entryPrice,
         exitPrice: trade.exitPrice,
         pl: trade.pl,
         exitReason: trade.exitReason,
         chartUrl: trade.chartUrl ?? "",
         remarks: trade.remarks ?? "",
-        quote: quoteForTrade(trade.tradeId, trade.date)
+        quote: ""
       });
       grouped.set(trade.date, current);
     });
@@ -2195,6 +2313,20 @@ export default function ClientDashboard({
             totalTrades: trades.length,
             totalPl,
             winRate
+          },
+          marketSnapshot: snapshotRows,
+          checklist: {
+            sentimentToday:
+              journalDailyInputs[date]?.sentimentToday.trim() || "—",
+            viewOutcome:
+              journalDailyInputs[date]?.viewOutcome.trim() || "—",
+            previousDayMarket:
+              journalDailyInputs[date]?.previousDayMarket.trim() || "—",
+            observations:
+              journalDailyInputs[date]?.observations.trim() || "",
+            notes: journalDailyInputs[date]?.notes.trim() || "",
+            pnlScreenshotUrl:
+              normalizeUrl(journalDailyInputs[date]?.pnlScreenshotUrl ?? "") || ""
           }
         };
       });
@@ -5497,7 +5629,7 @@ export default function ClientDashboard({
                 <div>
                   <h3 className="text-lg font-semibold">Monthly Journal Summary Link</h3>
                   <p className="text-sm text-muted">
-                    Includes date-wise tabs, monthly summary, chart links, and motivation quote for each trade.
+                    Single share link with date tabs, market snapshot, checklist, motivation quote, and PnL screenshot.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -5509,6 +5641,13 @@ export default function ClientDashboard({
                   />
                   <button
                     type="button"
+                    onClick={loadMarketSnapshot}
+                    className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                  >
+                    Auto-fill Market
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleGenerateJournalSummaryLink}
                     className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
                   >
@@ -5516,6 +5655,141 @@ export default function ClientDashboard({
                   </button>
                 </div>
               </div>
+
+              {marketSnapshotStatus ? (
+                <div className="mt-2 text-xs text-muted">{marketSnapshotStatus}</div>
+              ) : null}
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Daily Pre-Market Checklist (Top Left)
+                  </div>
+                  <div className="grid gap-3 text-xs">
+                    <select
+                      value={journalDailyDate}
+                      onChange={(event) => setJournalDailyDate(event.target.value)}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                    >
+                      {journalMonthDates.length === 0 ? (
+                        <option value="">No dates in month</option>
+                      ) : null}
+                      {journalMonthDates.map((date) => (
+                        <option key={date} value={date}>
+                          {date}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="Sentiment of market today (Bullish/Bearish/Neutral)"
+                      value={selectedJournalDailyInput.sentimentToday}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          sentimentToday: event.target.value
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <input
+                      placeholder="View went right/wrong (Yes/No)"
+                      value={selectedJournalDailyInput.viewOutcome}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          viewOutcome: event.target.value
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <input
+                      placeholder="Previous day market (Bullish/Bearish/Neutral)"
+                      value={selectedJournalDailyInput.previousDayMarket}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          previousDayMarket: event.target.value
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <input
+                      placeholder="PnL screenshot URL (optional)"
+                      value={selectedJournalDailyInput.pnlScreenshotUrl}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          pnlScreenshotUrl: event.target.value
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <textarea
+                      placeholder="Today's observations"
+                      value={selectedJournalDailyInput.observations}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          observations: event.target.value
+                        })
+                      }
+                      rows={2}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <textarea
+                      placeholder="Extra note (optional)"
+                      value={selectedJournalDailyInput.notes}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          notes: event.target.value
+                        })
+                      }
+                      rows={2}
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Auto-Filled Market Snapshot (Top Right)
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="text-muted">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-semibold">Index</th>
+                          <th className="px-2 py-1 text-right font-semibold">Yesterday</th>
+                          <th className="px-2 py-1 text-right font-semibold">Today</th>
+                          <th className="px-2 py-1 text-right font-semibold">Diff</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {marketSnapshotRows.map((row) => (
+                          <tr key={row.label} className="border-t border-white/10">
+                            <td className="px-2 py-1">{row.label}</td>
+                            <td className="px-2 py-1 text-right">
+                              {row.previous === null ? "—" : row.previous.toFixed(3)}
+                            </td>
+                            <td className="px-2 py-1 text-right">
+                              {row.current === null ? "—" : row.current.toFixed(3)}
+                            </td>
+                            <td
+                              className={`px-2 py-1 text-right font-semibold ${
+                                (row.diffPct ?? 0) >= 0 ? "text-positive" : "text-negative"
+                              }`}
+                            >
+                              {row.diffPct === null ? "—" : `${row.diffPct.toFixed(2)}%`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
               {journalSummaryLink ? (
                 <div className="mt-3 flex items-center gap-2">
                   <input

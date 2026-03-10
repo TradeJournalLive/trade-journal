@@ -11,6 +11,24 @@ type LegacyPayload = {
 
 type NewPayload = SharedPayload;
 
+const FALLBACK_MARKET_SNAPSHOT = [
+  { label: "DXY", previous: null, current: null, diffPct: null },
+  { label: "INDIA VIX", previous: null, current: null, diffPct: null },
+  { label: "DJI", previous: null, current: null, diffPct: null },
+  { label: "NASDAQ", previous: null, current: null, diffPct: null },
+  { label: "GOLD", previous: null, current: null, diffPct: null },
+  { label: "BITCOIN", previous: null, current: null, diffPct: null }
+];
+
+const FALLBACK_CHECKLIST = {
+  sentimentToday: "—",
+  viewOutcome: "—",
+  previousDayMarket: "—",
+  observations: "",
+  notes: "",
+  pnlScreenshotUrl: ""
+};
+
 function decodeRaw(input: string): unknown {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
@@ -22,13 +40,36 @@ function normalizePayload(parsed: unknown): NewPayload | null {
   if (!parsed || typeof parsed !== "object") return null;
 
   if ("days" in parsed && Array.isArray((parsed as NewPayload).days)) {
-    return parsed as NewPayload;
+    const next = parsed as NewPayload;
+    return {
+      ...next,
+      days: next.days.map((day) => ({
+        ...day,
+        trades: day.trades.map((trade) => ({
+          ...trade,
+          entryTime: trade.entryTime ?? "—",
+          exitTime: trade.exitTime ?? "—",
+          tradeDuration: trade.tradeDuration ?? "—"
+        })),
+        marketSnapshot:
+          Array.isArray(day.marketSnapshot) && day.marketSnapshot.length
+            ? day.marketSnapshot
+            : [...FALLBACK_MARKET_SNAPSHOT],
+        checklist: {
+          ...FALLBACK_CHECKLIST,
+          ...(day.checklist ?? {})
+        }
+      }))
+    };
   }
 
   if ("trades" in parsed && Array.isArray((parsed as LegacyPayload).trades)) {
     const legacy = parsed as LegacyPayload;
     const trades = legacy.trades.map((trade) => ({
       ...trade,
+      entryTime: trade.entryTime ?? "—",
+      exitTime: trade.exitTime ?? "—",
+      tradeDuration: trade.tradeDuration ?? "—",
       quote: trade.quote ?? legacy.quote
     }));
     const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
@@ -47,7 +88,9 @@ function normalizePayload(parsed: unknown): NewPayload | null {
             totalTrades: trades.length,
             totalPl,
             winRate: trades.length ? (wins / trades.length) * 100 : 0
-          }
+          },
+          marketSnapshot: [...FALLBACK_MARKET_SNAPSHOT],
+          checklist: { ...FALLBACK_CHECKLIST }
         }
       ],
       monthlySummary: {

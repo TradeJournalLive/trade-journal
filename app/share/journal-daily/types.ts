@@ -3,6 +3,9 @@ export type SharedTrade = {
   instrument: string;
   strategy: string;
   direction: "Long" | "Short";
+  entryTime: string;
+  exitTime: string;
+  tradeDuration: string;
   entryPrice: number;
   exitPrice: number;
   pl: number;
@@ -12,15 +15,35 @@ export type SharedTrade = {
   quote: string;
 };
 
+export type SharedMarketSnapshotRow = {
+  label: string;
+  previous: number | null;
+  current: number | null;
+  diffPct: number | null;
+};
+
+export type SharedDailyChecklist = {
+  sentimentToday: string;
+  viewOutcome: string;
+  previousDayMarket: string;
+  observations: string;
+  notes: string;
+  pnlScreenshotUrl: string;
+};
+
+export type SharedDay = {
+  date: string;
+  trades: SharedTrade[];
+  summary: { totalTrades: number; totalPl: number; winRate: number };
+  marketSnapshot: SharedMarketSnapshotRow[];
+  checklist: SharedDailyChecklist;
+};
+
 export type SharedPayload = {
   month: string;
   currency: "INR" | "USD";
   generatedAt: string;
-  days: Array<{
-    date: string;
-    trades: SharedTrade[];
-    summary: { totalTrades: number; totalPl: number; winRate: number };
-  }>;
+  days: SharedDay[];
   monthlySummary: {
     totalTrades: number;
     totalPl: number;
@@ -31,4 +54,3 @@ export type SharedPayload = {
     worstDay: { date: string; totalPl: number } | null;
   };
 };
-
