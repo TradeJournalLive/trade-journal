@@ -20,6 +20,7 @@ export type Trade = {
   exitReason: string;
   platform: string;
   chartUrl?: string;
+  pnlScreenshotUrl?: string;
   remarks?: string;
   emotionTag?: string;
   emotionalState?: string;

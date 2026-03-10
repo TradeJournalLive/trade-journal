@@ -194,19 +194,6 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
               </div>
             </div>
 
-            {activeDay.checklist.pnlScreenshotUrl ? (
-              <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  PnL Screenshot
-                </div>
-                <img
-                  src={activeDay.checklist.pnlScreenshotUrl}
-                  alt={`PnL screenshot ${activeDay.date}`}
-                  className="max-h-80 w-full rounded-lg object-contain"
-                />
-              </div>
-            ) : null}
-
             <div className="overflow-x-auto">
               <table className="min-w-[1180px] text-xs">
                 <thead className="bg-white/5 text-muted">
@@ -222,6 +209,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                     <th className="px-3 py-2 text-right font-semibold">P/L</th>
                     <th className="px-3 py-2 text-left font-semibold">Reason</th>
                     <th className="px-3 py-2 text-left font-semibold">Chart</th>
+                    <th className="px-3 py-2 text-left font-semibold">PnL SS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -242,6 +230,15 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
                       <td className="px-3 py-2">
                         {trade.chartUrl ? (
                           <a href={trade.chartUrl} target="_blank" rel="noreferrer" className="text-sky-300 underline">
+                            Open
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {trade.pnlScreenshotUrl ? (
+                          <a href={trade.pnlScreenshotUrl} target="_blank" rel="noreferrer" className="text-emerald-300 underline">
                             Open
                           </a>
                         ) : (

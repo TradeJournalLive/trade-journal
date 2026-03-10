@@ -179,7 +179,6 @@ type JournalDailyInput = {
   previousDayMarket: string;
   observations: string;
   notes: string;
-  pnlScreenshotUrl: string;
 };
 
 const DEFAULT_MARKET_SNAPSHOT_ROWS: MarketSnapshotRow[] = [
@@ -196,8 +195,7 @@ const EMPTY_JOURNAL_DAILY_INPUT: JournalDailyInput = {
   viewOutcome: "",
   previousDayMarket: "",
   observations: "",
-  notes: "",
-  pnlScreenshotUrl: ""
+  notes: ""
 };
 
 function formatPercent(value: number) {
@@ -504,6 +502,42 @@ function normalizeUrl(value: string) {
   return `https://${trimmed}`;
 }
 
+const PNL_SS_PREFIX = "[PNL_SS]";
+
+function mergeRemarksAndPnl(remarks?: string, pnlScreenshotUrl?: string) {
+  const base = (remarks ?? "").trim();
+  const pnl = (pnlScreenshotUrl ?? "").trim();
+  if (!pnl) return base;
+  return base ? `${base}
+${PNL_SS_PREFIX}${pnl}` : `${PNL_SS_PREFIX}${pnl}`;
+}
+
+function splitRemarksAndPnl(raw?: string | null) {
+  const value = (raw ?? "").trim();
+  if (!value) {
+    return {
+      remarks: undefined as string | undefined,
+      pnlScreenshotUrl: undefined as string | undefined
+    };
+  }
+
+  const lines = value.replace(/\r/g, "").split("\n");
+  const remaining: string[] = [];
+  let pnlScreenshotUrl: string | undefined;
+
+  for (const line of lines) {
+    if (line.startsWith(PNL_SS_PREFIX)) {
+      const parsed = normalizeUrl(line.slice(PNL_SS_PREFIX.length));
+      pnlScreenshotUrl = parsed || undefined;
+    } else {
+      remaining.push(line);
+    }
+  }
+
+  const remarks = remaining.join("\n").trim() || undefined;
+  return { remarks, pnlScreenshotUrl };
+}
+
 function createTradeId() {
   const timePart = Date.now().toString(36).slice(-4).toUpperCase();
   const randomPart = Math.random().toString(36).slice(2, 5).toUpperCase();
@@ -568,6 +602,7 @@ function parseCsv(text: string) {
 }
 
 function toSupabaseRow(trade: Trade, userId: string) {
+  const remarksWithPnl = mergeRemarksAndPnl(trade.remarks, trade.pnlScreenshotUrl);
   return {
     user_id: userId,
     trade_id: trade.tradeId,
@@ -588,7 +623,7 @@ function toSupabaseRow(trade: Trade, userId: string) {
     exit_reason: trade.exitReason,
     platform: trade.platform,
     chart_url: trade.chartUrl ?? null,
-    remarks: trade.remarks ?? null,
+    remarks: remarksWithPnl || null,
     emotion_tag: trade.emotionTag ?? null,
     emotional_state: trade.emotionalState ?? null,
     mindset_notes: trade.mindsetNotes ?? null,
@@ -600,6 +635,9 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   const timeValue = (value: string | null) =>
     value ? value.slice(0, 5) : "00:00";
   const sizeQty = Number(row.size_qty ?? 0);
+  const parsedRemarks = splitRemarksAndPnl(
+    row.remarks ? String(row.remarks) : undefined
+  );
   const lotsValue = row.lots === null ? undefined : Number(row.lots);
   const lotSizeValue = row.lot_size === null ? undefined : Number(row.lot_size);
   return {
@@ -623,7 +661,8 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     exitReason: String(row.exit_reason ?? "Manual"),
     platform: String(row.platform ?? "Web"),
     chartUrl: row.chart_url ? String(row.chart_url) : undefined,
-    remarks: row.remarks ? String(row.remarks) : undefined,
+    remarks: parsedRemarks.remarks,
+    pnlScreenshotUrl: parsedRemarks.pnlScreenshotUrl,
     emotionTag: row.emotion_tag ? String(row.emotion_tag) : undefined,
     emotionalState: row.emotional_state
       ? String(row.emotional_state)
@@ -718,6 +757,7 @@ function AddTradeForm({
   const [platformCustom, setPlatformCustom] = useState("");
   const [platform, setPlatform] = useState("");
   const [chartUrl, setChartUrl] = useState("");
+  const [pnlScreenshotUrl, setPnlScreenshotUrl] = useState("");
   const [remarks, setRemarks] = useState("");
   const [emotionTag, setEmotionTag] = useState("");
   const [emotionalState, setEmotionalState] = useState("");
@@ -786,6 +826,7 @@ function AddTradeForm({
       }
       setPlatform(storedPlatform);
       setChartUrl(editingTrade.chartUrl || "");
+      setPnlScreenshotUrl(editingTrade.pnlScreenshotUrl || "");
       setRemarks(editingTrade.remarks || "");
       setEmotionTag(editingTrade.emotionTag || "");
       setEmotionalState(editingTrade.emotionalState || "");
@@ -817,6 +858,7 @@ function AddTradeForm({
       setPlatformChoice("");
       setPlatformCustom("");
       setChartUrl("");
+      setPnlScreenshotUrl("");
       setRemarks("");
       setEmotionTag("");
       setEmotionalState("");
@@ -853,6 +895,7 @@ function AddTradeForm({
         ? platformCustom.trim()
         : platformChoice;
     const chartUrlValue = normalizeUrl(chartUrl);
+    const pnlScreenshotUrlValue = normalizeUrl(pnlScreenshotUrl);
 
     if (
       !tradeIdValue ||
@@ -922,6 +965,7 @@ function AddTradeForm({
       exitReason: exitReasonValue,
       platform: platformValue,
       chartUrl: chartUrlValue || undefined,
+      pnlScreenshotUrl: pnlScreenshotUrlValue || undefined,
       remarks: remarks.trim() || undefined,
       emotionTag: emotionTag.trim() || undefined,
       emotionalState: emotionalState.trim() || undefined,
@@ -960,6 +1004,7 @@ function AddTradeForm({
       setPlatformChoice("");
       setPlatformCustom("");
       setChartUrl("");
+      setPnlScreenshotUrl("");
       setRemarks("");
       setEmotionTag("");
       setEmotionalState("");
@@ -1204,6 +1249,12 @@ function AddTradeForm({
           placeholder="Chart link (optional)"
           value={chartUrl}
           onChange={(event) => setChartUrl(event.target.value)}
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        />
+        <input
+          placeholder="PnL screenshot link (optional)"
+          value={pnlScreenshotUrl}
+          onChange={(event) => setPnlScreenshotUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
         <select
@@ -2290,7 +2341,7 @@ export default function ClientDashboard({
         exitReason: string;
         chartUrl: string;
         remarks: string;
-        quote: string;
+        pnlScreenshotUrl: string;
       }>
     >();
     monthTrades.forEach((trade) => {
@@ -2312,7 +2363,7 @@ export default function ClientDashboard({
         exitReason: trade.exitReason,
         chartUrl: trade.chartUrl ?? "",
         remarks: trade.remarks ?? "",
-        quote: ""
+        pnlScreenshotUrl: trade.pnlScreenshotUrl ?? ""
       });
       grouped.set(trade.date, current);
     });
@@ -2341,9 +2392,7 @@ export default function ClientDashboard({
               journalDailyInputs[date]?.previousDayMarket.trim() || "—",
             observations:
               journalDailyInputs[date]?.observations.trim() || "",
-            notes: journalDailyInputs[date]?.notes.trim() || "",
-            pnlScreenshotUrl:
-              normalizeUrl(journalDailyInputs[date]?.pnlScreenshotUrl ?? "") || ""
+            notes: journalDailyInputs[date]?.notes.trim() || ""
           }
         };
       });
@@ -5737,17 +5786,6 @@ export default function ClientDashboard({
                       onChange={(event) =>
                         updateJournalDailyInput(journalDailyDate, {
                           previousDayMarket: event.target.value
-                        })
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <input
-                      placeholder="PnL screenshot URL (optional)"
-                      value={selectedJournalDailyInput.pnlScreenshotUrl}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          pnlScreenshotUrl: event.target.value
                         })
                       }
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"

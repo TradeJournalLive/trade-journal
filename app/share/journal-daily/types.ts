@@ -11,8 +11,8 @@ export type SharedTrade = {
   pl: number;
   exitReason: string;
   chartUrl: string;
+  pnlScreenshotUrl: string;
   remarks: string;
-  quote: string;
 };
 
 export type SharedMarketSnapshotRow = {
@@ -28,7 +28,6 @@ export type SharedDailyChecklist = {
   previousDayMarket: string;
   observations: string;
   notes: string;
-  pnlScreenshotUrl: string;
 };
 
 export type SharedDay = {

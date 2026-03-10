@@ -25,8 +25,7 @@ const FALLBACK_CHECKLIST = {
   viewOutcome: "—",
   previousDayMarket: "—",
   observations: "",
-  notes: "",
-  pnlScreenshotUrl: ""
+  notes: ""
 };
 
 function decodeRaw(input: string): unknown {
@@ -49,7 +48,8 @@ function normalizePayload(parsed: unknown): NewPayload | null {
           ...trade,
           entryTime: trade.entryTime ?? "—",
           exitTime: trade.exitTime ?? "—",
-          tradeDuration: trade.tradeDuration ?? "—"
+          tradeDuration: trade.tradeDuration ?? "—",
+          pnlScreenshotUrl: trade.pnlScreenshotUrl ?? ""
         })),
         marketSnapshot:
           Array.isArray(day.marketSnapshot) && day.marketSnapshot.length
@@ -70,7 +70,7 @@ function normalizePayload(parsed: unknown): NewPayload | null {
       entryTime: trade.entryTime ?? "—",
       exitTime: trade.exitTime ?? "—",
       tradeDuration: trade.tradeDuration ?? "—",
-      quote: trade.quote ?? legacy.quote
+      pnlScreenshotUrl: trade.pnlScreenshotUrl ?? ""
     }));
     const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
     const wins = trades.filter((trade) => trade.pl > 0).length;
