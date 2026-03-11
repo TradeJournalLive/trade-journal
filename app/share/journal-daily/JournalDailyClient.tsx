@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { SharedPayload } from "./types";
 
 export default function JournalDailyClient({ payload }: { payload: SharedPayload }) {
-  const [activeDate, setActiveDate] = useState(payload.days[0]?.date ?? "");
+  const [activeDate, setActiveDate] = useState(
+    payload.days.length ? payload.days[payload.days.length - 1].date : ""
+  );
   const [activeMediaTrade, setActiveMediaTrade] =
     useState<SharedPayload["days"][number]["trades"][number] | null>(null);
   const [mediaZoom, setMediaZoom] = useState(1);

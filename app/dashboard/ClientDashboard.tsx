@@ -6177,12 +6177,24 @@ export default function ClientDashboard({
               </div>
 
               {journalSummaryLink ? (
-                <div className="mt-3">
+                <div className="mt-3 flex items-center gap-2">
                   <input
                     readOnly
                     value={journalSummaryLink}
                     className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-[11px] text-muted"
                   />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!journalSummaryLink) return;
+                      await navigator.clipboard.writeText(journalSummaryLink);
+                      setJournalSummaryStatus("Summary link copied.");
+                      setTimeout(() => setJournalSummaryStatus(""), 1600);
+                    }}
+                    className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Copy
+                  </button>
                 </div>
               ) : null}
               {journalSummaryStatus ? (
