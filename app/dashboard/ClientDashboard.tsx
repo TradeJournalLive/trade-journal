@@ -797,6 +797,7 @@ function AddTradeForm({
   const [mindsetNotes, setMindsetNotes] = useState("");
   const [tradeType, setTradeType] = useState<"Safe" | "Risky" | "">("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const isEditing = Boolean(editingTrade);
@@ -913,6 +914,8 @@ function AddTradeForm({
   const instrumentValue = instrument.trim();
   const selectedLotSize =
     instruments.find((item) => item.name === instrumentValue)?.lotSize ?? 0;
+  const withFieldError = (field: string, base: string) =>
+    `${base} ${fieldErrors[field] ? "border-negative ring-1 ring-negative" : ""}`;
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
@@ -930,26 +933,30 @@ function AddTradeForm({
     const chartUrlValue = normalizeUrl(chartUrl);
     const pnlScreenshotUrlValue = normalizeUrl(pnlScreenshotUrl);
 
-    if (
-      !tradeIdValue ||
-      !date ||
-      !instrumentValue ||
-      !market ||
-      !entryTime ||
-      !exitTime ||
-      !direction ||
-      !lots ||
-      !entryPrice ||
-      !exitPrice ||
-      !stopLoss ||
-      !targetPrice ||
-      !exitReasonValue ||
-      !platformValue ||
-      !tradeType
-    ) {
+    const nextFieldErrors: Record<string, string> = {};
+    if (!tradeIdValue) nextFieldErrors.tradeId = "Required";
+    if (!date) nextFieldErrors.date = "Required";
+    if (!instrumentValue) nextFieldErrors.instrument = "Required";
+    if (!market) nextFieldErrors.market = "Required";
+    if (!entryTime) nextFieldErrors.entryTime = "Required";
+    if (!exitTime) nextFieldErrors.exitTime = "Required";
+    if (!direction) nextFieldErrors.direction = "Required";
+    if (!lots) nextFieldErrors.lots = "Required";
+    if (!entryPrice) nextFieldErrors.entryPrice = "Required";
+    if (!exitPrice) nextFieldErrors.exitPrice = "Required";
+    if (!stopLoss) nextFieldErrors.stopLoss = "Required";
+    if (!targetPrice) nextFieldErrors.targetPrice = "Required";
+    if (!exitReasonValue) nextFieldErrors.exitReason = "Required";
+    if (!platformValue) nextFieldErrors.platform = "Required";
+    if (!tradeType) nextFieldErrors.tradeType = "Required";
+
+    setFieldErrors(nextFieldErrors);
+
+    if (Object.keys(nextFieldErrors).length > 0) {
       setError("Please fill all required fields.");
       return;
     }
+    setFieldErrors({});
 
     const lotsValue = Number(lots);
     const qtyValue = lotsValue * selectedLotSize;
@@ -986,7 +993,7 @@ function AddTradeForm({
       entryTime,
       exitTime,
       strategy: strategyChoice || "Unspecified",
-      direction,
+      direction: direction as Trade["direction"],
       sizeQty: qtyValue,
       lots: lotsValue,
       lotSize: selectedLotSize,
@@ -1042,6 +1049,7 @@ function AddTradeForm({
       setEmotionalState("");
       setMindsetNotes("");
       setTradeType("");
+      setFieldErrors({});
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
@@ -1133,7 +1141,10 @@ function AddTradeForm({
           type="date"
           value={date}
           onChange={(event) => setDate(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "date",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         />
         <div>
           <input
@@ -1141,7 +1152,10 @@ function AddTradeForm({
             placeholder="Instrument"
             value={instrument}
             onChange={(event) => setInstrument(event.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            className={withFieldError(
+              "instrument",
+              "w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            )}
             required
           />
           <datalist id="instrument-options">
@@ -1153,7 +1167,10 @@ function AddTradeForm({
         <select
           value={market}
           onChange={(event) => setMarket(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "market",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         >
           <option value="" disabled>
             Select market
@@ -1166,13 +1183,19 @@ function AddTradeForm({
           type="time"
           value={entryTime}
           onChange={(event) => setEntryTime(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "entryTime",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         />
         <input
           type="time"
           value={exitTime}
           onChange={(event) => setExitTime(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "exitTime",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         />
       </div>
 
@@ -1196,7 +1219,10 @@ function AddTradeForm({
           onChange={(event) =>
             setDirection(event.target.value as Trade["direction"])
           }
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "direction",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         >
           <option value="" disabled>
             Select side
@@ -1208,7 +1234,10 @@ function AddTradeForm({
           placeholder="Lots"
           value={lots}
           onChange={(event) => setLots(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "lots",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
           required
         />
         <input
@@ -1225,21 +1254,30 @@ function AddTradeForm({
           placeholder="Entry Price"
           value={entryPrice}
           onChange={(event) => setEntryPrice(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "entryPrice",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
           required
         />
         <input
           placeholder="Exit Price"
           value={exitPrice}
           onChange={(event) => setExitPrice(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "exitPrice",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
           required
         />
         <input
           placeholder="Stop Loss"
           value={stopLoss}
           onChange={(event) => setStopLoss(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "stopLoss",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
           required
         />
       </div>
@@ -1255,14 +1293,20 @@ function AddTradeForm({
           placeholder="Target Price"
           value={targetPrice}
           onChange={(event) => setTargetPrice(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "targetPrice",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
           required
         />
         <div className="flex flex-col gap-2">
           <select
             value={exitReasonChoice}
             onChange={(event) => setExitReasonChoice(event.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            className={withFieldError(
+              "exitReason",
+              "w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            )}
           >
             <option value="" disabled>
               Exit reason
@@ -1290,7 +1334,10 @@ function AddTradeForm({
                 setPlatformCustom("");
               }
             }}
-            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            className={withFieldError(
+              "platform",
+              "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+            )}
           >
             <option value="" disabled>
               Select platform
@@ -1348,7 +1395,10 @@ function AddTradeForm({
           onChange={(event) =>
             setTradeType(event.target.value as "Safe" | "Risky" | "")
           }
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          className={withFieldError(
+            "tradeType",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
         >
           <option value="" disabled>
             Trade type
@@ -2574,7 +2624,11 @@ export default function ClientDashboard({
         const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
         const wins = trades.filter((trade) => trade.pl > 0).length;
         const winRate = trades.length ? (wins / trades.length) * 100 : 0;
-        const existingQuote = journalDailyInputs[date]?.motivationQuote?.trim() ?? "";
+        const existingQuoteRaw = journalDailyInputs[date]?.motivationQuote?.trim() ?? "";
+        const existingQuote =
+          existingQuoteRaw === "Discipline is hard work made visible."
+            ? ""
+            : existingQuoteRaw;
         const motivationQuote =
           existingQuote || (await fetchMotivationQuoteForDay(date, quoteSeed));
         if (!existingQuote) {
