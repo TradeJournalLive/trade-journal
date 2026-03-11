@@ -4,7 +4,7 @@ export const runtime = "edge";
 
 const FALLBACK_QUOTES = [
   "Hard work beats hype. Show up, execute, repeat.",
-  "Discipline is hard work made visible.",
+  "Stay consistent when nobody is watching.",
   "Put in the work every day; confidence follows preparation.",
   "Success in trading is earned through routine, not luck.",
   "Outwork your excuses. Respect your process.",
@@ -25,6 +25,10 @@ const HARD_WORK_KEYWORDS = [
   "patience"
 ];
 
+const BLOCKED_QUOTES = new Set([
+  "Discipline is hard work made visible."
+]);
+
 function hashSeed(input: string) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -42,7 +46,10 @@ function pickDeterministic(quotes: string[], date: string, seed: string) {
 function filterHardWorkQuotes(quotes: string[]) {
   const filtered = quotes.filter((quote) => {
     const normalized = quote.toLowerCase();
-    return HARD_WORK_KEYWORDS.some((keyword) => normalized.includes(keyword));
+    return (
+      !BLOCKED_QUOTES.has(quote.trim()) &&
+      HARD_WORK_KEYWORDS.some((keyword) => normalized.includes(keyword))
+    );
   });
   return filtered.length > 0 ? filtered : FALLBACK_QUOTES;
 }
