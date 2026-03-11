@@ -62,11 +62,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     });
   };
 
-  const visibleQuote =
-    activeDay?.motivationQuote?.trim() === "Discipline is hard work made visible."
-      ? "Stay consistent when nobody is watching."
-      : activeDay?.motivationQuote ||
-        "Stay consistent when nobody is watching.";
+  const visibleQuote = activeDay?.motivationQuote?.trim() || "—";
 
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">

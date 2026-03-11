@@ -2540,21 +2540,6 @@ export default function ClientDashboard({
     }
   }
 
-  
-
-  async function fetchMotivationQuoteForDay(date: string, seed: string) {
-    try {
-      const response = await fetch(
-        `/api/motivation-quote?date=${encodeURIComponent(date)}&seed=${encodeURIComponent(seed)}`,
-        { cache: "no-store" }
-      );
-      const payload = (await response.json()) as { quote?: string };
-      return payload.quote || "Hard work beats hype. Show up, execute, repeat.";
-    } catch {
-      return "Hard work beats hype. Show up, execute, repeat.";
-    }
-  }
-
   async function handleGenerateJournalSummaryLink() {
     const monthPrefix = `${journalSummaryMonth}-`;
     const monthTrades = deriveTrades(
@@ -2612,28 +2597,16 @@ export default function ClientDashboard({
       grouped.set(trade.date, current);
     });
 
-    const quoteSeed = session?.user?.id || "local";
     const sortedGroupedEntries = Array.from(grouped.entries()).sort((a, b) =>
       a[0].localeCompare(b[0])
     );
-
-    const lockedQuotesByDate: Record<string, string> = {};
 
     const days = await Promise.all(
       sortedGroupedEntries.map(async ([date, trades]) => {
         const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
         const wins = trades.filter((trade) => trade.pl > 0).length;
         const winRate = trades.length ? (wins / trades.length) * 100 : 0;
-        const existingQuoteRaw = journalDailyInputs[date]?.motivationQuote?.trim() ?? "";
-        const existingQuote =
-          existingQuoteRaw === "Discipline is hard work made visible."
-            ? ""
-            : existingQuoteRaw;
-        const motivationQuote =
-          existingQuote || (await fetchMotivationQuoteForDay(date, quoteSeed));
-        if (!existingQuote) {
-          lockedQuotesByDate[date] = motivationQuote;
-        }
+        const motivationQuote = journalDailyInputs[date]?.motivationQuote?.trim() || "—";
         return {
           date,
           motivationQuote,
@@ -2664,25 +2637,6 @@ export default function ClientDashboard({
       })
     );
 
-    if (Object.keys(lockedQuotesByDate).length > 0) {
-      setJournalDailyInputs((prev) => {
-        const next = { ...prev };
-        Object.entries(lockedQuotesByDate).forEach(([date, quote]) => {
-          const current = next[date] ?? EMPTY_JOURNAL_DAILY_INPUT;
-          next[date] = {
-            ...current,
-            motivationQuote: quote
-          };
-        });
-        try {
-          localStorage.setItem(checklistStorageKey, JSON.stringify(next));
-        } catch {
-          // best-effort local persistence for fixed daily quotes
-        }
-        return next;
-      });
-    }
-
     const totalTrades = monthTrades.length;
     const totalPl = monthTrades.reduce((sum, trade) => sum + trade.pl, 0);
     const wins = monthTrades.filter((trade) => trade.pl > 0).length;
@@ -2695,7 +2649,6 @@ export default function ClientDashboard({
       month: journalSummaryMonth,
       currency,
       generatedAt: new Date().toISOString(),
-      quoteSeed,
       days,
       monthlySummary: {
         totalTrades,
@@ -6106,6 +6059,17 @@ export default function ClientDashboard({
                       onChange={(event) =>
                         updateJournalDailyInput(journalDailyDate, {
                           viewOutcome: event.target.value
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      disabled={!journalDailyDate}
+                    />
+                    <input
+                      placeholder="Motivation quote (manual)"
+                      value={selectedJournalDailyInput.motivationQuote ?? ""}
+                      onChange={(event) =>
+                        updateJournalDailyInput(journalDailyDate, {
+                          motivationQuote: event.target.value
                         })
                       }
                       className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
