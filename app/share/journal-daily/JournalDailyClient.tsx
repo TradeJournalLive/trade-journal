@@ -62,6 +62,12 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
     });
   };
 
+  const visibleQuote =
+    activeDay?.motivationQuote?.trim() === "Discipline is hard work made visible."
+      ? "Stay consistent when nobody is watching."
+      : activeDay?.motivationQuote ||
+        "Stay consistent when nobody is watching.";
+
   return (
     <main className="min-h-screen bg-ink px-3 py-6 text-white sm:px-4 sm:py-10">
       <div className="mx-auto w-full max-w-[92rem] space-y-4">
@@ -76,7 +82,7 @@ export default function JournalDailyClient({ payload }: { payload: SharedPayload
           <div className="text-xs font-semibold uppercase tracking-wide text-black/70">
             Motivation
           </div>
-          <div className="mt-1 text-base font-bold">{activeDay?.motivationQuote || "Protect capital first. Big days come from consistency."}</div>
+          <div className="mt-1 text-base font-bold">{visibleQuote}</div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-panel/60 p-4">
