@@ -2015,17 +2015,23 @@ export default function ClientDashboard({
   );
 
   const derived = useMemo(() => deriveTrades(filteredTrades), [filteredTrades]);
-  const journalMonthDates = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          tradeList
-            .filter((trade) => trade.date.startsWith(`${journalSummaryMonth}-`))
-            .map((trade) => trade.date)
-        )
-      ).sort((a, b) => a.localeCompare(b)),
-    [tradeList, journalSummaryMonth]
-  );
+  const journalMonthDates = useMemo(() => {
+    const fromTrades = tradeList
+      .filter((trade) => trade.date.startsWith(`${journalSummaryMonth}-`))
+      .map((trade) => trade.date);
+    const fromChecklist = Object.keys(journalDailyInputs).filter((date) =>
+      date.startsWith(`${journalSummaryMonth}-`)
+    );
+    const fromSnapshots = Object.keys(marketSnapshotsByDate).filter((date) =>
+      date.startsWith(`${journalSummaryMonth}-`)
+    );
+    const set = new Set([...fromTrades, ...fromChecklist, ...fromSnapshots]);
+    const today = new Date().toISOString().slice(0, 10);
+    if (today.startsWith(`${journalSummaryMonth}-`)) {
+      set.add(today);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [tradeList, journalSummaryMonth, journalDailyInputs, marketSnapshotsByDate]);
   const selectedJournalDailyInput = useMemo(
     () =>
       journalDailyDate
@@ -2035,14 +2041,18 @@ export default function ClientDashboard({
   );
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const preferredToday =
+      today.startsWith(`${journalSummaryMonth}-`) ? today : "";
+
     if (!journalMonthDates.length) {
-      setJournalDailyDate("");
+      setJournalDailyDate(preferredToday);
       return;
     }
-    if (!journalMonthDates.includes(journalDailyDate)) {
-      setJournalDailyDate(journalMonthDates[0]);
+    if (!journalDailyDate || !journalMonthDates.includes(journalDailyDate)) {
+      setJournalDailyDate(preferredToday || journalMonthDates[0]);
     }
-  }, [journalMonthDates, journalDailyDate]);
+  }, [journalMonthDates, journalDailyDate, journalSummaryMonth]);
 
   useEffect(() => {
     if (!journalDailyDate) {
@@ -6003,20 +6013,28 @@ export default function ClientDashboard({
                     Daily Pre-Market Checklist (Top Left)
                   </div>
                   <div className="grid gap-3 text-xs">
-                    <select
-                      value={journalDailyDate}
-                      onChange={(event) => setJournalDailyDate(event.target.value)}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                    >
-                      {journalMonthDates.length === 0 ? (
-                        <option value="">No dates in month</option>
-                      ) : null}
-                      {journalMonthDates.map((date) => (
-                        <option key={date} value={date}>
-                          {date}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input
+                        type="date"
+                        value={journalDailyDate}
+                        onChange={(event) => setJournalDailyDate(event.target.value)}
+                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      />
+                      <select
+                        value={journalDailyDate}
+                        onChange={(event) => setJournalDailyDate(event.target.value)}
+                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+                      >
+                        {journalMonthDates.length === 0 ? (
+                          <option value="">No saved dates in month</option>
+                        ) : null}
+                        {journalMonthDates.map((date) => (
+                          <option key={date} value={date}>
+                            {date}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       placeholder="Sentiment of market today (Bullish/Bearish/Neutral)"
                       value={selectedJournalDailyInput.sentimentToday}
