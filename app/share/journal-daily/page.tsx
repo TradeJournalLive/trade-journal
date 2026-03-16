@@ -2,6 +2,8 @@ import JournalDailyClient from "./JournalDailyClient";
 import { decompressFromEncodedURIComponent } from "lz-string";
 import type { SharedPayload, SharedTrade } from "./types";
 
+export const preferredRegion = ["bom1", "sin1"];
+
 type LegacyPayload = {
   date: string;
   quote: string;
