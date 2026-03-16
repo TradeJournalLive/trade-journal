@@ -536,6 +536,7 @@ function normalizeUrl(value: string) {
 }
 
 const PNL_SS_PREFIX = "[PNL_SS]";
+const TRADE_MEDIA_BUCKET = "trade-media";
 
 function mergeRemarksAndPnl(remarks?: string, pnlScreenshotUrl?: string) {
   const base = (remarks ?? "").trim();
@@ -858,6 +859,7 @@ type AddTradeFormProps = {
   editingTrade: Trade | null;
   instruments: InstrumentDefinition[];
   strategies: StrategyDefinition[];
+  onUploadPnlScreenshot?: (file: File) => Promise<string>;
 };
 
 function AddTradeForm({
@@ -866,7 +868,8 @@ function AddTradeForm({
   onCancelEdit,
   editingTrade,
   instruments,
-  strategies
+  strategies,
+  onUploadPnlScreenshot
 }: AddTradeFormProps) {
   const [tradeId, setTradeId] = useState("");
   const [date, setDate] = useState(() =>
@@ -899,6 +902,7 @@ function AddTradeForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+  const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const isEditing = Boolean(editingTrade);
   const wasEditingRef = useRef(false);
 
@@ -1170,6 +1174,13 @@ function AddTradeForm({
     }
 
     try {
+      setUploadingScreenshot(true);
+      if (onUploadPnlScreenshot) {
+        const uploadedUrl = await onUploadPnlScreenshot(file);
+        setPnlScreenshotUrl(uploadedUrl);
+        setError("");
+        return;
+      }
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -1185,8 +1196,14 @@ function AddTradeForm({
       });
       setPnlScreenshotUrl(dataUrl);
       setError("");
-    } catch {
-      setError("Could not read screenshot file. Try again.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not read screenshot file. Try again."
+      );
+    } finally {
+      setUploadingScreenshot(false);
     }
   }
 
@@ -1476,7 +1493,7 @@ function AddTradeForm({
           </label>
           <div className="ml-2 flex shrink-0 items-center gap-1">
             <span className={`text-[10px] ${pnlScreenshotUrl ? "text-emerald-300" : "text-muted"}`}>
-              {pnlScreenshotUrl ? "Added" : "No SS"}
+              {uploadingScreenshot ? "Uploading..." : pnlScreenshotUrl ? "Added" : "No SS"}
             </span>
             {pnlScreenshotUrl ? (
               <button
@@ -1739,6 +1756,45 @@ export default function ClientDashboard({
     }
     return MARKET_SNAPSHOT_KEY;
   }, [dataSource, session?.user?.id]);
+
+  const uploadTradeScreenshot = useCallback(
+    async (file: File) => {
+      if (!supabase || !session?.user?.id) {
+        throw new Error("Please sign in before uploading screenshots.");
+      }
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const extension = safeName.includes(".")
+        ? safeName.split(".").pop()
+        : file.type.split("/").pop() || "png";
+      const objectPath = `${session.user.id}/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}.${extension}`;
+
+      const { error } = await supabase.storage
+        .from(TRADE_MEDIA_BUCKET)
+        .upload(objectPath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type
+        });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const { data } = supabase.storage
+        .from(TRADE_MEDIA_BUCKET)
+        .getPublicUrl(objectPath);
+
+      if (!data.publicUrl) {
+        throw new Error("Could not create screenshot URL.");
+      }
+
+      return data.publicUrl;
+    },
+    [session?.user?.id]
+  );
 
   const loadMarketNews = useCallback(async ({
     page = 1,
@@ -6142,6 +6198,9 @@ export default function ClientDashboard({
               strategies={strategies}
               editingTrade={editingTrade}
               onCancelEdit={() => setEditingTrade(null)}
+              onUploadPnlScreenshot={
+                dataSource === "supabase" ? uploadTradeScreenshot : undefined
+              }
               onAdd={async (trade) => {
                 if (dataSource === "supabase") {
                   if (!supabase) return "Supabase is not configured.";
