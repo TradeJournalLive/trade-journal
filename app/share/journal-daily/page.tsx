@@ -3,6 +3,7 @@ import { decompressFromEncodedURIComponent } from "lz-string";
 import type { SharedPayload, SharedTrade } from "./types";
 
 export const preferredRegion = ["bom1", "sin1"];
+export const dynamic = "force-dynamic";
 
 type LegacyPayload = {
   date: string;
@@ -181,7 +182,7 @@ async function fetchPayloadById(id: string): Promise<NewPayload | null> {
           apikey: key,
           Authorization: `Bearer ${key}`
         },
-        next: { revalidate: 3600 }
+        cache: "no-store"
       }
     );
     if (!response.ok) return null;
