@@ -794,6 +794,63 @@ function buildTemplateCsv() {
   return CSV_HEADERS.join(",");
 }
 
+function stripLargeSharedMedia(payload: {
+  month: string;
+  currency: "INR" | "USD";
+  generatedAt: string;
+  days: Array<{
+    date: string;
+    motivationQuote: string;
+    trades: Array<{
+      tradeId: string;
+      instrument: string;
+      strategy: string;
+      direction: "Long" | "Short";
+      entryTime: string;
+      exitTime: string;
+      tradeDuration: string;
+      entryPrice: number;
+      exitPrice: number;
+      pl: number;
+      exitReason: string;
+      chartUrl: string;
+      remarks: string;
+      pnlScreenshotUrl: string;
+    }>;
+    summary: { totalTrades: number; totalPl: number; winRate: number };
+    marketSnapshot: MarketSnapshotRow[];
+    checklist: {
+      sentimentToday: string;
+      viewOutcome: string;
+      previousDayMarket: string;
+      observations: string;
+      notes: string;
+    };
+  }>;
+  monthlySummary: {
+    totalTrades: number;
+    totalPl: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+    bestDay: { date: string; totalPl: number } | null;
+    worstDay: { date: string; totalPl: number } | null;
+  };
+}) {
+  return {
+    ...payload,
+    days: payload.days.map((day) => ({
+      ...day,
+      trades: day.trades.map((trade) => ({
+        ...trade,
+        pnlScreenshotUrl: trade.pnlScreenshotUrl.startsWith("data:")
+          ? ""
+          : trade.pnlScreenshotUrl
+      }))
+    }))
+  };
+}
+
 type AddTradeFormProps = {
   onAdd: (trade: Trade) => Promise<string | null> | string | null;
   onUpdate: (trade: Trade) => Promise<string | null> | string | null;
@@ -2831,12 +2888,22 @@ export default function ClientDashboard({
     }
 
     let link = "";
+    let usedReducedPayload = false;
     try {
-      const response = await fetch("/api/share-journal", {
+      let response = await fetch("/api/share-journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payload, id: existingId || undefined })
       });
+      if (!response.ok) {
+        const reducedPayload = stripLargeSharedMedia(payload);
+        response = await fetch("/api/share-journal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: reducedPayload, id: existingId || undefined })
+        });
+        usedReducedPayload = response.ok;
+      }
       if (response.ok) {
         const data = (await response.json()) as { id?: string };
         if (data.id) {
@@ -2858,16 +2925,27 @@ export default function ClientDashboard({
     }
 
     if (!link) {
-      const encoded = compressToEncodedURIComponent(JSON.stringify(payload));
-      link = `${window.location.origin}/share/journal-daily?s=${encoded}`;
+      setJournalSummaryStatus(
+        "Share link could not be generated. Try removing screenshot or saving fewer records."
+      );
+      setTimeout(() => setJournalSummaryStatus(""), 2600);
+      return;
     }
 
     setJournalSummaryLink(link);
     try {
       await navigator.clipboard.writeText(link);
-      setJournalSummaryStatus("Summary link generated and copied.");
+      setJournalSummaryStatus(
+        usedReducedPayload
+          ? "Summary link generated and copied. Screenshot embeds were skipped."
+          : "Summary link generated and copied."
+      );
     } catch {
-      setJournalSummaryStatus("Summary link generated.");
+      setJournalSummaryStatus(
+        usedReducedPayload
+          ? "Summary link generated. Screenshot embeds were skipped."
+          : "Summary link generated."
+      );
     }
     setTimeout(() => setJournalSummaryStatus(""), 2200);
   }
