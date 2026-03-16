@@ -266,7 +266,7 @@ export default function TradeJournal({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
             onClick={() => {
               setSelectMode((prev) => !prev);
               setSelectedIds(new Set());
@@ -278,7 +278,7 @@ export default function TradeJournal({
             <>
               <button
                 type="button"
-                className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                 onClick={toggleSelectAll}
               >
                 {allSelected ? "Clear all" : "Select all"}
@@ -329,7 +329,7 @@ export default function TradeJournal({
                   <button
                     type="button"
                     onClick={() => onEdit(trade)}
-                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted hover:text-white"
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   >
                     Edit
                   </button>
@@ -338,7 +338,7 @@ export default function TradeJournal({
                   <button
                     type="button"
                     onClick={() => onDelete([trade.tradeId])}
-                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-negative hover:text-white"
+                    className="rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-200"
                   >
                     Delete
                   </button>
