@@ -708,6 +708,48 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   };
 }
 
+function toJournalDailySupabaseRow(
+  userId: string,
+  date: string,
+  input: JournalDailyInput,
+  snapshot: MarketSnapshotRow[]
+) {
+  return {
+    user_id: userId,
+    entry_date: date,
+    sentiment_today: input.sentimentToday || null,
+    view_outcome: input.viewOutcome || null,
+    previous_day_market: input.previousDayMarket || null,
+    observations: input.observations || null,
+    notes: input.notes || null,
+    motivation_quote: input.motivationQuote || null,
+    market_snapshot: snapshot
+  };
+}
+
+function fromJournalDailySupabaseRows(rows: Record<string, unknown>[]) {
+  const inputs: Record<string, JournalDailyInput> = {};
+  const snapshots: Record<string, MarketSnapshotRow[]> = {};
+
+  rows.forEach((row) => {
+    const date = String(row.entry_date ?? "").slice(0, 10);
+    if (!date) return;
+
+    inputs[date] = {
+      sentimentToday: String(row.sentiment_today ?? ""),
+      viewOutcome: String(row.view_outcome ?? ""),
+      previousDayMarket: String(row.previous_day_market ?? ""),
+      observations: String(row.observations ?? ""),
+      notes: String(row.notes ?? ""),
+      motivationQuote: String(row.motivation_quote ?? "")
+    };
+
+    snapshots[date] = normalizeSnapshotRows(row.market_snapshot);
+  });
+
+  return { inputs, snapshots };
+}
+
 function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
   const header = CSV_HEADERS.join(",");
   const rows = derivedTrades.map((trade) =>
@@ -1596,6 +1638,7 @@ export default function ClientDashboard({
   const [stockSuggestionStatus, setStockSuggestionStatus] = useState("");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const participantsTableRef = useRef<HTMLTableElement | null>(null);
+  const migratedJournalRef = useRef<string>("");
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -1855,6 +1898,77 @@ export default function ClientDashboard({
       setMarketSnapshotsByDate({});
     }
   }, [marketSnapshotStorageKey]);
+
+  useEffect(() => {
+    if (dataSource !== "supabase" || !supabase || !session?.user?.id) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("journal_daily_entries")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("entry_date", { ascending: false });
+
+      if (error) {
+        console.error("Failed to load journal daily entries", error);
+        return;
+      }
+
+      const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+      const { inputs, snapshots } = fromJournalDailySupabaseRows(rows);
+
+      setJournalDailyInputs((prev) => ({
+        ...prev,
+        ...inputs
+      }));
+      setMarketSnapshotsByDate((prev) => ({
+        ...prev,
+        ...snapshots
+      }));
+    })();
+  }, [dataSource, session?.user?.id]);
+
+  useEffect(() => {
+    if (dataSource !== "supabase" || !supabase || !session?.user?.id) return;
+
+    const localDates = Array.from(
+      new Set([
+        ...Object.keys(journalDailyInputs),
+        ...Object.keys(marketSnapshotsByDate)
+      ])
+    ).sort();
+
+    if (!localDates.length) return;
+
+    const signature = `${session.user.id}:${localDates.join("|")}`;
+    if (migratedJournalRef.current === signature) return;
+
+    migratedJournalRef.current = signature;
+
+    const payload = localDates.map((date) =>
+      toJournalDailySupabaseRow(
+        session.user.id,
+        date,
+        journalDailyInputs[date] ?? EMPTY_JOURNAL_DAILY_INPUT,
+        marketSnapshotsByDate[date] ?? DEFAULT_MARKET_SNAPSHOT_ROWS
+      )
+    );
+
+    void supabase
+      .from("journal_daily_entries")
+      .upsert(payload, { onConflict: "user_id,entry_date" })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to sync local journal daily entries", error);
+          migratedJournalRef.current = "";
+        }
+      });
+  }, [
+    dataSource,
+    session?.user?.id,
+    journalDailyInputs,
+    marketSnapshotsByDate
+  ]);
 
   useEffect(() => {
     const stored = localStorage.getItem(participantsStorageKey);
@@ -2488,20 +2602,48 @@ export default function ClientDashboard({
       setTimeout(() => setChecklistSaveStatus(""), 1800);
       return;
     }
+    const snapshotForDate = normalizeSnapshotRows(marketSnapshotRows);
+    const nextSnapshots = {
+      ...marketSnapshotsByDate,
+      [journalDailyDate]: snapshotForDate
+    };
+
     try {
       localStorage.setItem(checklistStorageKey, JSON.stringify(journalDailyInputs));
-      const next = {
-        ...marketSnapshotsByDate,
-        [journalDailyDate]: normalizeSnapshotRows(marketSnapshotRows)
-      };
-      setMarketSnapshotsByDate(next);
-      localStorage.setItem(marketSnapshotStorageKey, JSON.stringify(next));
+      localStorage.setItem(marketSnapshotStorageKey, JSON.stringify(nextSnapshots));
+      setMarketSnapshotsByDate(nextSnapshots);
       setMarketSnapshotRows(DEFAULT_MARKET_SNAPSHOT_ROWS);
-      setChecklistSaveStatus("Checklist + snapshot saved. Snapshot form reset.");
     } catch {
       setChecklistSaveStatus("Could not save.");
+      setTimeout(() => setChecklistSaveStatus(""), 1800);
+      return;
     }
-    setTimeout(() => setChecklistSaveStatus(""), 1800);
+
+    if (dataSource !== "supabase" || !supabase || !session?.user?.id) {
+      setChecklistSaveStatus("Checklist + snapshot saved. Snapshot form reset.");
+      setTimeout(() => setChecklistSaveStatus(""), 1800);
+      return;
+    }
+
+    void supabase
+      .from("journal_daily_entries")
+      .upsert(
+        toJournalDailySupabaseRow(
+          session.user.id,
+          journalDailyDate,
+          journalDailyInputs[journalDailyDate] ?? EMPTY_JOURNAL_DAILY_INPUT,
+          snapshotForDate
+        ),
+        { onConflict: "user_id,entry_date" }
+      )
+      .then(({ error }) => {
+        setChecklistSaveStatus(
+          error
+            ? `Saved locally, but Supabase sync failed: ${error.message}`
+            : "Checklist + snapshot saved. Snapshot form reset."
+        );
+        setTimeout(() => setChecklistSaveStatus(""), 2200);
+      });
   }
 
   function handleMarketSnapshotInput(
