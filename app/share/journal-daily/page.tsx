@@ -30,11 +30,47 @@ const FALLBACK_CHECKLIST = {
   notes: ""
 };
 
+const PNL_SS_PREFIX = "[PNL_SS]";
+
 function decodeRaw(input: string): unknown {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const json = Buffer.from(padded, "base64").toString("utf-8");
   return JSON.parse(json) as unknown;
+}
+
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^(https?:\/\/|data:|blob:)/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function splitRemarksAndPnl(raw?: string | null) {
+  const value = (raw ?? "").trim();
+  if (!value) {
+    return {
+      remarks: "",
+      pnlScreenshotUrl: ""
+    };
+  }
+
+  const lines = value.replace(/\r/g, "").split("\n");
+  const remaining: string[] = [];
+  let pnlScreenshotUrl = "";
+
+  for (const line of lines) {
+    if (line.startsWith(PNL_SS_PREFIX)) {
+      pnlScreenshotUrl = normalizeUrl(line.slice(PNL_SS_PREFIX.length));
+    } else {
+      remaining.push(line);
+    }
+  }
+
+  return {
+    remarks: remaining.join("\n").trim(),
+    pnlScreenshotUrl
+  };
 }
 
 function normalizePayload(parsed: unknown): NewPayload | null {
@@ -157,6 +193,81 @@ async function fetchPayloadById(id: string): Promise<NewPayload | null> {
   }
 }
 
+async function enrichPayloadFromTrades(payload: NewPayload): Promise<NewPayload> {
+  if (!payload.ownerUserId) return payload;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return payload;
+
+  const tradeIds = Array.from(
+    new Set(
+      payload.days.flatMap((day) =>
+        day.trades
+          .filter((trade) => !trade.pnlScreenshotUrl)
+          .map((trade) => trade.tradeId)
+      )
+    )
+  );
+
+  if (!tradeIds.length) return payload;
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/trades?select=trade_id,chart_url,remarks&user_id=eq.${encodeURIComponent(
+        payload.ownerUserId
+      )}&trade_id=in.(${tradeIds.map((id) => `"${id}"`).join(",")})`,
+      {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`
+        },
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) return payload;
+
+    const rows = (await response.json()) as Array<{
+      trade_id?: string;
+      chart_url?: string | null;
+      remarks?: string | null;
+    }>;
+
+    const byTradeId = new Map(
+      rows.map((row) => {
+        const parsed = splitRemarksAndPnl(row.remarks);
+        return [
+          String(row.trade_id ?? ""),
+          {
+            chartUrl: row.chart_url ?? "",
+            pnlScreenshotUrl: parsed.pnlScreenshotUrl
+          }
+        ];
+      })
+    );
+
+    return {
+      ...payload,
+      days: payload.days.map((day) => ({
+        ...day,
+        trades: day.trades.map((trade) => {
+          const found = byTradeId.get(trade.tradeId);
+          if (!found) return trade;
+          return {
+            ...trade,
+            chartUrl: trade.chartUrl || found.chartUrl || "",
+            pnlScreenshotUrl: trade.pnlScreenshotUrl || found.pnlScreenshotUrl || ""
+          };
+        })
+      }))
+    };
+  } catch {
+    return payload;
+  }
+}
+
 export default async function JournalDailySharePage({
   searchParams
 }: {
@@ -164,7 +275,8 @@ export default async function JournalDailySharePage({
 }) {
   const id = searchParams?.id ?? "";
   const raw = searchParams?.s ?? searchParams?.data ?? "";
-  const payload = id ? await fetchPayloadById(id) : raw ? decodePayload(raw) : null;
+  const basePayload = id ? await fetchPayloadById(id) : raw ? decodePayload(raw) : null;
+  const payload = basePayload ? await enrichPayloadFromTrades(basePayload) : null;
 
   if (!payload) {
     return (

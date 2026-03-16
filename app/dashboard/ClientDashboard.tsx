@@ -2848,6 +2848,7 @@ export default function ClientDashboard({
       month: journalSummaryMonth,
       currency,
       generatedAt: new Date().toISOString(),
+      ownerUserId: session?.user?.id,
       days,
       monthlySummary: {
         totalTrades,

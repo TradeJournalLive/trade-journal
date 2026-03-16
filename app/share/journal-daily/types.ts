@@ -43,6 +43,7 @@ export type SharedPayload = {
   month: string;
   currency: "INR" | "USD";
   generatedAt: string;
+  ownerUserId?: string;
   quoteSeed?: string;
   days: SharedDay[];
   monthlySummary: {
