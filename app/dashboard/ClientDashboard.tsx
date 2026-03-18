@@ -58,7 +58,10 @@ const CSV_HEADERS = [
   "Trade Type",
   "Trigger Emotion",
   "Behavioral State",
-  "Mindset Notes"
+  "Mindset Notes",
+  "Entry Reason",
+  "Chart Link",
+  "PnL Screenshot Link"
 ];
 
 const REQUIRED_HEADERS = [
@@ -754,36 +757,7 @@ function fromJournalDailySupabaseRows(rows: Record<string, unknown>[]) {
 function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
   const header = CSV_HEADERS.join(",");
   const rows = derivedTrades.map((trade) =>
-    [
-      trade.tradeId,
-      trade.date,
-      trade.day,
-      trade.instrument,
-      trade.market,
-      trade.entryTime,
-      trade.exitTime,
-      trade.strategy,
-      trade.direction,
-      trade.sizeQty,
-      trade.entryPrice,
-      trade.exitPrice,
-      trade.stopLoss,
-      trade.targetPrice,
-      trade.risk.toFixed(2),
-      trade.reward.toFixed(2),
-      trade.riskReward ? trade.riskReward.toFixed(2) : "",
-      trade.pl.toFixed(2),
-      trade.winLoss,
-      trade.exitReason,
-      trade.platform,
-      trade.rr ? trade.rr.toFixed(2) : "",
-      trade.tradeDuration,
-      trade.totalInvestment.toFixed(2),
-      trade.tradeType ?? "",
-      trade.emotionTag ?? "",
-      trade.emotionalState ?? "",
-      trade.mindsetNotes ?? ""
-    ]
+    buildExportRow(trade)
       .map((value) => toCsvValue(value))
       .join(",")
   );
@@ -793,6 +767,131 @@ function buildCsv(derivedTrades: ReturnType<typeof deriveTrades>) {
 
 function buildTemplateCsv() {
   return CSV_HEADERS.join(",");
+}
+
+function buildExportRow(trade: ReturnType<typeof deriveTrades>[number]) {
+  return [
+    trade.tradeId,
+    trade.date,
+    trade.day,
+    trade.instrument,
+    trade.market,
+    trade.entryTime,
+    trade.exitTime,
+    trade.strategy,
+    trade.direction,
+    trade.sizeQty,
+    trade.entryPrice,
+    trade.exitPrice,
+    trade.stopLoss,
+    trade.targetPrice,
+    trade.risk.toFixed(2),
+    trade.reward.toFixed(2),
+    trade.riskReward ? trade.riskReward.toFixed(2) : "",
+    trade.pl.toFixed(2),
+    trade.winLoss,
+    trade.exitReason,
+    trade.platform,
+    trade.rr ? trade.rr.toFixed(2) : "",
+    trade.tradeDuration,
+    trade.totalInvestment.toFixed(2),
+    trade.tradeType ?? "",
+    trade.emotionTag ?? "",
+    trade.emotionalState ?? "",
+    trade.mindsetNotes ?? "",
+    trade.remarks ?? "",
+    trade.chartUrl ?? "",
+    trade.pnlScreenshotUrl ?? ""
+  ];
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildDateWiseExcelXml(derivedTrades: ReturnType<typeof deriveTrades>) {
+  const grouped = derivedTrades.reduce((map, trade) => {
+    const current = map.get(trade.date) ?? [];
+    current.push(trade);
+    map.set(trade.date, current);
+    return map;
+  }, new Map<string, ReturnType<typeof deriveTrades>>());
+
+  const summaryRows = Array.from(grouped.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, trades]) => {
+      const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0).toFixed(2);
+      return `
+        <Row>
+          <Cell><Data ss:Type="String">${escapeXml(date)}</Data></Cell>
+          <Cell><Data ss:Type="Number">${trades.length}</Data></Cell>
+          <Cell><Data ss:Type="Number">${totalPl}</Data></Cell>
+        </Row>`;
+    })
+    .join("");
+
+  const worksheets = Array.from(grouped.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, trades]) => {
+      const headerRow = CSV_HEADERS.map(
+        (header) =>
+          `<Cell ss:StyleID="header"><Data ss:Type="String">${escapeXml(
+            header
+          )}</Data></Cell>`
+      ).join("");
+
+      const rows = trades
+        .map((trade) => {
+          const cells = buildExportRow(trade)
+            .map(
+              (value) =>
+                `<Cell><Data ss:Type="String">${escapeXml(String(value ?? ""))}</Data></Cell>`
+            )
+            .join("");
+          return `<Row>${cells}</Row>`;
+        })
+        .join("");
+
+      return `
+        <Worksheet ss:Name="${escapeXml(date)}">
+          <Table>
+            <Row>${headerRow}</Row>
+            ${rows}
+          </Table>
+        </Worksheet>`;
+    })
+    .join("");
+
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+  <Styles>
+    <Style ss:ID="header">
+      <Font ss:Bold="1"/>
+      <Interior ss:Color="#D9EAFE" ss:Pattern="Solid"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Summary">
+    <Table>
+      <Row>
+        <Cell ss:StyleID="header"><Data ss:Type="String">Date</Data></Cell>
+        <Cell ss:StyleID="header"><Data ss:Type="String">Trades</Data></Cell>
+        <Cell ss:StyleID="header"><Data ss:Type="String">Net P/L</Data></Cell>
+      </Row>
+      ${summaryRows}
+    </Table>
+  </Worksheet>
+  ${worksheets}
+</Workbook>`;
 }
 
 function stripLargeSharedMedia(payload: {
@@ -3035,10 +3134,28 @@ export default function ClientDashboard({
     URL.revokeObjectURL(url);
   }
 
+  function downloadExcelXml(xml: string, filename: string) {
+    const blob = new Blob([xml], {
+      type: "application/vnd.ms-excel;charset=utf-8;"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handleExportCsv() {
     const csv = buildCsv(derived);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadCsv(csv, `pulsejournal-export-${stamp}.csv`);
+  }
+
+  function handleExportDateWiseExcel() {
+    const excel = buildDateWiseExcelXml(derived);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadExcelXml(excel, `pulsejournal-date-tabs-${stamp}.xls`);
   }
 
   function handleDownloadTemplate() {
@@ -3105,6 +3222,11 @@ export default function ClientDashboard({
       const emotionTag = getCell(row, "Trigger Emotion").trim();
       const emotionalState = getCell(row, "Behavioral State").trim();
       const mindsetNotes = getCell(row, "Mindset Notes").trim();
+      const entryReason = getCell(row, "Entry Reason").trim();
+      const chartUrl = normalizeUrl(getCell(row, "Chart Link").trim());
+      const pnlScreenshotUrl = normalizeUrl(
+        getCell(row, "PnL Screenshot Link").trim()
+      );
 
       if (
         !date ||
@@ -3139,6 +3261,9 @@ export default function ClientDashboard({
         targetPrice,
         exitReason,
         platform,
+        chartUrl: chartUrl || undefined,
+        pnlScreenshotUrl: pnlScreenshotUrl || undefined,
+        remarks: entryReason || undefined,
         tradeType,
         emotionTag: emotionTag || undefined,
         emotionalState: emotionalState || undefined,
@@ -4277,6 +4402,12 @@ export default function ClientDashboard({
                 >
                   Export CSV
                 </button>
+                <button
+                  className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
+                  onClick={handleExportDateWiseExcel}
+                >
+                  Export Excel
+                </button>
               </div>
               <div className="flex w-full items-center justify-end gap-2 md:hidden">
                 <button
@@ -4375,6 +4506,12 @@ export default function ClientDashboard({
                     onClick={handleExportCsv}
                   >
                     Export CSV
+                  </button>
+                  <button
+                    className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    onClick={handleExportDateWiseExcel}
+                  >
+                    Export Excel
                   </button>
                 </div>
               </div>
@@ -6520,6 +6657,12 @@ export default function ClientDashboard({
                     onClick={handleExportCsv}
                   >
                     Export CSV
+                  </button>
+                  <button
+                    className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
+                    onClick={handleExportDateWiseExcel}
+                  >
+                    Export Excel
                   </button>
                 </div>
               </div>
