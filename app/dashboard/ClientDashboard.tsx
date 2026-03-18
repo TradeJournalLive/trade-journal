@@ -815,6 +815,40 @@ function escapeXml(value: string) {
 }
 
 function buildDateWiseExcelXml(derivedTrades: ReturnType<typeof deriveTrades>) {
+  const columnConfigs = [
+    { header: "Trade ID", width: 95, kind: "text" },
+    { header: "Date", width: 78, kind: "text" },
+    { header: "Day", width: 55, kind: "text" },
+    { header: "Instrument", width: 85, kind: "text" },
+    { header: "Market", width: 70, kind: "text" },
+    { header: "Entry Time", width: 70, kind: "text" },
+    { header: "Exit Time", width: 70, kind: "text" },
+    { header: "Strategy", width: 110, kind: "text" },
+    { header: "Direction", width: 70, kind: "text" },
+    { header: "Size (Qty.)", width: 72, kind: "number" },
+    { header: "Entry Price", width: 82, kind: "number" },
+    { header: "Exit Price", width: 82, kind: "number" },
+    { header: "Stop Loss", width: 78, kind: "number" },
+    { header: "Target Price", width: 82, kind: "number" },
+    { header: "Risk", width: 72, kind: "number" },
+    { header: "Reward", width: 72, kind: "number" },
+    { header: "Risk-Reward", width: 84, kind: "number" },
+    { header: "P/L", width: 82, kind: "number" },
+    { header: "Win/Loss", width: 68, kind: "text" },
+    { header: "Exit Reason", width: 100, kind: "text" },
+    { header: "Platform", width: 82, kind: "text" },
+    { header: "R:R", width: 60, kind: "number" },
+    { header: "Trade Duration", width: 92, kind: "number" },
+    { header: "Total Investment", width: 105, kind: "number" },
+    { header: "Trade Type", width: 78, kind: "text" },
+    { header: "Trigger Emotion", width: 95, kind: "text" },
+    { header: "Behavioral State", width: 102, kind: "text" },
+    { header: "Mindset Notes", width: 150, kind: "text" },
+    { header: "Entry Reason", width: 170, kind: "text" },
+    { header: "Chart Link", width: 110, kind: "link" },
+    { header: "PnL Screenshot Link", width: 130, kind: "link" }
+  ] as const;
+
   const grouped = derivedTrades.reduce((map, trade) => {
     const current = map.get(trade.date) ?? [];
     current.push(trade);
@@ -822,47 +856,105 @@ function buildDateWiseExcelXml(derivedTrades: ReturnType<typeof deriveTrades>) {
     return map;
   }, new Map<string, ReturnType<typeof deriveTrades>>());
 
-  const summaryRows = Array.from(grouped.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
+  const sortedEntries = Array.from(grouped.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0])
+  );
+  const monthlyTotalPl = derivedTrades.reduce((sum, trade) => sum + trade.pl, 0);
+  const monthlyWins = derivedTrades.filter((trade) => trade.pl > 0).length;
+  const monthlyLosses = derivedTrades.filter((trade) => trade.pl < 0).length;
+  const monthlyWinRate = derivedTrades.length
+    ? ((monthlyWins / derivedTrades.length) * 100).toFixed(2)
+    : "0.00";
+
+  const makeCell = (
+    value: string | number,
+    kind: "text" | "number" | "link" = "text",
+    styleId?: string
+  ) => {
+    const style = styleId ? ` ss:StyleID="${styleId}"` : "";
+    if (kind === "number" && value !== "") {
+      return `<Cell${style}><Data ss:Type="Number">${value}</Data></Cell>`;
+    }
+    if (kind === "link") {
+      const href = String(value ?? "").trim();
+      if (!href) return `<Cell${style}><Data ss:Type="String"></Data></Cell>`;
+      return `<Cell${style} ss:HRef="${escapeXml(href)}"><Data ss:Type="String">Open Link</Data></Cell>`;
+    }
+    return `<Cell${style}><Data ss:Type="String">${escapeXml(String(value ?? ""))}</Data></Cell>`;
+  };
+
+  const summaryRows = sortedEntries
     .map(([date, trades]) => {
-      const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0).toFixed(2);
+      const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
+      const wins = trades.filter((trade) => trade.pl > 0).length;
+      const losses = trades.filter((trade) => trade.pl < 0).length;
+      const winRate = trades.length ? ((wins / trades.length) * 100).toFixed(2) : "0.00";
       return `
         <Row>
-          <Cell><Data ss:Type="String">${escapeXml(date)}</Data></Cell>
-          <Cell><Data ss:Type="Number">${trades.length}</Data></Cell>
-          <Cell><Data ss:Type="Number">${totalPl}</Data></Cell>
+          ${makeCell(date)}
+          ${makeCell(trades.length, "number")}
+          ${makeCell(wins, "number")}
+          ${makeCell(losses, "number")}
+          ${makeCell(winRate, "number")}
+          ${makeCell(totalPl.toFixed(2), "number", totalPl >= 0 ? "positive" : "negative")}
         </Row>`;
     })
     .join("");
 
-  const worksheets = Array.from(grouped.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
+  const worksheets = sortedEntries
     .map(([date, trades]) => {
-      const headerRow = CSV_HEADERS.map(
-        (header) =>
-          `<Cell ss:StyleID="header"><Data ss:Type="String">${escapeXml(
-            header
-          )}</Data></Cell>`
-      ).join("");
+      const headerRow = columnConfigs
+        .map((column) => makeCell(column.header, "text", "header"))
+        .join("");
+      const columns = columnConfigs
+        .map((column) => `<Column ss:Width="${column.width}"/>`)
+        .join("");
 
       const rows = trades
         .map((trade) => {
           const cells = buildExportRow(trade)
-            .map(
-              (value) =>
-                `<Cell><Data ss:Type="String">${escapeXml(String(value ?? ""))}</Data></Cell>`
-            )
+            .map((value, index) => {
+              const column = columnConfigs[index];
+              const styleId =
+                column.header === "P/L"
+                  ? Number(value) >= 0
+                    ? "positive"
+                    : "negative"
+                  : undefined;
+              return makeCell(
+                typeof value === "number" ? value : String(value ?? ""),
+                column.kind,
+                styleId
+              );
+            })
             .join("");
           return `<Row>${cells}</Row>`;
         })
         .join("");
 
+      const totalPl = trades.reduce((sum, trade) => sum + trade.pl, 0);
+      const totalRow = `
+        <Row>
+          <Cell ss:MergeAcross="16" ss:StyleID="totalLabel"><Data ss:Type="String">Daily Total</Data></Cell>
+          <Cell ss:StyleID="${totalPl >= 0 ? "positive" : "negative"}"><Data ss:Type="Number">${totalPl.toFixed(
+            2
+          )}</Data></Cell>
+        </Row>`;
+
       return `
         <Worksheet ss:Name="${escapeXml(date)}">
           <Table>
+            ${columns}
             <Row>${headerRow}</Row>
             ${rows}
+            ${totalRow}
           </Table>
+          <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+            <FreezePanes/>
+            <FrozenNoSplit/>
+            <SplitHorizontal>1</SplitHorizontal>
+            <TopRowBottomPane>1</TopRowBottomPane>
+          </WorksheetOptions>
         </Worksheet>`;
     })
     .join("");
@@ -877,15 +969,66 @@ function buildDateWiseExcelXml(derivedTrades: ReturnType<typeof deriveTrades>) {
   <Styles>
     <Style ss:ID="header">
       <Font ss:Bold="1"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
       <Interior ss:Color="#D9EAFE" ss:Pattern="Solid"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="positive">
+      <Font ss:Color="#047857" ss:Bold="1"/>
+    </Style>
+    <Style ss:ID="negative">
+      <Font ss:Color="#B91C1C" ss:Bold="1"/>
+    </Style>
+    <Style ss:ID="totalLabel">
+      <Font ss:Bold="1"/>
+      <Alignment ss:Horizontal="Right"/>
+      <Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/>
     </Style>
   </Styles>
-  <Worksheet ss:Name="Summary">
+  <Worksheet ss:Name="Monthly Summary">
     <Table>
+      <Column ss:Width="100"/>
+      <Column ss:Width="70"/>
+      <Column ss:Width="70"/>
+      <Column ss:Width="70"/>
+      <Column ss:Width="80"/>
+      <Column ss:Width="85"/>
       <Row>
-        <Cell ss:StyleID="header"><Data ss:Type="String">Date</Data></Cell>
-        <Cell ss:StyleID="header"><Data ss:Type="String">Trades</Data></Cell>
-        <Cell ss:StyleID="header"><Data ss:Type="String">Net P/L</Data></Cell>
+        <Cell ss:StyleID="header"><Data ss:Type="String">Metric</Data></Cell>
+        <Cell ss:MergeAcross="4" ss:StyleID="header"><Data ss:Type="String">Value</Data></Cell>
+      </Row>
+      <Row>
+        ${makeCell("Total Trades", "text", "header")}
+        <Cell ss:MergeAcross="4"><Data ss:Type="Number">${derivedTrades.length}</Data></Cell>
+      </Row>
+      <Row>
+        ${makeCell("Wins", "text", "header")}
+        <Cell ss:MergeAcross="4"><Data ss:Type="Number">${monthlyWins}</Data></Cell>
+      </Row>
+      <Row>
+        ${makeCell("Losses", "text", "header")}
+        <Cell ss:MergeAcross="4"><Data ss:Type="Number">${monthlyLosses}</Data></Cell>
+      </Row>
+      <Row>
+        ${makeCell("Win Rate %", "text", "header")}
+        <Cell ss:MergeAcross="4"><Data ss:Type="Number">${monthlyWinRate}</Data></Cell>
+      </Row>
+      <Row>
+        ${makeCell("Net P/L", "text", "header")}
+        <Cell ss:MergeAcross="4" ss:StyleID="${monthlyTotalPl >= 0 ? "positive" : "negative"}"><Data ss:Type="Number">${monthlyTotalPl.toFixed(
+          2
+        )}</Data></Cell>
+      </Row>
+      <Row/>
+      <Row>
+        ${makeCell("Date", "text", "header")}
+        ${makeCell("Trades", "text", "header")}
+        ${makeCell("Wins", "text", "header")}
+        ${makeCell("Losses", "text", "header")}
+        ${makeCell("Win Rate %", "text", "header")}
+        ${makeCell("Net P/L", "text", "header")}
       </Row>
       ${summaryRows}
     </Table>
@@ -4406,7 +4549,7 @@ export default function ClientDashboard({
                   className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
                   onClick={handleExportDateWiseExcel}
                 >
-                  Export Excel
+                  Export Excel Tabs
                 </button>
               </div>
               <div className="flex w-full items-center justify-end gap-2 md:hidden">
@@ -4511,7 +4654,7 @@ export default function ClientDashboard({
                     className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                     onClick={handleExportDateWiseExcel}
                   >
-                    Export Excel
+                    Export Excel Tabs
                   </button>
                 </div>
               </div>
@@ -6662,7 +6805,7 @@ export default function ClientDashboard({
                     className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
                     onClick={handleExportDateWiseExcel}
                   >
-                    Export Excel
+                    Export Excel Tabs
                   </button>
                 </div>
               </div>
