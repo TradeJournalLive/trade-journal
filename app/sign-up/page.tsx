@@ -9,10 +9,14 @@ import {
   supabase
 } from "../lib/supabaseClient";
 
+const PENDING_ACCOUNT_SETUP_KEY = "pulsejournal_pending_account_setup";
+
 export default function SignUpPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [initialAccountName, setInitialAccountName] = useState("Primary Account");
+  const [baseCapital, setBaseCapital] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,10 +30,26 @@ export default function SignUpPage() {
       setError("Supabase is not configured.");
       return;
     }
+    const normalizedAccountName = initialAccountName.trim() || "Primary Account";
+    const normalizedBaseCapital = Math.max(0, Number(baseCapital || 0));
+    localStorage.setItem(
+      PENDING_ACCOUNT_SETUP_KEY,
+      JSON.stringify({
+        email,
+        accountName: normalizedAccountName,
+        baseCapital: normalizedBaseCapital
+      })
+    );
     setLoading(true);
     const { error: signUpError } = await supabase.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        data: {
+          initial_account_name: normalizedAccountName,
+          initial_base_capital: normalizedBaseCapital
+        }
+      }
     });
     setLoading(false);
     if (signUpError) {
@@ -45,8 +65,18 @@ export default function SignUpPage() {
       setError("Supabase is not configured.");
       return;
     }
+    const normalizedAccountName = initialAccountName.trim() || "Primary Account";
+    const normalizedBaseCapital = Math.max(0, Number(baseCapital || 0));
     setOauthLoading(true);
     localStorage.setItem("signup_provider", "google");
+    localStorage.setItem(
+      PENDING_ACCOUNT_SETUP_KEY,
+      JSON.stringify({
+        email,
+        accountName: normalizedAccountName,
+        baseCapital: normalizedBaseCapital
+      })
+    );
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -122,6 +152,29 @@ export default function SignUpPage() {
                   onChange={(event) => setPassword(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm text-white"
                   required
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted">First trading account</label>
+                <input
+                  type="text"
+                  placeholder="Primary Account"
+                  value={initialAccountName}
+                  onChange={(event) => setInitialAccountName(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm text-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Base capital</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="100000"
+                  value={baseCapital}
+                  onChange={(event) => setBaseCapital(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm text-white"
                 />
               </div>
               {error && <p className="text-xs text-negative">{error}</p>}

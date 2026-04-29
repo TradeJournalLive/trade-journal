@@ -30,6 +30,8 @@ const PARTICIPANTS_KEY = "pulsejournal_participants";
 const JOURNAL_DAILY_INPUTS_KEY = "pulsejournal_daily_inputs";
 const MARKET_SNAPSHOT_KEY = "pulsejournal_market_snapshot";
 const SHARE_LINK_IDS_KEY = "pulsejournal_share_link_ids";
+const ACCOUNTS_KEY = "pulsejournal_accounts";
+const PENDING_ACCOUNT_SETUP_KEY = "pulsejournal_pending_account_setup";
 const CSV_HEADERS = [
   "Trade ID",
   "Date",
@@ -94,11 +96,31 @@ type InstrumentDefinition = {
   lotSize: number;
 };
 
+type TradingAccount = {
+  id: string;
+  name: string;
+  baseCapital: number;
+  isDefault: boolean;
+};
+
+type PendingAccountSetup = {
+  email?: string;
+  accountName: string;
+  baseCapital: number;
+};
+
 const DEFAULT_INSTRUMENTS: InstrumentDefinition[] = [
   { id: "inst-nifty", name: "Nifty", lotSize: 1 },
   { id: "inst-bnifty", name: "B.Nifty", lotSize: 1 },
   { id: "inst-sensex", name: "Sensex", lotSize: 1 }
 ];
+
+const DEFAULT_LOCAL_ACCOUNT: TradingAccount = {
+  id: "acct-primary",
+  name: "Primary Account",
+  baseCapital: 0,
+  isDefault: true
+};
 
 type DashboardView =
   | "overview"
@@ -447,6 +469,43 @@ function buildInstrumentId(name: string) {
   return `INST-${slug}-${Date.now()}`;
 }
 
+function buildAccountId(name: string) {
+  const slug = normalizeAccountName(name).toLowerCase().replace(/[^a-z0-9]+/g, "-") || "account";
+  return `ACCT-${slug}-${Date.now()}`;
+}
+
+function normalizeAccountName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeAccountList(data: unknown): TradingAccount[] {
+  if (!Array.isArray(data)) return [];
+  const seen = new Set<string>();
+  const normalized: TradingAccount[] = [];
+
+  data.forEach((item, index) => {
+    if (typeof item !== "object" || !item) return;
+    const record = item as Partial<TradingAccount>;
+    const name = normalizeAccountName(String(record.name ?? "")) || `Account ${index + 1}`;
+    const id = String(record.id ?? buildAccountId(name));
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push({
+      id,
+      name,
+      baseCapital: Math.max(0, Number(record.baseCapital ?? 0) || 0),
+      isDefault: Boolean(record.isDefault)
+    });
+  });
+
+  if (!normalized.length) return [];
+  const defaultIndex = normalized.findIndex((account) => account.isDefault);
+  return normalized.map((account, index) => ({
+    ...account,
+    isDefault: defaultIndex >= 0 ? index === defaultIndex : index === 0
+  }));
+}
+
 function normalizeInstrumentList(data: unknown): InstrumentDefinition[] {
   if (!Array.isArray(data)) return [];
   return data
@@ -643,6 +702,7 @@ function toSupabaseRow(trade: Trade, userId: string) {
   return {
     user_id: userId,
     trade_id: trade.tradeId,
+    account_id: trade.accountId ?? null,
     date: trade.date,
     instrument: trade.instrument,
     market: trade.market,
@@ -680,6 +740,7 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   return {
     tradeId: String(row.trade_id ?? ""),
     date: String(row.date ?? ""),
+    accountId: row.account_id ? String(row.account_id) : undefined,
     instrument: String(row.instrument ?? ""),
     market: String(row.market ?? "Equity"),
     entryTime: timeValue(row.entry_time ? String(row.entry_time) : null),
@@ -729,6 +790,43 @@ function toJournalDailySupabaseRow(
     motivation_quote: input.motivationQuote || null,
     market_snapshot: snapshot
   };
+}
+
+function toTradingAccountRow(userId: string, account: TradingAccount) {
+  return {
+    id: account.id,
+    user_id: userId,
+    name: account.name,
+    base_capital: account.baseCapital,
+    is_default: account.isDefault
+  };
+}
+
+function fromTradingAccountRows(rows: Record<string, unknown>[]) {
+  return normalizeAccountList(
+    rows.map((row) => ({
+      id: String(row.id ?? ""),
+      name: String(row.name ?? "Primary Account"),
+      baseCapital: Number(row.base_capital ?? 0),
+      isDefault: Boolean(row.is_default)
+    }))
+  );
+}
+
+function readPendingAccountSetup() {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(PENDING_ACCOUNT_SETUP_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as PendingAccountSetup;
+    return {
+      email: parsed.email,
+      accountName: normalizeAccountName(parsed.accountName || "Primary Account") || "Primary Account",
+      baseCapital: Math.max(0, Number(parsed.baseCapital ?? 0) || 0)
+    } as PendingAccountSetup;
+  } catch {
+    return null;
+  }
 }
 
 function fromJournalDailySupabaseRows(rows: Record<string, unknown>[]) {
@@ -1101,6 +1199,8 @@ type AddTradeFormProps = {
   editingTrade: Trade | null;
   instruments: InstrumentDefinition[];
   strategies: StrategyDefinition[];
+  accounts: TradingAccount[];
+  defaultAccountId?: string;
   onUploadPnlScreenshot?: (file: File) => Promise<string>;
 };
 
@@ -1111,12 +1211,15 @@ function AddTradeForm({
   editingTrade,
   instruments,
   strategies,
+  accounts,
+  defaultAccountId,
   onUploadPnlScreenshot
 }: AddTradeFormProps) {
   const [tradeId, setTradeId] = useState("");
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
+  const [accountId, setAccountId] = useState(defaultAccountId ?? "");
   const [instrument, setInstrument] = useState("Nifty");
   const [market, setMarket] = useState("F&O");
   const [entryTime, setEntryTime] = useState("");
@@ -1153,6 +1256,7 @@ function AddTradeForm({
       wasEditingRef.current = true;
       setTradeId(editingTrade.tradeId);
       setDate(editingTrade.date || new Date().toISOString().slice(0, 10));
+      setAccountId(editingTrade.accountId || defaultAccountId || accounts[0]?.id || "");
       setInstrument(editingTrade.instrument || "Nifty");
       setMarket(editingTrade.market || "F&O");
       setEntryTime(editingTrade.entryTime || "");
@@ -1218,6 +1322,7 @@ function AddTradeForm({
       wasEditingRef.current = false;
       setTradeId("");
       setDate(new Date().toISOString().slice(0, 10));
+      setAccountId(defaultAccountId || accounts[0]?.id || "");
       setInstrument("Nifty");
       setMarket("F&O");
       setEntryTime("");
@@ -1244,17 +1349,20 @@ function AddTradeForm({
       setMindsetNotes("");
       setTradeType("");
     }
-  }, [editingTrade, instruments]);
+  }, [editingTrade, instruments, defaultAccountId, accounts]);
 
   useEffect(() => {
     if (isEditing) return;
+    if (!accountId && (defaultAccountId || accounts[0]?.id)) {
+      setAccountId(defaultAccountId || accounts[0]?.id || "");
+    }
     if (!instrument) {
       const nifty = instruments.find(
         (item) => item.name.toLowerCase() === "nifty"
       );
       setInstrument(nifty?.name ?? instruments[0]?.name ?? "Nifty");
     }
-  }, [instrument, instruments, isEditing]);
+  }, [instrument, instruments, isEditing, accountId, defaultAccountId, accounts]);
 
   const instrumentValue = instrument.trim();
   const selectedLotSize =
@@ -1281,6 +1389,7 @@ function AddTradeForm({
     const nextFieldErrors: Record<string, string> = {};
     if (!tradeIdValue) nextFieldErrors.tradeId = "Required";
     if (!date) nextFieldErrors.date = "Required";
+    if (accounts.length && !accountId) nextFieldErrors.accountId = "Required";
     if (!instrumentValue) nextFieldErrors.instrument = "Required";
     if (!market) nextFieldErrors.market = "Required";
     if (!entryTime) nextFieldErrors.entryTime = "Required";
@@ -1333,6 +1442,7 @@ function AddTradeForm({
     const trade: Trade = {
       tradeId: tradeIdValue,
       date,
+      accountId: accountId || undefined,
       instrument: instrumentValue,
       market,
       entryTime,
@@ -1371,6 +1481,7 @@ function AddTradeForm({
         return;
       }
       setTradeId("");
+      setAccountId(defaultAccountId || accounts[0]?.id || "");
       setInstrument("Nifty");
       setMarket("F&O");
       setEntryTime("");
@@ -1504,6 +1615,23 @@ function AddTradeForm({
             "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
           )}
         />
+        <select
+          value={accountId}
+          onChange={(event) => setAccountId(event.target.value)}
+          className={withFieldError(
+            "accountId",
+            "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+          )}
+        >
+          <option value="" disabled>
+            Select account
+          </option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
         <div>
           <input
             list="instrument-options"
@@ -1880,6 +2008,7 @@ export default function ClientDashboard({
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [currency, setCurrency] = useState<"INR" | "USD">("INR");
+  const [globalAccount, setGlobalAccount] = useState("all");
   const [globalMarket, setGlobalMarket] = useState("all");
   const [globalInstrument, setGlobalInstrument] = useState("all");
   const [globalStrategy, setGlobalStrategy] = useState("all");
@@ -1891,6 +2020,10 @@ export default function ClientDashboard({
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const lastUserIdRef = useRef<string | null>(null);
+  const [accounts, setAccounts] = useState<TradingAccount[]>([DEFAULT_LOCAL_ACCOUNT]);
+  const [accountNameInput, setAccountNameInput] = useState("");
+  const [accountBaseCapitalInput, setAccountBaseCapitalInput] = useState("");
+  const [accountStatus, setAccountStatus] = useState("");
   const [instruments, setInstruments] =
     useState<InstrumentDefinition[]>(DEFAULT_INSTRUMENTS);
   const [instrumentNameInput, setInstrumentNameInput] = useState("");
@@ -1955,6 +2088,14 @@ export default function ClientDashboard({
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const participantsTableRef = useRef<HTMLTableElement | null>(null);
   const migratedJournalRef = useRef<string>("");
+  const migratedTradeAccountsRef = useRef<string>("");
+
+  const accountStorageKey = useMemo(() => {
+    if (dataSource === "supabase" && session?.user?.id) {
+      return `${ACCOUNTS_KEY}_${session.user.id}`;
+    }
+    return ACCOUNTS_KEY;
+  }, [dataSource, session?.user?.id]);
 
   const instrumentStorageKey = useMemo(() => {
     if (dataSource === "supabase" && session?.user?.id) {
@@ -2169,6 +2310,123 @@ export default function ClientDashboard({
       }
     })();
   }, [dataSource, session]);
+
+  useEffect(() => {
+    if (dataSource !== "supabase" || !supabase || !session?.user?.id) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("trading_accounts")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setAccountStatus(`Account load failed: ${error.message}`);
+        return;
+      }
+
+      let nextAccounts = fromTradingAccountRows(
+        Array.isArray(data) ? (data as Record<string, unknown>[]) : []
+      );
+
+      if (!nextAccounts.length) {
+        const pending = readPendingAccountSetup();
+        const metadata = session.user.user_metadata ?? {};
+        const initialName =
+          pending?.accountName ||
+          normalizeAccountName(String(metadata.initial_account_name ?? "")) ||
+          DEFAULT_LOCAL_ACCOUNT.name;
+        const initialBaseCapital = Math.max(
+          0,
+          Number(pending?.baseCapital ?? metadata.initial_base_capital ?? 0) || 0
+        );
+        const initialAccount: TradingAccount = {
+          id: buildAccountId(initialName),
+          name: initialName,
+          baseCapital: initialBaseCapital,
+          isDefault: true
+        };
+
+        const { error: insertError } = await supabase
+          .from("trading_accounts")
+          .insert(toTradingAccountRow(session.user.id, initialAccount));
+
+        if (insertError) {
+          setAccountStatus(`Account setup failed: ${insertError.message}`);
+          return;
+        }
+
+        nextAccounts = [initialAccount];
+        if (!pending?.email || pending.email.toLowerCase() === session.user.email?.toLowerCase()) {
+          localStorage.removeItem(PENDING_ACCOUNT_SETUP_KEY);
+        }
+      }
+
+      setAccounts(nextAccounts);
+    })();
+  }, [dataSource, session?.user?.id]);
+
+  useEffect(() => {
+    if (dataSource !== "local") return;
+    const stored = localStorage.getItem(accountStorageKey);
+    if (!stored) {
+      setAccounts([DEFAULT_LOCAL_ACCOUNT]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored);
+      const normalized = normalizeAccountList(parsed);
+      setAccounts(normalized.length ? normalized : [DEFAULT_LOCAL_ACCOUNT]);
+    } catch (error) {
+      console.error("Failed to load accounts", error);
+      setAccounts([DEFAULT_LOCAL_ACCOUNT]);
+    }
+  }, [accountStorageKey, dataSource]);
+
+  useEffect(() => {
+    if (dataSource === "supabase") return;
+    localStorage.setItem(accountStorageKey, JSON.stringify(accounts));
+  }, [accountStorageKey, accounts, dataSource]);
+
+  useEffect(() => {
+    if (globalAccount !== "all" && !accounts.some((account) => account.id === globalAccount)) {
+      setGlobalAccount("all");
+    }
+  }, [accounts, globalAccount]);
+
+  useEffect(() => {
+    const defaultAccount = accounts.find((account) => account.isDefault) ?? accounts[0];
+    if (!defaultAccount) return;
+
+    setTradeList((prev) => {
+      let changed = false;
+      const next = prev.map((trade) => {
+        if (trade.accountId) return trade;
+        changed = true;
+        return { ...trade, accountId: defaultAccount.id };
+      });
+      return changed ? next : prev;
+    });
+
+    if (dataSource !== "supabase" || !supabase || !session?.user?.id) return;
+    const missingTradeIds = tradeList.filter((trade) => !trade.accountId).map((trade) => trade.tradeId);
+    if (!missingTradeIds.length) return;
+    const signature = `${session.user.id}:${defaultAccount.id}:${missingTradeIds.join("|")}`;
+    if (migratedTradeAccountsRef.current === signature) return;
+    migratedTradeAccountsRef.current = signature;
+    void supabase
+      .from("trades")
+      .update({ account_id: defaultAccount.id })
+      .eq("user_id", session.user.id)
+      .is("account_id", null)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to backfill trade accounts", error);
+          migratedTradeAccountsRef.current = "";
+        }
+      });
+  }, [accounts, dataSource, session?.user?.id, tradeList]);
 
   useEffect(() => {
     const stored = localStorage.getItem(instrumentStorageKey);
@@ -2507,10 +2765,19 @@ export default function ClientDashboard({
     () => Array.from(new Set(tradeList.map((t) => t.strategy))).sort(),
     [tradeList]
   );
+  const defaultTradingAccount = useMemo(
+    () => accounts.find((account) => account.isDefault) ?? accounts[0] ?? null,
+    [accounts]
+  );
+  const selectedTradingAccount = useMemo(
+    () => accounts.find((account) => account.id === globalAccount) ?? null,
+    [accounts, globalAccount]
+  );
 
   const filteredTrades = useMemo(
     () =>
       tradeList.filter((trade) => {
+        if (globalAccount !== "all" && trade.accountId !== globalAccount) return false;
         if (globalMarket !== "all" && trade.market !== globalMarket) return false;
         if (
           globalInstrument !== "all" &&
@@ -2525,6 +2792,7 @@ export default function ClientDashboard({
       }),
     [
       tradeList,
+      globalAccount,
       globalMarket,
       globalInstrument,
       globalStrategy,
@@ -2536,7 +2804,11 @@ export default function ClientDashboard({
   const derived = useMemo(() => deriveTrades(filteredTrades), [filteredTrades]);
   const journalMonthDates = useMemo(() => {
     const fromTrades = tradeList
-      .filter((trade) => trade.date.startsWith(`${journalSummaryMonth}-`))
+      .filter(
+        (trade) =>
+          trade.date.startsWith(`${journalSummaryMonth}-`) &&
+          (globalAccount === "all" || trade.accountId === globalAccount)
+      )
       .map((trade) => trade.date);
     const fromChecklist = Object.keys(journalDailyInputs).filter((date) =>
       date.startsWith(`${journalSummaryMonth}-`)
@@ -2550,7 +2822,7 @@ export default function ClientDashboard({
       set.add(today);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [tradeList, journalSummaryMonth, journalDailyInputs, marketSnapshotsByDate]);
+  }, [tradeList, journalSummaryMonth, journalDailyInputs, marketSnapshotsByDate, globalAccount]);
   const selectedJournalDailyInput = useMemo(
     () =>
       journalDailyDate
@@ -3040,7 +3312,11 @@ export default function ClientDashboard({
   async function handleGenerateJournalSummaryLink() {
     const monthPrefix = `${journalSummaryMonth}-`;
     const monthTrades = deriveTrades(
-      tradeList.filter((trade) => trade.date.startsWith(monthPrefix))
+      tradeList.filter(
+        (trade) =>
+          trade.date.startsWith(monthPrefix) &&
+          (globalAccount === "all" || trade.accountId === globalAccount)
+      )
     );
 
     if (!monthTrades.length) {
@@ -3389,6 +3665,7 @@ export default function ClientDashboard({
       imported.push({
         tradeId,
         date,
+        accountId: defaultTradingAccount?.id,
         instrument,
         market,
         entryTime,
@@ -3592,6 +3869,77 @@ export default function ClientDashboard({
       setProfileImage(result || null);
     };
     reader.readAsDataURL(file);
+  }
+
+  async function handleAddTradingAccount() {
+    const name = normalizeAccountName(accountNameInput) || "Primary Account";
+    const baseCapital = Math.max(0, Number(accountBaseCapitalInput || 0));
+
+    if (!name) {
+      setAccountStatus("Account name is required.");
+      return;
+    }
+    if (!Number.isFinite(baseCapital) || baseCapital < 0) {
+      setAccountStatus("Base capital must be 0 or more.");
+      return;
+    }
+    if (accounts.some((account) => account.name.toLowerCase() === name.toLowerCase())) {
+      setAccountStatus("Account already exists.");
+      return;
+    }
+
+    const nextAccount: TradingAccount = {
+      id: buildAccountId(name),
+      name,
+      baseCapital,
+      isDefault: accounts.length === 0
+    };
+
+    if (dataSource === "supabase") {
+      if (!supabase || !session?.user?.id) {
+        setAccountStatus("Please sign in to add accounts.");
+        return;
+      }
+      const { error } = await supabase
+        .from("trading_accounts")
+        .insert(toTradingAccountRow(session.user.id, nextAccount));
+      if (error) {
+        setAccountStatus(`Account save failed: ${error.message}`);
+        return;
+      }
+    }
+
+    setAccounts((prev) => normalizeAccountList([...prev, nextAccount]));
+    setAccountNameInput("");
+    setAccountBaseCapitalInput("");
+    setAccountStatus("Account added.");
+    setTimeout(() => setAccountStatus(""), 1800);
+  }
+
+  async function handleSetDefaultAccount(accountId: string) {
+    const nextAccounts = accounts.map((account) => ({
+      ...account,
+      isDefault: account.id === accountId
+    }));
+
+    if (dataSource === "supabase") {
+      if (!supabase || !session?.user?.id) {
+        setAccountStatus("Please sign in to update default account.");
+        return;
+      }
+      const payload = nextAccounts.map((account) => toTradingAccountRow(session.user.id, account));
+      const { error } = await supabase
+        .from("trading_accounts")
+        .upsert(payload, { onConflict: "id" });
+      if (error) {
+        setAccountStatus(`Default update failed: ${error.message}`);
+        return;
+      }
+    }
+
+    setAccounts(nextAccounts);
+    setAccountStatus("Default account updated.");
+    setTimeout(() => setAccountStatus(""), 1800);
   }
 
   function handleAddInstrument() {
@@ -4387,6 +4735,18 @@ export default function ClientDashboard({
                   className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
                 />
                 <select
+                  value={globalAccount}
+                  onChange={(event) => setGlobalAccount(event.target.value)}
+                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                >
+                  <option value="all">All accounts</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+                <select
                   value={globalMarket}
                   onChange={(event) => setGlobalMarket(event.target.value)}
                   className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
@@ -4425,6 +4785,7 @@ export default function ClientDashboard({
                 <button
                   className="rounded-full border border-white/10 px-3 py-2 text-xs text-muted"
                   onClick={() => {
+                    setGlobalAccount("all");
                     setGlobalMarket("all");
                     setGlobalInstrument("all");
                     setGlobalStrategy("all");
@@ -4585,6 +4946,18 @@ export default function ClientDashboard({
                     className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
                   />
                   <select
+                    value={globalAccount}
+                    onChange={(event) => setGlobalAccount(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  >
+                    <option value="all">All accounts</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
                     value={globalMarket}
                     onChange={(event) => setGlobalMarket(event.target.value)}
                     className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
@@ -4634,6 +5007,7 @@ export default function ClientDashboard({
                     <button
                       className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted"
                       onClick={() => {
+                        setGlobalAccount("all");
                         setGlobalMarket("all");
                         setGlobalInstrument("all");
                         setGlobalStrategy("all");
@@ -5630,6 +6004,74 @@ export default function ClientDashboard({
                 )}
               </div>
 
+              <div className="card space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Trading accounts</h3>
+                  <p className="text-sm text-muted">
+                    Create multiple accounts with their own base capital, then tag trades and analytics account-wise.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
+                  <input
+                    type="text"
+                    placeholder="Account name"
+                    value={accountNameInput}
+                    onChange={(event) => setAccountNameInput(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Base capital"
+                    value={accountBaseCapitalInput}
+                    onChange={(event) => setAccountBaseCapitalInput(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
+                  <button
+                    className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                    onClick={handleAddTradingAccount}
+                  >
+                    Add account
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {accounts.map((account) => (
+                    <div
+                      key={account.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-white">{account.name}</div>
+                        <div className="text-xs text-muted">
+                          Base capital: {money2.format(account.baseCapital)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {account.isDefault ? (
+                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                            Default
+                          </span>
+                        ) : (
+                          <button
+                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+                            onClick={() => handleSetDefaultAccount(account.id)}
+                          >
+                            Set default
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {accountStatus ? <div className="text-xs text-muted">{accountStatus}</div> : null}
+                {selectedTradingAccount ? (
+                  <div className="text-xs text-muted">
+                    Current analysis filter: {selectedTradingAccount.name}
+                  </div>
+                ) : null}
+              </div>
+
               <div id="password" className="card space-y-4">
                 <div>
                   <h3 className="text-lg font-semibold">Change password</h3>
@@ -6476,6 +6918,8 @@ export default function ClientDashboard({
             <AddTradeForm
               instruments={instruments}
               strategies={strategies}
+              accounts={accounts}
+              defaultAccountId={defaultTradingAccount?.id}
               editingTrade={editingTrade}
               onCancelEdit={() => setEditingTrade(null)}
               onUploadPnlScreenshot={

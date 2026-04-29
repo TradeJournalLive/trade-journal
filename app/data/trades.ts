@@ -4,6 +4,7 @@ export type TradeType = "Safe" | "Risky";
 export type Trade = {
   tradeId: string;
   date: string; // YYYY-MM-DD
+  accountId?: string;
   instrument: string;
   market: string; // Equity / F&O
   entryTime: string; // HH:mm
