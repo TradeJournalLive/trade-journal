@@ -2023,6 +2023,9 @@ export default function ClientDashboard({
   const [accounts, setAccounts] = useState<TradingAccount[]>([DEFAULT_LOCAL_ACCOUNT]);
   const [accountNameInput, setAccountNameInput] = useState("");
   const [accountBaseCapitalInput, setAccountBaseCapitalInput] = useState("");
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editingAccountName, setEditingAccountName] = useState("");
+  const [editingAccountBaseCapital, setEditingAccountBaseCapital] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [instruments, setInstruments] =
     useState<InstrumentDefinition[]>(DEFAULT_INSTRUMENTS);
@@ -3939,6 +3942,117 @@ export default function ClientDashboard({
 
     setAccounts(nextAccounts);
     setAccountStatus("Default account updated.");
+    setTimeout(() => setAccountStatus(""), 1800);
+  }
+
+  function beginEditAccount(account: TradingAccount) {
+    setEditingAccountId(account.id);
+    setEditingAccountName(account.name);
+    setEditingAccountBaseCapital(String(account.baseCapital));
+    setAccountStatus("");
+  }
+
+  function cancelEditAccount() {
+    setEditingAccountId(null);
+    setEditingAccountName("");
+    setEditingAccountBaseCapital("");
+  }
+
+  async function handleSaveAccountEdit() {
+    if (!editingAccountId) return;
+    const name = normalizeAccountName(editingAccountName);
+    const baseCapital = Math.max(0, Number(editingAccountBaseCapital || 0));
+
+    if (!name) {
+      setAccountStatus("Account name is required.");
+      return;
+    }
+    if (!Number.isFinite(baseCapital) || baseCapital < 0) {
+      setAccountStatus("Base capital must be 0 or more.");
+      return;
+    }
+    if (accounts.some((account) => account.id !== editingAccountId && account.name.toLowerCase() === name.toLowerCase())) {
+      setAccountStatus("Another account already uses this name.");
+      return;
+    }
+
+    const nextAccounts = accounts.map((account) =>
+      account.id === editingAccountId ? { ...account, name, baseCapital } : account
+    );
+
+    if (dataSource === "supabase") {
+      if (!supabase || !session?.user?.id) {
+        setAccountStatus("Please sign in to edit accounts.");
+        return;
+      }
+      const payload = nextAccounts.map((account) => toTradingAccountRow(session.user.id, account));
+      const { error } = await supabase
+        .from("trading_accounts")
+        .upsert(payload, { onConflict: "id" });
+      if (error) {
+        setAccountStatus(`Account update failed: ${error.message}`);
+        return;
+      }
+    }
+
+    setAccounts(nextAccounts);
+    cancelEditAccount();
+    setAccountStatus("Account updated.");
+    setTimeout(() => setAccountStatus(""), 1800);
+  }
+
+  async function handleDeleteAccount(accountId: string) {
+    const target = accounts.find((account) => account.id === accountId);
+    if (!target) return;
+    if (accounts.length <= 1) {
+      setAccountStatus("Keep at least one account.");
+      return;
+    }
+    const linkedTrades = tradeList.filter((trade) => trade.accountId === accountId).length;
+    if (linkedTrades > 0) {
+      setAccountStatus("Move or delete trades from this account first.");
+      return;
+    }
+    if (!window.confirm(`Delete account ${target.name}?`)) {
+      return;
+    }
+
+    const remaining = accounts.filter((account) => account.id !== accountId);
+    const nextAccounts = remaining.some((account) => account.isDefault)
+      ? remaining
+      : remaining.map((account, index) => ({ ...account, isDefault: index === 0 }));
+
+    if (dataSource === "supabase") {
+      if (!supabase || !session?.user?.id) {
+        setAccountStatus("Please sign in to delete accounts.");
+        return;
+      }
+      const { error } = await supabase
+        .from("trading_accounts")
+        .delete()
+        .eq("user_id", session.user.id)
+        .eq("id", accountId);
+      if (error) {
+        setAccountStatus(`Account delete failed: ${error.message}`);
+        return;
+      }
+      const { error: syncError } = await supabase
+        .from("trading_accounts")
+        .upsert(nextAccounts.map((account) => toTradingAccountRow(session.user.id, account)), { onConflict: "id" });
+      if (syncError) {
+        setAccountStatus(`Default sync failed: ${syncError.message}`);
+        return;
+      }
+    }
+
+    setAccounts(nextAccounts);
+    if (globalAccount === accountId) {
+      setGlobalAccount("all");
+    }
+    if (editingAccountId === accountId) {
+      cancelEditAccount();
+    }
+    setAccountStatus("Account deleted.");
     setTimeout(() => setAccountStatus(""), 1800);
   }
 
@@ -6039,28 +6153,73 @@ export default function ClientDashboard({
                   {accounts.map((account) => (
                     <div
                       key={account.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
                     >
-                      <div>
-                        <div className="text-sm font-semibold text-white">{account.name}</div>
-                        <div className="text-xs text-muted">
-                          Base capital: {money2.format(account.baseCapital)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {account.isDefault ? (
-                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                            Default
-                          </span>
-                        ) : (
+                      {editingAccountId === account.id ? (
+                        <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_auto_auto]">
+                          <input
+                            type="text"
+                            value={editingAccountName}
+                            onChange={(event) => setEditingAccountName(event.target.value)}
+                            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editingAccountBaseCapital}
+                            onChange={(event) => setEditingAccountBaseCapital(event.target.value)}
+                            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                          />
                           <button
-                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
-                            onClick={() => handleSetDefaultAccount(account.id)}
+                            className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+                            onClick={handleSaveAccountEdit}
                           >
-                            Set default
+                            Save
                           </button>
-                        )}
-                      </div>
+                          <button
+                            className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted hover:text-white"
+                            onClick={cancelEditAccount}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">{account.name}</div>
+                            <div className="text-xs text-muted">
+                              Base capital: {money2.format(account.baseCapital)}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {account.isDefault ? (
+                              <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                                Default
+                              </span>
+                            ) : (
+                              <button
+                                className="rounded-full border border-white/10 px-3 py-1 text-xs text-muted hover:text-white"
+                                onClick={() => handleSetDefaultAccount(account.id)}
+                              >
+                                Set default
+                              </button>
+                            )}
+                            <button
+                              className="rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                              onClick={() => beginEditAccount(account)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                              onClick={() => handleDeleteAccount(account.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
