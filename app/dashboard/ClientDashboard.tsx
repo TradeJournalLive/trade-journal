@@ -4008,45 +4008,24 @@ export default function ClientDashboard({
       setAccountStatus("Keep at least one account.");
       return;
     }
+    const linkedTrades = tradeList.filter((trade) => trade.accountId === accountId).length;
+    if (linkedTrades > 0) {
+      setAccountStatus("Move or delete trades from this account first.");
+      return;
+    }
+    if (!window.confirm(`Delete account ${target.name}?`)) {
+      return;
+    }
 
     const remaining = accounts.filter((account) => account.id !== accountId);
     const nextAccounts = remaining.some((account) => account.isDefault)
       ? remaining
       : remaining.map((account, index) => ({ ...account, isDefault: index === 0 }));
-    const destinationAccount =
-      nextAccounts.find((account) => account.isDefault) ?? nextAccounts[0];
-    const linkedTrades = tradeList.filter((trade) => trade.accountId === accountId).length;
-
-    if (linkedTrades > 0) {
-      if (!destinationAccount) {
-        setAccountStatus("Add another account before deleting this one.");
-        return;
-      }
-      const shouldMove = window.confirm(
-        `${linkedTrades} trade${linkedTrades === 1 ? "" : "s"} are linked to ${target.name}. Move them to ${destinationAccount.name} and delete this account?`
-      );
-      if (!shouldMove) {
-        return;
-      }
-    } else if (!window.confirm(`Delete account ${target.name}?`)) {
-      return;
-    }
 
     if (dataSource === "supabase") {
       if (!supabase || !session?.user?.id) {
         setAccountStatus("Please sign in to delete accounts.");
         return;
-      }
-      if (linkedTrades > 0 && destinationAccount) {
-        const { error: moveError } = await supabase
-          .from("trades")
-          .update({ account_id: destinationAccount.id })
-          .eq("user_id", session.user.id)
-          .eq("account_id", accountId);
-        if (moveError) {
-          setAccountStatus(`Trade move failed: ${moveError.message}`);
-          return;
-        }
       }
       const { error } = await supabase
         .from("trading_accounts")
@@ -4066,15 +4045,6 @@ export default function ClientDashboard({
       }
     }
 
-    if (linkedTrades > 0 && destinationAccount) {
-      setTradeList((current) =>
-        current.map((trade) =>
-          trade.accountId === accountId
-            ? { ...trade, accountId: destinationAccount.id }
-            : trade
-        )
-      );
-    }
     setAccounts(nextAccounts);
     if (globalAccount === accountId) {
       setGlobalAccount("all");
@@ -4082,11 +4052,7 @@ export default function ClientDashboard({
     if (editingAccountId === accountId) {
       cancelEditAccount();
     }
-    setAccountStatus(
-      linkedTrades > 0 && destinationAccount
-        ? `Account deleted. ${linkedTrades} trade${linkedTrades === 1 ? "" : "s"} moved to ${destinationAccount.name}.`
-        : "Account deleted."
-    );
+    setAccountStatus("Account deleted.");
     setTimeout(() => setAccountStatus(""), 1800);
   }
 
