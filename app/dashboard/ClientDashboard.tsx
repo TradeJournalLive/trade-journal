@@ -813,12 +813,17 @@ function fromTradingAccountRows(rows: Record<string, unknown>[]) {
   );
 }
 
-function readPendingAccountSetup() {
+function readPendingAccountSetup(currentEmail?: string | null) {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(PENDING_ACCOUNT_SETUP_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as PendingAccountSetup;
+    const normalizedPendingEmail = String(parsed.email ?? "").trim().toLowerCase();
+    const normalizedCurrentEmail = String(currentEmail ?? "").trim().toLowerCase();
+    if (!normalizedPendingEmail || !normalizedCurrentEmail || normalizedPendingEmail !== normalizedCurrentEmail) {
+      return null;
+    }
     return {
       email: parsed.email,
       accountName: normalizeAccountName(parsed.accountName || "Primary Account") || "Primary Account",
@@ -2334,7 +2339,7 @@ export default function ClientDashboard({
       );
 
       if (!nextAccounts.length) {
-        const pending = readPendingAccountSetup();
+        const pending = readPendingAccountSetup(session.user.email ?? undefined);
         const metadata = session.user.user_metadata ?? {};
         const initialName =
           pending?.accountName ||
@@ -2361,9 +2366,7 @@ export default function ClientDashboard({
         }
 
         nextAccounts = [initialAccount];
-        if (!pending?.email || pending.email.toLowerCase() === session.user.email?.toLowerCase()) {
-          localStorage.removeItem(PENDING_ACCOUNT_SETUP_KEY);
-        }
+        localStorage.removeItem(PENDING_ACCOUNT_SETUP_KEY);
       }
 
       setAccounts(nextAccounts);

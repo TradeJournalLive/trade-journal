@@ -15,7 +15,7 @@ export default function SignUpPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [initialAccountName, setInitialAccountName] = useState("Primary Account");
+  const [initialAccountName, setInitialAccountName] = useState("");
   const [baseCapital, setBaseCapital] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -30,7 +30,11 @@ export default function SignUpPage() {
       setError("Supabase is not configured.");
       return;
     }
-    const normalizedAccountName = initialAccountName.trim() || "Primary Account";
+    const normalizedAccountName = initialAccountName.trim();
+    if (!normalizedAccountName) {
+      setError("First trading account name is required.");
+      return;
+    }
     const normalizedBaseCapital = Math.max(0, Number(baseCapital || 0));
     localStorage.setItem(
       PENDING_ACCOUNT_SETUP_KEY,
@@ -65,7 +69,11 @@ export default function SignUpPage() {
       setError("Supabase is not configured.");
       return;
     }
-    const normalizedAccountName = initialAccountName.trim() || "Primary Account";
+    const normalizedAccountName = initialAccountName.trim();
+    if (!normalizedAccountName) {
+      setError("First trading account name is required.");
+      return;
+    }
     const normalizedBaseCapital = Math.max(0, Number(baseCapital || 0));
     setOauthLoading(true);
     localStorage.setItem("signup_provider", "google");
@@ -158,7 +166,7 @@ export default function SignUpPage() {
                 <label className="text-xs text-muted">First trading account</label>
                 <input
                   type="text"
-                  placeholder="Primary Account"
+                  placeholder="Your trading account name"
                   value={initialAccountName}
                   onChange={(event) => setInitialAccountName(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm text-white"

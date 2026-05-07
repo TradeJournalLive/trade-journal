@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
 
+const PENDING_ACCOUNT_SETUP_KEY = "pulsejournal_pending_account_setup";
+
 export default function AuthCallbackPage() {
   const router = useRouter();
   const [status, setStatus] = useState("Completing sign in...");
@@ -36,6 +38,23 @@ export default function AuthCallbackPage() {
     const handleSignedIn = async () => {
       const signupProvider = localStorage.getItem("signup_provider");
       if (signupProvider) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const sessionEmail = sessionData.session?.user?.email?.trim().toLowerCase();
+        const pendingRaw = localStorage.getItem(PENDING_ACCOUNT_SETUP_KEY);
+        if (sessionEmail && pendingRaw) {
+          try {
+            const parsed = JSON.parse(pendingRaw) as Record<string, unknown>;
+            localStorage.setItem(
+              PENDING_ACCOUNT_SETUP_KEY,
+              JSON.stringify({
+                ...parsed,
+                email: sessionEmail
+              })
+            );
+          } catch {
+            // Ignore malformed local setup payloads.
+          }
+        }
         localStorage.removeItem("signup_provider");
         setStatus(
           `Sign up successful with ${signupProvider}. Redirecting to sign in...`
