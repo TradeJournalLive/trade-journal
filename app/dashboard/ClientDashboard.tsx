@@ -1197,6 +1197,187 @@ function stripLargeSharedMedia(payload: {
   };
 }
 
+type FyersImportedRow = {
+  symbol: string;
+  side: "Buy" | "Sell";
+  status: string;
+  qty: number;
+  tradedPrice: number | null;
+  date: string;
+  time: string;
+  ts: number;
+};
+
+type FyersImportCandidate = {
+  symbol: string;
+  instrumentName: string;
+  direction: Trade["direction"];
+  date: string;
+  entryTime: string;
+  exitTime: string;
+  qty: number;
+  lots: number | null;
+  entryPrice: string;
+  exitPrice: string;
+};
+
+const FYERS_MONTH_INDEX: Record<string, string> = {
+  jan: "01",
+  feb: "02",
+  mar: "03",
+  apr: "04",
+  may: "05",
+  jun: "06",
+  jul: "07",
+  aug: "08",
+  sep: "09",
+  oct: "10",
+  nov: "11",
+  dec: "12"
+};
+
+function normalizeOcrLine(value: string) {
+  return value
+    .replace(/[|]/g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseLooseNumber(value?: string | null) {
+  if (!value) return null;
+  const cleaned = value.replace(/,/g, "").trim();
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseFyersDate(value: string) {
+  const match = value.trim().match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
+  if (!match) return "";
+  const day = match[1].padStart(2, "0");
+  const month = FYERS_MONTH_INDEX[match[2].toLowerCase()];
+  const year = match[3];
+  if (!month) return "";
+  return `${year}-${month}-${day}`;
+}
+
+function inferInstrumentFromFyersSymbol(
+  symbol: string,
+  instruments: InstrumentDefinition[]
+) {
+  const upper = symbol.toUpperCase();
+  const directMatch =
+    instruments.find((item) => upper.includes(item.name.toUpperCase().replace(/\./g, ""))) ??
+    null;
+  if (directMatch) return directMatch;
+  if (upper.includes("BANKNIFTY") || upper.includes("BNIFTY")) {
+    return (
+      instruments.find((item) => item.name.toLowerCase().includes("b.nifty")) ??
+      instruments.find((item) => item.name.toLowerCase().includes("bank")) ??
+      null
+    );
+  }
+  if (upper.includes("SENSEX")) {
+    return instruments.find((item) => item.name.toLowerCase().includes("sensex")) ?? null;
+  }
+  if (upper.includes("NIFTY")) {
+    return instruments.find((item) => item.name.toLowerCase().includes("nifty")) ?? null;
+  }
+  return null;
+}
+
+function extractFyersRowsFromText(rawText: string) {
+  const rows: FyersImportedRow[] = [];
+  const lines = rawText
+    .split(/\n+/)
+    .map(normalizeOcrLine)
+    .filter(Boolean);
+
+  const rowPattern = /(NSE:[A-Z0-9]+)\s+(Buy|Sell)\s+[A-Za-z]+\s+[A-Z]+\s+(\d+)\s+\d+\s+(.*?)\s+(Filled|Cancelled|Rejected|Working|Inactive)\s+(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+(\d{2}:\d{2}:\d{2})/i;
+
+  for (const line of lines) {
+    const match = line.match(rowPattern);
+    if (!match) continue;
+    const numericTokens = (match[4].match(/\d+(?:\.\d+)?/g) ?? []).map((token) => parseLooseNumber(token)).filter((value): value is number => value !== null);
+    const tradedPrice = numericTokens.length ? numericTokens[numericTokens.length - 1] : null;
+    const isoDate = parseFyersDate(match[6]);
+    if (!isoDate) continue;
+    const ts = new Date(`${isoDate}T${match[7]}`).getTime();
+    rows.push({
+      symbol: match[1],
+      side: match[2] === "Sell" ? "Sell" : "Buy",
+      qty: Number(match[3]),
+      tradedPrice,
+      status: match[5],
+      date: isoDate,
+      time: match[7].slice(0, 5),
+      ts
+    });
+  }
+
+  return rows.sort((a, b) => a.ts - b.ts);
+}
+
+function buildFyersImportCandidate(
+  rows: FyersImportedRow[],
+  instruments: InstrumentDefinition[]
+) {
+  const filledRows = rows.filter(
+    (row) => row.status.toLowerCase() === "filled" && row.tradedPrice !== null
+  );
+  if (!filledRows.length) return null;
+
+  const grouped = new Map<string, FyersImportedRow[]>();
+  filledRows.forEach((row) => {
+    const current = grouped.get(row.symbol) ?? [];
+    current.push(row);
+    grouped.set(row.symbol, current);
+  });
+
+  const candidates: Array<FyersImportCandidate & { exitTs: number; score: number }> = [];
+
+  for (const [symbol, symbolRows] of grouped.entries()) {
+    const buys = symbolRows.filter((row) => row.side === "Buy").sort((a, b) => a.ts - b.ts);
+    const sells = symbolRows.filter((row) => row.side === "Sell").sort((a, b) => a.ts - b.ts);
+    if (!buys.length) continue;
+    const entry = buys[0];
+    const exit = sells.find((row) => row.ts >= entry.ts) ?? null;
+    const instrument = inferInstrumentFromFyersSymbol(symbol, instruments);
+    const instrumentName = instrument?.name ?? symbol.replace(/^NSE:/, "");
+    const lotSize = instrument?.lotSize ?? 0;
+    const lots = lotSize > 0 ? entry.qty / lotSize : null;
+    const direction: Trade["direction"] = symbol.toUpperCase().includes("PE")
+      ? "Short"
+      : "Long";
+
+    candidates.push({
+      symbol,
+      instrumentName,
+      direction,
+      date: entry.date,
+      entryTime: entry.time,
+      exitTime: exit?.time ?? "",
+      qty: entry.qty,
+      lots:
+        lots && Number.isFinite(lots) && lots > 0
+          ? Number(lots.toFixed(2))
+          : null,
+      entryPrice: entry.tradedPrice ? String(entry.tradedPrice) : "",
+      exitPrice: exit?.tradedPrice ? String(exit.tradedPrice) : "",
+      exitTs: exit?.ts ?? entry.ts,
+      score: exit ? 2 : 1
+    });
+  }
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.exitTs - a.exitTs;
+  });
+
+  return candidates[0] ?? null;
+}
+
 type AddTradeFormProps = {
   onAdd: (trade: Trade) => Promise<string | null> | string | null;
   onUpdate: (trade: Trade) => Promise<string | null> | string | null;
@@ -1253,6 +1434,8 @@ function AddTradeForm({
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const [importingFyers, setImportingFyers] = useState(false);
+  const [fyersImportStatus, setFyersImportStatus] = useState("");
   const isEditing = Boolean(editingTrade);
   const wasEditingRef = useRef(false);
 
@@ -1320,6 +1503,7 @@ function AddTradeForm({
       setEmotionalState(editingTrade.emotionalState || "");
       setMindsetNotes(editingTrade.mindsetNotes || "");
       setTradeType(editingTrade.tradeType || "");
+      setFyersImportStatus("");
       return;
     }
 
@@ -1353,6 +1537,7 @@ function AddTradeForm({
       setEmotionalState("");
       setMindsetNotes("");
       setTradeType("");
+      setFyersImportStatus("");
     }
   }, [editingTrade, instruments, defaultAccountId, accounts]);
 
@@ -1511,12 +1696,70 @@ function AddTradeForm({
       setMindsetNotes("");
       setTradeType("");
       setFieldErrors({});
+      setFyersImportStatus("");
       setSuccess("Trade saved.");
       setTimeout(() => setSuccess(""), 2000);
     } catch (err) {
       setError("Save failed. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleFyersScreenshotImport(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload a valid FYERS screenshot image.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setError("FYERS screenshot is too large. Keep it under 8 MB.");
+      return;
+    }
+
+    try {
+      setImportingFyers(true);
+      setError("");
+      setFyersImportStatus("Reading FYERS screenshot...");
+      const Tesseract = await import("tesseract.js");
+      const result = await Tesseract.recognize(file, "eng");
+      const rows = extractFyersRowsFromText(result.data.text || "");
+      const imported = buildFyersImportCandidate(rows, instruments);
+      if (!imported) {
+        setFyersImportStatus("");
+        setError("Could not read a completed FYERS trade from this image. Try a clearer screenshot with the filled orders visible.");
+        return;
+      }
+
+      setDate(imported.date || date);
+      setInstrument(imported.instrumentName);
+      setMarket("F&O");
+      setEntryTime(imported.entryTime || "");
+      setExitTime(imported.exitTime || "");
+      setDirection(imported.direction);
+      if (imported.lots !== null) {
+        setLots(String(imported.lots));
+      }
+      setEntryPrice(imported.entryPrice);
+      if (imported.exitPrice) {
+        setExitPrice(imported.exitPrice);
+      }
+      setPlatformChoice("Fyers");
+      setPlatform("Fyers");
+      setFieldErrors((current) => {
+        const next = { ...current };
+        ["date", "instrument", "market", "entryTime", "exitTime", "direction", "lots", "entryPrice", "exitPrice", "platform"].forEach((key) => {
+          delete next[key];
+        });
+        return next;
+      });
+      setSuccess("Imported FYERS screenshot. Review stop loss, target, exit reason and save the trade.");
+      setFyersImportStatus(`Imported ${imported.symbol} · Qty ${imported.qty}`);
+    } catch (err) {
+      setFyersImportStatus("");
+      setError(err instanceof Error ? err.message : "Could not read FYERS screenshot. Try again.");
+    } finally {
+      setImportingFyers(false);
     }
   }
 
@@ -1603,6 +1846,32 @@ function AddTradeForm({
           Tip: If you don’t see the trade, clear top filters.
         </p>
       )}
+
+      <div className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-white">Import From FYERS Screenshot</div>
+            <div className="text-[11px] text-slate-300">
+              Prefills date, instrument, side, lots, entry/exit prices, entry/exit time and platform from a filled FYERS orders screenshot.
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center rounded-full border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-sky-100 hover:bg-sky-500/30 whitespace-nowrap">
+            {importingFyers ? "Reading..." : "Upload FYERS Image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                void handleFyersScreenshotImport(event.target.files?.[0] ?? null);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-300">
+          {fyersImportStatus || "Best results: keep Symbol, Buy/Sell, Qty, Traded Price, Status and Order Time visible in the screenshot."}
+        </div>
+      </div>
 
       <div className="mt-4 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
         <input
