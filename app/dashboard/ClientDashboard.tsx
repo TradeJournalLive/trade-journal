@@ -1742,16 +1742,33 @@ function AddTradeForm({
       setImportingFyers(true);
       setError("");
       setFyersImportStatus("Reading FYERS screenshot...");
-      const Tesseract = await import("tesseract.js");
-      const result = await Tesseract.recognize(file, "eng");
-      const rows = extractFyersRowsFromText(result.data.text || "");
-      const imported = buildFyersImportCandidate(rows, instruments);
-      if (!imported) {
-        setFyersImportStatus("");
-        setError("Could not read a completed FYERS trade from this image. Try a clearer screenshot with the filled orders visible.");
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("instruments", JSON.stringify(instruments));
+      const response = await fetch("/api/fyers-import", {
+        method: "POST",
+        body: formData
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        candidate?: FyersImportCandidate;
+        detectedRows?: FyersImportedRow[];
+      };
+
+      if (!response.ok || !payload.candidate) {
+        setFyersImportStatus(
+          payload.detectedRows?.length
+            ? `Detected ${payload.detectedRows.length} FYERS row${payload.detectedRows.length === 1 ? "" : "s"}, but could not build a completed trade.`
+            : ""
+        );
+        setError(
+          payload.error ||
+            "Could not read a completed FYERS trade from this image. Try a clearer screenshot with the filled orders visible."
+        );
         return;
       }
 
+      const imported = payload.candidate;
       setDate(imported.date || date);
       setInstrument(imported.instrumentName);
       setMarket("F&O");
