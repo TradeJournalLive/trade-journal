@@ -1289,17 +1289,18 @@ function inferInstrumentFromFyersSymbol(
 
 function extractFyersRowsFromText(rawText: string) {
   const rows: FyersImportedRow[] = [];
-  const lines = rawText
-    .split(/\n+/)
-    .map(normalizeOcrLine)
-    .filter(Boolean);
+  const normalizedText = normalizeOcrLine(rawText);
+  const segments = normalizedText
+    .split(/(?=NSE:?\s*[A-Z0-9]+)/i)
+    .map((segment) => normalizeOcrLine(segment))
+    .filter((segment) => segment.toUpperCase().includes("INTRADAY"));
 
-  for (const line of lines) {
-    const symbolMatch = line.match(/\bNSE:?\s*[A-Z0-9]+\b/i);
-    const sideMatch = line.match(/\b(Buy|Sell)\b/i);
-    const statusMatch = line.match(/\b(Filled|Cancelled|Rejected|Working|Inactive)\b/i);
+  for (const line of segments) {
+    const symbolMatch = line.match(/NSE:?\s*[A-Z0-9]+/i);
+    const sideMatch = line.match(/(Buy|Sell)/i);
+    const statusMatch = line.match(/(Filled|Cancelled|Rejected|Working|Inactive)/i);
     const dateTimeMatch = line.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+(\d{2}:\d{2}:\d{2})/i);
-    const qtyMatch = line.match(/\bINTRADAY\b\s+(\d+)/i);
+    const qtyMatch = line.match(/INTRADAY\s+(\d+)/i);
 
     if (!symbolMatch || !sideMatch || !statusMatch || !dateTimeMatch || !qtyMatch) {
       continue;
