@@ -1294,44 +1294,24 @@ function extractFyersRowsFromText(rawText: string) {
     .map(normalizeOcrLine)
     .filter(Boolean);
 
+  const rowPattern = /(NSE:[A-Z0-9]+)\s+(Buy|Sell)\s+[A-Za-z]+\s+[A-Z]+\s+(\d+)\s+\d+\s+(.*?)\s+(Filled|Cancelled|Rejected|Working|Inactive)\s+(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+(\d{2}:\d{2}:\d{2})/i;
+
   for (const line of lines) {
-    const symbolMatch = line.match(/\bNSE:?\s*[A-Z0-9]+\b/i);
-    const sideMatch = line.match(/\b(Buy|Sell)\b/i);
-    const statusMatch = line.match(/\b(Filled|Cancelled|Rejected|Working|Inactive)\b/i);
-    const dateTimeMatch = line.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+(\d{2}:\d{2}:\d{2})/i);
-    const qtyMatch = line.match(/\bINTRADAY\b\s+(\d+)/i);
-
-    if (!symbolMatch || !sideMatch || !statusMatch || !dateTimeMatch || !qtyMatch) {
-      continue;
-    }
-
-    const statusIndex = line.toLowerCase().indexOf(statusMatch[1].toLowerCase());
-    const pricingSlice = statusIndex >= 0 ? line.slice(0, statusIndex) : line;
-    const decimalTokens = (pricingSlice.match(/\d+\.\d+/g) ?? [])
-      .map((token) => parseLooseNumber(token))
-      .filter((value): value is number => value !== null);
-    const tradedPrice = decimalTokens.length
-      ? decimalTokens[decimalTokens.length - 1]
-      : null;
-
-    const isoDate = parseFyersDate(dateTimeMatch[1]);
+    const match = line.match(rowPattern);
+    if (!match) continue;
+    const numericTokens = (match[4].match(/\d+(?:\.\d+)?/g) ?? []).map((token) => parseLooseNumber(token)).filter((value): value is number => value !== null);
+    const tradedPrice = numericTokens.length ? numericTokens[numericTokens.length - 1] : null;
+    const isoDate = parseFyersDate(match[6]);
     if (!isoDate) continue;
-
-    const rawSymbol = symbolMatch[0].replace(/\s+/g, "").toUpperCase();
-    const symbol = rawSymbol.startsWith("NSE:")
-      ? rawSymbol
-      : rawSymbol.replace(/^NSE/, "NSE:");
-    const normalizedSide = sideMatch[1].toLowerCase() === "sell" ? "Sell" : "Buy";
-    const ts = new Date(`${isoDate}T${dateTimeMatch[2]}`).getTime();
-
+    const ts = new Date(`${isoDate}T${match[7]}`).getTime();
     rows.push({
-      symbol,
-      side: normalizedSide,
-      qty: Number(qtyMatch[1]),
+      symbol: match[1],
+      side: match[2] === "Sell" ? "Sell" : "Buy",
+      qty: Number(match[3]),
       tradedPrice,
-      status: statusMatch[1],
+      status: match[5],
       date: isoDate,
-      time: dateTimeMatch[2].slice(0, 5),
+      time: match[7].slice(0, 5),
       ts
     });
   }
