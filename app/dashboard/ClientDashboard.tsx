@@ -1742,29 +1742,33 @@ function AddTradeForm({
       setImportingFyers(true);
       setError("");
       setFyersImportStatus("Reading FYERS screenshot...");
-      const Tesseract = await import("tesseract.js");
-      const result = await Tesseract.recognize(file, "eng", {
-        logger: (message) => {
-          if (message.status === "recognizing text" && typeof message.progress === "number") {
-            setFyersImportStatus(`Reading FYERS screenshot... ${Math.round(message.progress * 100)}%`);
-          }
-        }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("instruments", JSON.stringify(instruments));
+      const response = await fetch("/api/fyers-import", {
+        method: "POST",
+        body: formData
       });
-      const rows = extractFyersRowsFromText(result.data.text || "");
-      const imported = buildFyersImportCandidate(rows, instruments);
+      const payload = (await response.json()) as {
+        error?: string;
+        candidate?: FyersImportCandidate;
+        detectedRows?: FyersImportedRow[];
+      };
 
-      if (!imported) {
+      if (!response.ok || !payload.candidate) {
         setFyersImportStatus(
-          rows.length
-            ? `Detected ${rows.length} FYERS row${rows.length === 1 ? "" : "s"}, but could not build a completed trade.`
+          payload.detectedRows?.length
+            ? `Detected ${payload.detectedRows.length} FYERS row${payload.detectedRows.length === 1 ? "" : "s"}, but could not build a completed trade.`
             : ""
         );
         setError(
-          "Could not read a completed FYERS trade from this image. Try a clearer screenshot with the filled orders visible."
+          payload.error ||
+            "Could not read a completed FYERS trade from this image. Try a clearer screenshot with the filled orders visible."
         );
         return;
       }
 
+      const imported = payload.candidate;
       setDate(imported.date || date);
       setInstrument(imported.instrumentName);
       setMarket("F&O");
