@@ -18,6 +18,7 @@ import {
 } from "../data/analytics";
 import { BarList, DonutChart, Sparkline } from "../components/Charts";
 import TradeJournal from "./TradeJournal";
+import BrokerConnections from "./BrokerConnections";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 const STORAGE_KEY = "pulsejournal_trades_v2";
@@ -133,6 +134,7 @@ type DashboardView =
   | "setup"
   | "instruments"
   | "participants"
+  | "brokers"
   | "journal"
   | "profile"
   | "setup-edit";
@@ -2019,7 +2021,7 @@ export default function ClientDashboard({
   const [globalStrategy, setGlobalStrategy] = useState("all");
   const [globalStartDate, setGlobalStartDate] = useState("");
   const [globalEndDate, setGlobalEndDate] = useState("");
-  const [dataSource, setDataSource] = useState(
+  const [dataSource, setDataSource] = useState<"local" | "supabase">(
     isSupabaseConfigured ? "supabase" : "local"
   );
   const [session, setSession] = useState<Session | null>(null);
@@ -4712,6 +4714,153 @@ export default function ClientDashboard({
     setTimeout(() => setStrategyEditStatus(""), 1500);
   }
 
+  async function handleImportBrokerTrades(payload: {
+    connection: {
+      id: string;
+      brokerName: "FYERS" | "ZERODHA";
+      label: string;
+    };
+    previews: Array<{
+      externalRef: string;
+      brokerTradeId?: string;
+      brokerOrderId?: string;
+      symbol: string;
+      direction: Trade["direction"];
+      quantity: number;
+      lots: number | null;
+      lotSize: number | null;
+      entryPrice: number;
+      exitPrice: number;
+      entryTime: string;
+      exitTime: string;
+      date: string;
+      inferredInstrument: string;
+      market: string;
+      platform: string;
+      notes: string;
+      rawPayload: unknown;
+    }>;
+    targetAccountId: string;
+  }) {
+    const importedTrades = payload.previews.map((preview) => ({
+      tradeId: createTradeId(),
+      date: preview.date,
+      accountId: payload.targetAccountId,
+      instrument: preview.inferredInstrument,
+      market: preview.market,
+      entryTime: preview.entryTime || "00:00",
+      exitTime: preview.exitTime || preview.entryTime || "00:00",
+      strategy: "Broker Import",
+      direction: preview.direction,
+      sizeQty: preview.quantity,
+      lots: preview.lots ?? undefined,
+      lotSize: preview.lotSize ?? undefined,
+      entryPrice: preview.entryPrice,
+      exitPrice: preview.exitPrice,
+      stopLoss: preview.entryPrice,
+      targetPrice: preview.exitPrice,
+      exitReason: `${payload.connection.brokerName} Import`,
+      platform: payload.connection.brokerName,
+      remarks: `${preview.notes} | ${payload.connection.label} | ${preview.symbol}`
+    } satisfies Trade));
+
+    if (dataSource === "supabase") {
+      if (!supabase) return "Supabase is not configured.";
+      if (!session) return "Please sign in to import broker trades.";
+
+      const refs = payload.previews.map((item) => item.externalRef);
+      const { data: existingImports, error: existingError } = await supabase
+        .from("broker_imported_trades")
+        .select("external_ref")
+        .eq("user_id", session.user.id)
+        .eq("broker_name", payload.connection.brokerName)
+        .in("external_ref", refs);
+      if (existingError) {
+        return `Broker dedupe failed: ${existingError.message}. Run broker_connections.sql first.`;
+      }
+      const existingRefSet = new Set(
+        (existingImports ?? []).map((row) => String((row as Record<string, unknown>).external_ref ?? ""))
+      );
+      const freshPairs = payload.previews
+        .map((preview, index) => ({ preview, trade: importedTrades[index] }))
+        .filter(({ preview }) => !existingRefSet.has(preview.externalRef));
+
+      if (!freshPairs.length) {
+        return "These broker trades were already imported.";
+      }
+
+      const { error: tradeInsertError } = await supabase
+        .from("trades")
+        .insert(freshPairs.map(({ trade }) => toSupabaseRow(trade, session.user.id)));
+      if (tradeInsertError) {
+        return `Broker trade insert failed: ${tradeInsertError.message}`;
+      }
+
+      const importRows = freshPairs.map(({ preview, trade }) => ({
+        id: `${payload.connection.id}-${trade.tradeId}`,
+        user_id: session.user.id,
+        broker_account_id: payload.connection.id,
+        broker_name: payload.connection.brokerName,
+        external_ref: preview.externalRef,
+        broker_trade_id: preview.brokerTradeId ?? null,
+        broker_order_id: preview.brokerOrderId ?? null,
+        symbol: preview.symbol,
+        side: preview.direction,
+        quantity: preview.quantity,
+        entry_price: preview.entryPrice,
+        exit_price: preview.exitPrice,
+        executed_at: `${preview.date}T${preview.exitTime || preview.entryTime || "00:00"}:00`,
+        raw_payload: preview.rawPayload,
+        imported_to_trade_id: trade.tradeId
+      }));
+      const { error: importLogError } = await supabase
+        .from("broker_imported_trades")
+        .insert(importRows);
+      if (importLogError) {
+        return `Broker import log failed: ${importLogError.message}. Run broker_connections.sql first.`;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from("trades")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .is("team_id", null)
+        .order("date", { ascending: false })
+        .order("entry_time", { ascending: false });
+      if (fetchError) {
+        return `Trade refresh failed: ${fetchError.message}`;
+      }
+      if (data) {
+        setTradeList(data.map((row) => fromSupabaseRow(row)));
+      }
+      return null;
+    }
+
+    const localImportedKey = session?.user?.id
+      ? `pulsejournal_broker_imported_${session.user.id}`
+      : "pulsejournal_broker_imported";
+    const existing = (() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(localImportedKey) || "[]");
+        return Array.isArray(parsed) ? new Set(parsed.map((item) => String(item))) : new Set<string>();
+      } catch {
+        return new Set<string>();
+      }
+    })();
+    const freshPairs = payload.previews
+      .map((preview, index) => ({ preview, trade: importedTrades[index] }))
+      .filter(({ preview }) => !existing.has(preview.externalRef));
+    if (!freshPairs.length) {
+      return "These broker trades were already imported.";
+    }
+    localStorage.setItem(
+      localImportedKey,
+      JSON.stringify([...existing, ...freshPairs.map(({ preview }) => preview.externalRef)])
+    );
+    setTradeList((prev) => [...freshPairs.map(({ trade }) => trade), ...prev]);
+    return null;
+  }
+
   const navItems = [
     { label: "Overview", href: "/dashboard#overview", id: "overview" },
     { label: "Performance", href: "/dashboard#performance", id: "performance" },
@@ -4723,6 +4872,7 @@ export default function ClientDashboard({
     { label: "Opportunities", href: "/dashboard/opportunities", id: "opportunities" },
     { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
     { label: "Participants", href: "/dashboard/participants", id: "participants" },
+    { label: "Brokers", href: "/dashboard/brokers", id: "brokers" },
     { label: "Setup", href: "/dashboard/setup", id: "setup" },
     { label: "Journal", href: "/dashboard/journal", id: "journal" }
   ];
@@ -7034,6 +7184,18 @@ export default function ClientDashboard({
                 )}
               </div>
             </section>
+          )}
+
+          {view === "brokers" && (
+            <BrokerConnections
+              dataSource={dataSource}
+              session={session}
+              instruments={instruments}
+              accounts={accounts}
+              defaultAccountId={defaultTradingAccount?.id}
+              tradeList={tradeList}
+              onImportBrokerTrades={handleImportBrokerTrades}
+            />
           )}
 
           {view === "journal" && (
