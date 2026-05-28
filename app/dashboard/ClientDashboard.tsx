@@ -4296,14 +4296,15 @@ export default function ClientDashboard({
         throw new Error((payload.error || "NiftyTrader fetch failed.") + detailText);
       }
       const items = Array.isArray(payload.items) ? payload.items : [];
+      const resolvedDate = payload.date ?? date;
       if (!items.length) {
         if (!silent) {
           setFlowStatus("No participant rows received from NSE.");
         }
-        return false;
+        return null;
       }
       setParticipantFlows((prev) => {
-        const kept = prev.filter((item) => item.date !== (payload.date ?? date));
+        const kept = prev.filter((item) => item.date !== resolvedDate);
         return [...items, ...kept];
       });
       if (!silent && payload.date) {
@@ -4311,18 +4312,18 @@ export default function ClientDashboard({
       }
       if (!silent) {
         setFlowStatus(
-          `Fetched ${payload.source ?? "NiftyTrader"} participant data for ${payload.date ?? date}.`
+          `Fetched ${payload.source ?? "NiftyTrader"} participant data for ${resolvedDate}.`
         );
         setTimeout(() => setFlowStatus(""), 1800);
       }
-      return true;
+      return resolvedDate;
     } catch (error) {
       if (!silent) {
         setFlowStatus(
           error instanceof Error ? error.message : "Could not fetch from NSE."
         );
       }
-      return false;
+      return null;
     }
   }, []);
 
@@ -4337,16 +4338,23 @@ export default function ClientDashboard({
     let cancelled = false;
     (async () => {
       let loaded = 0;
+      let newestLoadedDate: string | null = null;
       for (const date of candidateDates) {
         if (cancelled) return;
         setParticipantFlows((prev) => prev.filter((item) => item.date !== date));
-        const ok = await fetchParticipantForDate(date, true);
-        if (ok) {
+        const resolvedDate = await fetchParticipantForDate(date, true);
+        if (resolvedDate) {
           loaded += 1;
+          if (!newestLoadedDate || resolvedDate > newestLoadedDate) {
+            newestLoadedDate = resolvedDate;
+          }
         }
         if (loaded >= 5) {
           break;
         }
+      }
+      if (!cancelled && newestLoadedDate) {
+        setParticipantViewDate(newestLoadedDate);
       }
     })();
 

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type ParticipantType = "FII" | "DII" | "Client" | "Pro";
 
 type ParticipantFlow = {
@@ -30,12 +33,6 @@ function toIso(dateValue: string) {
   const d = new Date(`${dateValue}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().slice(0, 10);
-}
-
-function toNiftyDate(iso: string) {
-  const [yyyy, mm, dd] = iso.split("-");
-  if (!yyyy || !mm || !dd) return "";
-  return `${dd}/${mm}/${yyyy}`;
 }
 
 function rowDateToIso(value: unknown) {
@@ -94,7 +91,9 @@ function extractRows(payload: unknown): Record<string, unknown>[] {
     "results",
     "rows",
     "items",
-    "tableData"
+    "tableData",
+    "resultData",
+    "oiData"
   ]) {
     const value = record[key];
     if (Array.isArray(value)) {
@@ -117,49 +116,7 @@ function extractRows(payload: unknown): Record<string, unknown>[] {
       if (nested.length) return nested;
     }
   }
-  // Deep fallback: search recursively for first array of objects.
-  const stack: unknown[] = [payload];
-  while (stack.length) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
-    if (Array.isArray(node)) {
-      const rows = node.filter(
-        (item): item is Record<string, unknown> =>
-          typeof item === "object" && item !== null && !Array.isArray(item)
-      );
-      if (rows.length) return rows;
-      node.forEach((item) => stack.push(item));
-      continue;
-    }
-    Object.values(node as Record<string, unknown>).forEach((value) =>
-      stack.push(value)
-    );
-  }
   return [];
-}
-
-function pairFromRow(
-  row: Record<string, unknown>,
-  buyKeys: string[],
-  sellKeys: string[],
-  changeKeys: string[]
-) {
-  // Prefer explicit "change" fields from source (closest to displayed participant activity tables).
-  const changeRaw = getExact(row, changeKeys);
-  const change = toNumber(changeRaw);
-  if (change > 0) return { buy: change, sell: 0, ok: true };
-  if (change < 0) return { buy: 0, sell: Math.abs(change), ok: true };
-  if (changeRaw !== undefined) return { buy: 0, sell: 0, ok: true };
-
-  const buyRaw = getExact(row, buyKeys);
-  const sellRaw = getExact(row, sellKeys);
-
-  const buy = toNumber(buyRaw);
-  const sell = toNumber(sellRaw);
-  if (buy !== 0 || sell !== 0) {
-    return { buy, sell, ok: true };
-  }
-  return { buy: 0, sell: 0, ok: false };
 }
 
 function calcDoDIndexChange(
@@ -181,6 +138,46 @@ function changeToPair(change: number) {
   return { buy: 0, sell: Math.abs(change) };
 }
 
+function getAvailableDates(payload: unknown) {
+  const resultData =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>).resultData
+      : null;
+  const dates =
+    resultData && typeof resultData === "object"
+      ? (resultData as Record<string, unknown>).date
+      : null;
+  if (!Array.isArray(dates)) return [] as string[];
+  return dates
+    .map((value) => rowDateToIso(value))
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => b.localeCompare(a));
+}
+
+async function fetchPublicPayload(date: string) {
+  const url = new URL(
+    "https://webapi.niftytrader.in/webapi/Resource/participant-wise-oi-table-data"
+  );
+  if (date) {
+    url.searchParams.set("date", date);
+  }
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      origin: "https://www.niftytrader.in",
+      referer: "https://www.niftytrader.in/participant-wise-oi",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0 Safari/537.36"
+    },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`NiftyTrader public API failed (${response.status}).`);
+  }
+  return response.json();
+}
+
 export async function GET(request: Request) {
   const requestDate = new URL(request.url).searchParams.get("date") ?? "";
   const targetDate = toIso(requestDate);
@@ -188,130 +185,61 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid or missing date." }, { status: 400 });
   }
 
-  const bearer = process.env.NIFTYTRADER_BEARER_TOKEN;
-  if (!bearer) {
-    return NextResponse.json(
-      {
-        error:
-          "Missing NIFTYTRADER_BEARER_TOKEN. Add it in Vercel and local env."
-      },
-      { status: 500 }
-    );
-  }
-
   try {
-    const url =
-      "https://webapi.niftytrader.in/webapi/Resource/participant-oi-table-data";
-    const headers = {
-      accept: "application/json, text/plain, */*",
-      "accept-language": "en-US,en;q=0.9",
-      authorization: `Bearer ${bearer}`,
-      "content-type": "application/json",
-      origin: "https://www.niftytrader.in",
-      platform_type: "1",
-      referer: "https://www.niftytrader.in/",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    };
-    const fetchPayload = async (dateValue: string) => {
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ date: dateValue }),
-        next: { revalidate: 300 }
+    let payload = await fetchPublicPayload(targetDate);
+    let rows = extractRows(payload);
+    let availableDates = getAvailableDates(payload);
+    let resolvedDate = targetDate;
+
+    const matchedRows = () =>
+      rows.filter((row) => {
+        const rowDate = rowDateToIso(
+          getExact(row, ["created_at", "createdAt", "date", "Date"])
+        );
+        return rowDate === resolvedDate;
       });
-      if (!res.ok) return null;
-      return res.json();
-    };
 
-    const dateAttempts = [toNiftyDate(targetDate), targetDate, ""];
-    let payload: unknown = null;
-    let responseOk = false;
+    let exactRows = matchedRows();
 
-    for (const dateValue of dateAttempts) {
-      const nextPayload = await fetchPayload(dateValue);
-      if (!nextPayload) continue;
-      payload = nextPayload;
-      responseOk = true;
-      const rows = extractRows(payload);
-      const targetedRows = rows.filter((row) =>
-        String(getExact(row, ["created_at", "createdAt", "date"]) ?? "").startsWith(
-          targetDate
-        )
-      );
-      if (targetedRows.length) {
-        payload = { rows: targetedRows };
-        break;
-      }
-
-      const resultData =
-        payload && typeof payload === "object"
-          ? (payload as Record<string, unknown>).resultData
-          : null;
-      const availableDates =
-        resultData && typeof resultData === "object"
-          ? (resultData as Record<string, unknown>).date
-          : null;
-      if (Array.isArray(availableDates)) {
-        const matched = availableDates.find(
-          (item) => typeof item === "string" && item.startsWith(targetDate)
-        ) as string | undefined;
-        if (matched) {
-          const byTimestamp = await fetchPayload(matched);
-          if (byTimestamp) {
-            const stampRows = extractRows(byTimestamp).filter((row) =>
-              String(
-                getExact(row, ["created_at", "createdAt", "date"]) ?? ""
-              ).startsWith(targetDate)
-            );
-            if (stampRows.length) {
-              payload = { rows: stampRows };
-              break;
-            }
-            payload = byTimestamp;
-          }
-        }
+    if (!exactRows.length) {
+      const fallbackDate = availableDates.find((date) => date <= targetDate) ?? "";
+      if (fallbackDate && fallbackDate !== resolvedDate) {
+        resolvedDate = fallbackDate;
+        payload = await fetchPublicPayload(resolvedDate);
+        rows = extractRows(payload);
+        availableDates = getAvailableDates(payload);
+        exactRows = matchedRows();
       }
     }
 
-    if (!responseOk || !payload) {
-      return NextResponse.json(
-        {
-          error: "NiftyTrader API failed (no successful response)."
-        },
-        { status: 503 }
-      );
-    }
-    const rows = extractRows(payload);
     if (!rows.length) {
-      const payloadKeys =
-        payload && typeof payload === "object"
-          ? Object.keys(payload as Record<string, unknown>).slice(0, 20)
-          : [];
       return NextResponse.json(
         {
           error: "No participant rows returned by NiftyTrader.",
-          payloadType: Array.isArray(payload) ? "array" : typeof payload,
-          payloadKeys
+          availableDates
         },
         { status: 422 }
       );
     }
 
-    const matchedRows = rows.filter((row) => {
-      const rowDate = rowDateToIso(
-        getExact(row, ["created_at", "createdAt", "date", "Date"])
+    if (!exactRows.length) {
+      return NextResponse.json(
+        {
+          error: "No exact rows found for requested date.",
+          requestedDate: targetDate,
+          availableDates: availableDates.slice(0, 10)
+        },
+        { status: 422 }
       );
-      return rowDate === targetDate;
-    });
-    const strictRows = matchedRows.length ? matchedRows : rows;
+    }
 
-    const items: ParticipantFlow[] = strictRows
+    const items: ParticipantFlow[] = exactRows
       .map((row, index) => {
         const participant = mapParticipant(
           getExact(row, ["clientType", "client_type", "participant", "category", "client"])
         );
         if (!participant) return null;
+
         const futureChange = calcDoDIndexChange(
           row,
           "future_index_long",
@@ -339,8 +267,8 @@ export async function GET(request: Request) {
         const pe = changeToPair(peChange);
 
         return {
-          id: `NT-${targetDate}-${participant}-${index}`,
-          date: targetDate,
+          id: `NT-${resolvedDate}-${participant}-${index}`,
+          date: resolvedDate,
           participant,
           futureBoughtQty: future.buy,
           futureSoldQty: future.sell,
@@ -353,14 +281,14 @@ export async function GET(request: Request) {
       .filter((item): item is ParticipantFlow => Boolean(item));
 
     if (!items.length) {
-      const sampleKeys = Object.keys(strictRows[0] ?? {}).slice(0, 30);
+      const sampleKeys = Object.keys(exactRows[0] ?? {}).slice(0, 30);
       const sampleRow =
-        strictRows[0] && typeof strictRows[0] === "object"
-          ? Object.fromEntries(Object.entries(strictRows[0]).slice(0, 30))
+        exactRows[0] && typeof exactRows[0] === "object"
+          ? Object.fromEntries(Object.entries(exactRows[0]).slice(0, 30))
           : {};
       return NextResponse.json(
         {
-          error: "Strict NiftyTrader mapping failed for this date.",
+          error: "Participant mapping failed for this date.",
           rowCount: rows.length,
           keys: sampleKeys,
           sampleRow
@@ -369,20 +297,12 @@ export async function GET(request: Request) {
       );
     }
 
-    if (!matchedRows.length) {
-      return NextResponse.json(
-        {
-          error: "No exact rows found for requested date.",
-          requestedDate: targetDate
-        },
-        { status: 422 }
-      );
-    }
-
     return NextResponse.json({
       source: "NiftyTrader",
-      date: targetDate,
-      items
+      date: resolvedDate,
+      requestedDate: targetDate,
+      items,
+      availableDates: availableDates.slice(0, 10)
     });
   } catch (error) {
     return NextResponse.json(
