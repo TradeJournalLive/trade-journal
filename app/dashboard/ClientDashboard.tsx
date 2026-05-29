@@ -730,6 +730,12 @@ function toSupabaseRow(trade: Trade, userId: string) {
   };
 }
 
+function withValidAccountId(trade: Trade, accounts: TradingAccount[]) {
+  if (!trade.accountId) return trade;
+  if (accounts.some((account) => account.id === trade.accountId)) return trade;
+  return { ...trade, accountId: undefined };
+}
+
 function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   const timeValue = (value: string | null) =>
     value ? value.slice(0, 5) : "00:00";
@@ -2027,7 +2033,9 @@ export default function ClientDashboard({
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const lastUserIdRef = useRef<string | null>(null);
-  const [accounts, setAccounts] = useState<TradingAccount[]>([DEFAULT_LOCAL_ACCOUNT]);
+  const [accounts, setAccounts] = useState<TradingAccount[]>(() =>
+    isSupabaseConfigured ? [] : [DEFAULT_LOCAL_ACCOUNT]
+  );
   const [accountNameInput, setAccountNameInput] = useState("");
   const [accountBaseCapitalInput, setAccountBaseCapitalInput] = useState("");
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
@@ -4799,7 +4807,11 @@ export default function ClientDashboard({
 
       const { error: tradeInsertError } = await supabase
         .from("trades")
-        .insert(freshPairs.map(({ trade }) => toSupabaseRow(trade, session.user.id)));
+        .insert(
+          freshPairs.map(({ trade }) =>
+            toSupabaseRow(withValidAccountId(trade, accounts), session.user.id)
+          )
+        );
       if (tradeInsertError) {
         return `Broker trade insert failed: ${tradeInsertError.message}`;
       }
@@ -7263,7 +7275,7 @@ export default function ClientDashboard({
                   if (!session) return "Please sign in to save trades.";
                   const { error } = await supabase
                     .from("trades")
-                    .insert(toSupabaseRow(trade, session.user.id));
+                    .insert(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id));
                   if (error) {
                     setImportStatus(`Supabase insert failed: ${error.message}`);
                     return `Supabase error: ${error.message}`;
@@ -7293,7 +7305,7 @@ export default function ClientDashboard({
                   if (!session) return "Please sign in to save trades.";
                   const { error } = await supabase
                     .from("trades")
-                    .update(toSupabaseRow(trade, session.user.id))
+                    .update(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id))
                     .eq("user_id", session.user.id)
                     .eq("trade_id", trade.tradeId);
                   if (error) {
