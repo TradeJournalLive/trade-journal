@@ -208,7 +208,7 @@ export default function Home() {
             Trade smarter , not harder
           </span>
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
-            India's high-clarity journal for disciplined traders.
+            India&apos;s high-clarity journal for disciplined traders.
           </h1>
           <p className="text-muted text-lg">
             Built for traders tracking NSE/BSE performance. Log faster, review
@@ -345,7 +345,7 @@ export default function Home() {
         <div className="grid gap-6 md:grid-cols-3">
           {testimonials.map((item) => (
             <div className="card" key={item.name}>
-              <p className="text-sm leading-6 text-muted">"{item.quote}"</p>
+              <p className="text-sm leading-6 text-muted">&quot;{item.quote}&quot;</p>
               <div className="mt-5 border-t border-white/10 pt-4">
                 <div className="text-sm font-semibold">{item.name}</div>
                 <div className="text-xs text-muted">{item.role}</div>
