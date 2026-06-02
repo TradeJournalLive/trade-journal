@@ -101,6 +101,7 @@ type TradingAccount = {
   id: string;
   name: string;
   baseCapital: number;
+  dailyTradeLimit: number;
   isDefault: boolean;
 };
 
@@ -116,10 +117,13 @@ const DEFAULT_INSTRUMENTS: InstrumentDefinition[] = [
   { id: "inst-sensex", name: "Sensex", lotSize: 1 }
 ];
 
+const DEFAULT_DAILY_TRADE_LIMIT = 3;
+
 const DEFAULT_LOCAL_ACCOUNT: TradingAccount = {
   id: "acct-primary",
   name: "Primary Account",
   baseCapital: 0,
+  dailyTradeLimit: DEFAULT_DAILY_TRADE_LIMIT,
   isDefault: true
 };
 
@@ -480,6 +484,13 @@ function normalizeAccountName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function normalizeDailyTradeLimit(value: unknown) {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_DAILY_TRADE_LIMIT;
+}
+
 function normalizeAccountList(data: unknown): TradingAccount[] {
   if (!Array.isArray(data)) return [];
   const seen = new Set<string>();
@@ -496,6 +507,7 @@ function normalizeAccountList(data: unknown): TradingAccount[] {
       id,
       name,
       baseCapital: Math.max(0, Number(record.baseCapital ?? 0) || 0),
+      dailyTradeLimit: normalizeDailyTradeLimit(record.dailyTradeLimit),
       isDefault: Boolean(record.isDefault)
     });
   });
@@ -806,6 +818,7 @@ function toTradingAccountRow(userId: string, account: TradingAccount) {
     user_id: userId,
     name: account.name,
     base_capital: account.baseCapital,
+    daily_trade_limit: account.dailyTradeLimit,
     is_default: account.isDefault
   };
 }
@@ -816,6 +829,7 @@ function fromTradingAccountRows(rows: Record<string, unknown>[]) {
       id: String(row.id ?? ""),
       name: String(row.name ?? "Primary Account"),
       baseCapital: Number(row.base_capital ?? 0),
+      dailyTradeLimit: normalizeDailyTradeLimit(row.daily_trade_limit),
       isDefault: Boolean(row.is_default)
     }))
   );
@@ -2038,9 +2052,11 @@ export default function ClientDashboard({
   );
   const [accountNameInput, setAccountNameInput] = useState("");
   const [accountBaseCapitalInput, setAccountBaseCapitalInput] = useState("");
+  const [accountDailyTradeLimitInput, setAccountDailyTradeLimitInput] = useState(String(DEFAULT_DAILY_TRADE_LIMIT));
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editingAccountName, setEditingAccountName] = useState("");
   const [editingAccountBaseCapital, setEditingAccountBaseCapital] = useState("");
+  const [editingAccountDailyTradeLimit, setEditingAccountDailyTradeLimit] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [instruments, setInstruments] =
     useState<InstrumentDefinition[]>(DEFAULT_INSTRUMENTS);
@@ -2363,6 +2379,7 @@ export default function ClientDashboard({
           id: buildAccountId(initialName),
           name: initialName,
           baseCapital: initialBaseCapital,
+          dailyTradeLimit: DEFAULT_DAILY_TRADE_LIMIT,
           isDefault: true
         };
 
@@ -2789,6 +2806,10 @@ export default function ClientDashboard({
     () => accounts.find((account) => account.id === globalAccount) ?? null,
     [accounts, globalAccount]
   );
+  const accountById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts]
+  );
 
   const filteredTrades = useMemo(
     () =>
@@ -3049,13 +3070,30 @@ export default function ClientDashboard({
     trade.exitReason.toLowerCase().includes("target")
   ).length;
 
-  const overtradeDays = derived.reduce<Record<string, number>>((acc, trade) => {
-    acc[trade.date] = (acc[trade.date] ?? 0) + 1;
+  const overtradeDays = derived.reduce<
+    Record<
+      string,
+      { date: string; accountName: string; count: number; limit: number }
+    >
+  >((acc, trade) => {
+    const account = trade.accountId
+      ? accountById.get(trade.accountId)
+      : defaultTradingAccount;
+    const accountKey = account?.id ?? "unassigned";
+    const key = `${trade.date}:${accountKey}`;
+    const existing = acc[key] ?? {
+      date: trade.date,
+      accountName: account?.name ?? "Unassigned account",
+      count: 0,
+      limit: account?.dailyTradeLimit ?? DEFAULT_DAILY_TRADE_LIMIT
+    };
+    existing.count += 1;
+    acc[key] = existing;
     return acc;
   }, {});
-  const overtradeList = Object.entries(overtradeDays)
-    .filter(([, count]) => count >= 3)
-    .sort((a, b) => b[1] - a[1]);
+  const overtradeList = Object.values(overtradeDays)
+    .filter((row) => row.count > row.limit)
+    .sort((a, b) => b.count - b.limit - (a.count - a.limit));
 
   const bestStrategy = strategyStats[0];
   const worstStrategy = strategyStats[strategyStats.length - 1];
@@ -3067,6 +3105,8 @@ export default function ClientDashboard({
     const performance: string[] = [];
     const strategy: string[] = [];
     const behavior: string[] = [];
+    const right: string[] = [];
+    const wrong: string[] = [];
 
     if (summary.totalTrades === 0) {
       performance.push("Log a few trades to generate deeper insights.");
@@ -3140,15 +3180,59 @@ export default function ClientDashboard({
       behavior.push(`Stop hits ${stopHits} vs targets ${targetHits}.`);
     }
     if (overtradeList.length) {
+      const top = overtradeList[0];
       behavior.push(
-        `Overtrading on ${overtradeList[0][0]} (${overtradeList[0][1]} trades).`
+        `Daily limit broken on ${top.date} in ${top.accountName}: ${top.count}/${top.limit} trades.`
       );
     }
+
+    if (summary.totalTrades === 0) {
+      right.push("No review signals yet. Add trades to build feedback.");
+      wrong.push("No mistakes detected yet because there are no trades.");
+    } else {
+      if (summary.totalPl > 0) {
+        right.push(`Net profitable: ${signedMoney2.format(summary.totalPl)}.`);
+      }
+      if (summary.avgRR !== null && summary.avgRR >= 1) {
+        right.push(`Average R:R held above 1 at ${summary.avgRR.toFixed(2)}.`);
+      }
+      if (targetHits > stopHits) {
+        right.push(`More target exits than stop exits: ${targetHits} vs ${stopHits}.`);
+      }
+      if (safeRiskStats.safe.count > 0 && safeRiskStats.safe.totalPl >= safeRiskStats.risky.totalPl) {
+        right.push("Safer trades are carrying performance better than risky trades.");
+      }
+      if (summary.totalPl < 0) {
+        wrong.push(`Net loss: ${signedMoney2.format(summary.totalPl)}.`);
+      }
+      if (lowRRCount > 0) {
+        wrong.push(`${lowRRCount} trades had R:R below 1.`);
+      }
+      if (earlyExitCount > 0) {
+        wrong.push(`${earlyExitCount} early exits need review.`);
+      }
+      if (stopHits > targetHits) {
+        wrong.push(`Stop exits beat target exits: ${stopHits} vs ${targetHits}.`);
+      }
+      if (overtradeList.length) {
+        const top = overtradeList[0];
+        wrong.push(
+          `${top.accountName} crossed the daily limit on ${top.date}: ${top.count}/${top.limit} trades.`
+        );
+      }
+      if (!right.length) {
+        right.push("You kept journaling enough data for review. Keep the sample growing.");
+      }
+      if (!wrong.length) {
+        wrong.push("No major discipline flags in the current filter.");
+      }
+    }
+
     if (!behavior.length) {
       behavior.push("Execution looks consistent. Keep tracking.");
     }
 
-    return { performance, strategy, behavior };
+    return { performance, strategy, behavior, right, wrong };
   }, [
     summary,
     expectancyLabel,
@@ -3164,7 +3248,8 @@ export default function ClientDashboard({
     earlyExitCount,
     stopHits,
     targetHits,
-    overtradeList
+    overtradeList,
+    safeRiskStats
   ]);
 
   const kpis = [
@@ -3890,6 +3975,7 @@ export default function ClientDashboard({
   async function handleAddTradingAccount() {
     const name = normalizeAccountName(accountNameInput) || "Primary Account";
     const baseCapital = Math.max(0, Number(accountBaseCapitalInput || 0));
+    const dailyTradeLimit = normalizeDailyTradeLimit(accountDailyTradeLimitInput);
 
     if (!name) {
       setAccountStatus("Account name is required.");
@@ -3908,6 +3994,7 @@ export default function ClientDashboard({
       id: buildAccountId(name),
       name,
       baseCapital,
+      dailyTradeLimit,
       isDefault: accounts.length === 0
     };
 
@@ -3928,6 +4015,7 @@ export default function ClientDashboard({
     setAccounts((prev) => normalizeAccountList([...prev, nextAccount]));
     setAccountNameInput("");
     setAccountBaseCapitalInput("");
+    setAccountDailyTradeLimitInput(String(DEFAULT_DAILY_TRADE_LIMIT));
     setAccountStatus("Account added.");
     setTimeout(() => setAccountStatus(""), 1800);
   }
@@ -3962,6 +4050,7 @@ export default function ClientDashboard({
     setEditingAccountId(account.id);
     setEditingAccountName(account.name);
     setEditingAccountBaseCapital(String(account.baseCapital));
+    setEditingAccountDailyTradeLimit(String(account.dailyTradeLimit));
     setAccountStatus("");
   }
 
@@ -3969,12 +4058,14 @@ export default function ClientDashboard({
     setEditingAccountId(null);
     setEditingAccountName("");
     setEditingAccountBaseCapital("");
+    setEditingAccountDailyTradeLimit("");
   }
 
   async function handleSaveAccountEdit() {
     if (!editingAccountId) return;
     const name = normalizeAccountName(editingAccountName);
     const baseCapital = Math.max(0, Number(editingAccountBaseCapital || 0));
+    const dailyTradeLimit = normalizeDailyTradeLimit(editingAccountDailyTradeLimit);
 
     if (!name) {
       setAccountStatus("Account name is required.");
@@ -3990,7 +4081,9 @@ export default function ClientDashboard({
     }
 
     const nextAccounts = accounts.map((account) =>
-      account.id === editingAccountId ? { ...account, name, baseCapital } : account
+      account.id === editingAccountId
+        ? { ...account, name, baseCapital, dailyTradeLimit }
+        : account
     );
 
     if (dataSource === "supabase") {
@@ -5730,6 +5823,31 @@ export default function ClientDashboard({
                   </ul>
                 </div>
               </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <div className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">What you did right</div>
+                  <ul className="mt-3 space-y-2 text-sm text-muted">
+                    {aiSummary.right.map((item, index) => (
+                      <li key={`${item}-${index}`} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-emerald-500/80" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-rose-400/20 bg-rose-500/10 p-4">
+                  <div className="text-sm font-semibold text-rose-700 dark:text-rose-300">What went wrong</div>
+                  <ul className="mt-3 space-y-2 text-sm text-muted">
+                    {aiSummary.wrong.map((item, index) => (
+                      <li key={`${item}-${index}`} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-rose-500/80" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
               </section>
 
@@ -6117,10 +6235,17 @@ export default function ClientDashboard({
                   {overtradeList.length === 0 && (
                     <div className="text-muted">No spikes yet</div>
                   )}
-                  {overtradeList.map(([date, count]) => (
-                    <div key={date} className="flex items-center justify-between">
-                      <span className="text-muted">{date}</span>
-                      <span className="text-negative">{count} trades</span>
+                  {overtradeList.map((row) => (
+                    <div
+                      key={`${row.date}-${row.accountName}`}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <span className="text-muted">
+                        {row.date} · {row.accountName}
+                      </span>
+                      <span className="text-negative">
+                        {row.count}/{row.limit} trades
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -6298,7 +6423,7 @@ export default function ClientDashboard({
                     Create multiple accounts with their own base capital, then tag trades and analytics account-wise.
                   </p>
                 </div>
-                <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
+                <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]">
                   <input
                     type="text"
                     placeholder="Account name"
@@ -6315,6 +6440,15 @@ export default function ClientDashboard({
                     onChange={(event) => setAccountBaseCapitalInput(event.target.value)}
                     className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                   />
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Daily trade limit"
+                    value={accountDailyTradeLimitInput}
+                    onChange={(event) => setAccountDailyTradeLimitInput(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                  />
                   <button
                     className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
                     onClick={handleAddTradingAccount}
@@ -6329,7 +6463,7 @@ export default function ClientDashboard({
                       className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
                     >
                       {editingAccountId === account.id ? (
-                        <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_auto_auto]">
+                        <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto]">
                           <input
                             type="text"
                             value={editingAccountName}
@@ -6342,6 +6476,14 @@ export default function ClientDashboard({
                             step="0.01"
                             value={editingAccountBaseCapital}
                             onChange={(event) => setEditingAccountBaseCapital(event.target.value)}
+                            className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={editingAccountDailyTradeLimit}
+                            onChange={(event) => setEditingAccountDailyTradeLimit(event.target.value)}
                             className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
                           />
                           <button
@@ -6362,7 +6504,7 @@ export default function ClientDashboard({
                           <div>
                             <div className="text-sm font-semibold text-white">{account.name}</div>
                             <div className="text-xs text-muted">
-                              Base capital: {money2.format(account.baseCapital)}
+                              Base capital: {money2.format(account.baseCapital)} · Daily limit: {account.dailyTradeLimit} trades
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">

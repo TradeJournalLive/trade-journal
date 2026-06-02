@@ -3,6 +3,7 @@ create table if not exists public.trading_accounts (
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   base_capital numeric not null default 0,
+  daily_trade_limit integer not null default 3,
   is_default boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -51,6 +52,8 @@ create policy trading_accounts_delete_own
 on public.trading_accounts
 for delete
 using (auth.uid() = user_id);
+
+alter table public.trading_accounts add column if not exists daily_trade_limit integer not null default 3;
 
 alter table public.trades add column if not exists account_id text;
 
