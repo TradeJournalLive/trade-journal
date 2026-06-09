@@ -26,6 +26,7 @@ export type Trade = {
   emotionTag?: string;
   emotionalState?: string;
   mindsetNotes?: string;
+  learning?: string;
   tradeType?: TradeType;
 };
 

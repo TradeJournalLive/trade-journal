@@ -497,6 +497,12 @@ export default function TradeJournal({
                     <span className="text-muted">Invested</span>
                     <span>{money.format(trade.totalInvestment)}</span>
                   </div>
+                  {trade.learning && (
+                    <div className="mt-2 flex items-start gap-2 text-[11px] text-sky-300">
+                      <span className="font-semibold">Learning:</span>
+                      <span>{trade.learning}</span>
+                    </div>
+                  )}
                   {trade.mindsetNotes && (
                     <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
                       <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-[10px] text-white">

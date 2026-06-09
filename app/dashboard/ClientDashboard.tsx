@@ -62,6 +62,7 @@ const CSV_HEADERS = [
   "Trigger Emotion",
   "Behavioral State",
   "Mindset Notes",
+  "Learning",
   "Entry Reason",
   "Chart Link",
   "PnL Screenshot Link"
@@ -612,6 +613,7 @@ function normalizeUrl(value: string) {
 }
 
 const PNL_SS_PREFIX = "[PNL_SS]";
+const LEARNING_PREFIX = "[LEARNING]";
 const TRADE_MEDIA_BUCKET = "trade-media";
 
 function mergeRemarksAndPnl(remarks?: string, pnlScreenshotUrl?: string) {
@@ -620,6 +622,32 @@ function mergeRemarksAndPnl(remarks?: string, pnlScreenshotUrl?: string) {
   if (!pnl) return base;
   return base ? `${base}
 ${PNL_SS_PREFIX}${pnl}` : `${PNL_SS_PREFIX}${pnl}`;
+}
+
+function mergeMindsetAndLearning(mindsetNotes?: string, learning?: string) {
+  const notes = (mindsetNotes ?? "").trim();
+  const lesson = (learning ?? "").trim();
+  if (!lesson) return notes;
+  const encoded = `${LEARNING_PREFIX}${encodeURIComponent(lesson)}`;
+  return notes ? `${notes}\n${encoded}` : encoded;
+}
+
+function splitMindsetAndLearning(raw?: string | null) {
+  const lines = (raw ?? "").replace(/\r/g, "").split("\n");
+  const notes: string[] = [];
+  let learning: string | undefined;
+  lines.forEach((line) => {
+    if (line.startsWith(LEARNING_PREFIX)) {
+      try {
+        learning = decodeURIComponent(line.slice(LEARNING_PREFIX.length)) || undefined;
+      } catch {
+        learning = line.slice(LEARNING_PREFIX.length).trim() || undefined;
+      }
+    } else if (line.trim()) {
+      notes.push(line);
+    }
+  });
+  return { mindsetNotes: notes.join("\n").trim() || undefined, learning };
 }
 
 function splitRemarksAndPnl(raw?: string | null) {
@@ -737,7 +765,7 @@ function toSupabaseRow(trade: Trade, userId: string) {
     remarks: remarksWithPnl || null,
     emotion_tag: trade.emotionTag ?? null,
     emotional_state: trade.emotionalState ?? null,
-    mindset_notes: trade.mindsetNotes ?? null,
+    mindset_notes: mergeMindsetAndLearning(trade.mindsetNotes, trade.learning) || null,
     trade_type: trade.tradeType ?? null
   };
 }
@@ -754,6 +782,9 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
   const sizeQty = Number(row.size_qty ?? 0);
   const parsedRemarks = splitRemarksAndPnl(
     row.remarks ? String(row.remarks) : undefined
+  );
+  const parsedMindset = splitMindsetAndLearning(
+    row.mindset_notes ? String(row.mindset_notes) : undefined
   );
   const lotsValue = row.lots === null ? undefined : Number(row.lots);
   const lotSizeValue = row.lot_size === null ? undefined : Number(row.lot_size);
@@ -785,7 +816,8 @@ function fromSupabaseRow(row: Record<string, string | number | null>): Trade {
     emotionalState: row.emotional_state
       ? String(row.emotional_state)
       : undefined,
-    mindsetNotes: row.mindset_notes ? String(row.mindset_notes) : undefined,
+    mindsetNotes: parsedMindset.mindsetNotes,
+    learning: parsedMindset.learning,
     tradeType:
       row.trade_type === "Safe" || row.trade_type === "Risky"
         ? row.trade_type
@@ -924,6 +956,7 @@ function buildExportRow(trade: ReturnType<typeof deriveTrades>[number]) {
     trade.emotionTag ?? "",
     trade.emotionalState ?? "",
     trade.mindsetNotes ?? "",
+    trade.learning ?? "",
     trade.remarks ?? "",
     trade.chartUrl ?? "",
     trade.pnlScreenshotUrl ?? ""
@@ -1269,6 +1302,7 @@ function AddTradeForm({
   const [emotionTag, setEmotionTag] = useState("");
   const [emotionalState, setEmotionalState] = useState("");
   const [mindsetNotes, setMindsetNotes] = useState("");
+  const [learning, setLearning] = useState("");
   const [tradeType, setTradeType] = useState<"Safe" | "Risky" | "">("");
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -1341,6 +1375,7 @@ function AddTradeForm({
       setEmotionTag(editingTrade.emotionTag || "");
       setEmotionalState(editingTrade.emotionalState || "");
       setMindsetNotes(editingTrade.mindsetNotes || "");
+      setLearning(editingTrade.learning || "");
       setTradeType(editingTrade.tradeType || "");
       return;
     }
@@ -1374,6 +1409,7 @@ function AddTradeForm({
       setEmotionTag("");
       setEmotionalState("");
       setMindsetNotes("");
+      setLearning("");
       setTradeType("");
     }
   }, [editingTrade, instruments, defaultAccountId, accounts]);
@@ -1491,6 +1527,7 @@ function AddTradeForm({
       emotionTag: emotionTag.trim() || undefined,
       emotionalState: emotionalState.trim() || undefined,
       mindsetNotes: mindsetNotes.trim() || undefined,
+      learning: learning.trim() || undefined,
       tradeType: tradeType || undefined
     };
 
@@ -1531,6 +1568,7 @@ function AddTradeForm({
       setEmotionTag("");
       setEmotionalState("");
       setMindsetNotes("");
+      setLearning("");
       setTradeType("");
       setFieldErrors({});
       setSuccess("Trade saved.");
@@ -2004,11 +2042,18 @@ function AddTradeForm({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
         <textarea
           placeholder="Entry Reason (optional)"
           value={remarks}
           onChange={(event) => setRemarks(event.target.value)}
+          rows={3}
+          className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
+        />
+        <textarea
+          placeholder="Learning from this trade (optional)"
+          value={learning}
+          onChange={(event) => setLearning(event.target.value)}
           rows={3}
           className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-sm text-white"
         />
@@ -3101,6 +3146,19 @@ export default function ClientDashboard({
   const bestDay = [...dayStats].sort((a, b) => b.totalPl - a.totalPl)[0];
   const worstDay = [...dayStats].sort((a, b) => a.totalPl - b.totalPl)[0];
 
+  const learningStats = useMemo(() => {
+    const grouped = new Map<string, { label: string; count: number }>();
+    derived.forEach((trade) => {
+      const label = trade.learning?.trim();
+      if (!label) return;
+      const key = label.toLowerCase();
+      const existing = grouped.get(key);
+      grouped.set(key, { label: existing?.label ?? label, count: (existing?.count ?? 0) + 1 });
+    });
+    return [...grouped.values()].sort((a, b) => b.count - a.count);
+  }, [derived]);
+  const topLearning = learningStats[0] ?? null;
+
   const aiSummary = useMemo(() => {
     const performance: string[] = [];
     const strategy: string[] = [];
@@ -3742,6 +3800,7 @@ export default function ClientDashboard({
       const emotionTag = getCell(row, "Trigger Emotion").trim();
       const emotionalState = getCell(row, "Behavioral State").trim();
       const mindsetNotes = getCell(row, "Mindset Notes").trim();
+      const learning = getCell(row, "Learning").trim();
       const entryReason = getCell(row, "Entry Reason").trim();
       const chartUrl = normalizeUrl(getCell(row, "Chart Link").trim());
       const pnlScreenshotUrl = normalizeUrl(
@@ -3788,7 +3847,8 @@ export default function ClientDashboard({
         tradeType,
         emotionTag: emotionTag || undefined,
         emotionalState: emotionalState || undefined,
-        mindsetNotes: mindsetNotes || undefined
+        mindsetNotes: mindsetNotes || undefined,
+        learning: learning || undefined
       });
     });
 
@@ -5848,6 +5908,15 @@ export default function ClientDashboard({
                   </ul>
                 </div>
               </div>
+
+              <div className="mt-4 rounded-xl border border-sky-400/20 bg-sky-500/10 p-4">
+                <div className="text-sm font-semibold text-sky-700 dark:text-sky-300">Top learning</div>
+                <div className="mt-2 text-sm text-muted">
+                  {topLearning
+                    ? `${topLearning.label}${topLearning.count > 1 ? ` (${topLearning.count} trades)` : ""}`
+                    : "Add a learning to your journal trades to see the strongest repeated lesson."}
+                </div>
+              </div>
             </div>
               </section>
 
@@ -6359,62 +6428,6 @@ export default function ClientDashboard({
                   </div>
                 )}
               </div>
-            </div>
-          </section>
-          )}
-
-          {view === "profile" && (
-            <section
-              id="profile"
-              className="mx-auto max-w-3xl space-y-6 px-6 py-8"
-            >
-              <div>
-                <h2 className="section-title">Profile</h2>
-                <p className="section-lead">
-                  Manage your profile photo, password, and preferences.
-                </p>
-              </div>
-
-              <div className="card space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-16 w-16 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center text-lg font-semibold">
-                    {profileImage ? (
-                      <img
-                        src={profileImage}
-                        alt="Profile"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span>{profileInitial}</span>
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">
-                      {session?.user?.email ?? "Trader"}
-                    </div>
-                    <div className="text-xs text-muted">Trading workspace</div>
-                  </div>
-                </div>
-                <label className="text-xs text-muted">
-                  Update profile photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="mt-2 block w-full text-xs text-muted"
-                    onChange={(event) =>
-                      handleProfileImageUpload(event.target.files?.[0] ?? null)
-                    }
-                  />
-                </label>
-                {profileImage && (
-                  <button
-                    className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
-                    onClick={() => setProfileImage(null)}
-                  >
-                    Remove photo
-                  </button>
-                )}
-              </div>
 
               <div className="card space-y-4">
                 <div>
@@ -6544,6 +6557,62 @@ export default function ClientDashboard({
                     Current analysis filter: {selectedTradingAccount.name}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          </section>
+          )}
+
+          {view === "profile" && (
+            <section
+              id="profile"
+              className="mx-auto max-w-3xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">Profile</h2>
+                <p className="section-lead">
+                  Manage your profile photo, password, and preferences.
+                </p>
+              </div>
+
+              <div className="card space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center text-lg font-semibold">
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{profileInitial}</span>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">
+                      {session?.user?.email ?? "Trader"}
+                    </div>
+                    <div className="text-xs text-muted">Trading workspace</div>
+                  </div>
+                </div>
+                <label className="text-xs text-muted">
+                  Update profile photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="mt-2 block w-full text-xs text-muted"
+                    onChange={(event) =>
+                      handleProfileImageUpload(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                {profileImage && (
+                  <button
+                    className="w-fit rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+                    onClick={() => setProfileImage(null)}
+                  >
+                    Remove photo
+                  </button>
+                )}
               </div>
 
               <div id="password" className="card space-y-4">
