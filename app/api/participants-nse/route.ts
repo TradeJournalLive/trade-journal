@@ -154,6 +154,54 @@ function getAvailableDates(payload: unknown) {
     .sort((a, b) => b.localeCompare(a));
 }
 
+function extractNextData(html: string) {
+  const match = html.match(
+    /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/
+  );
+  if (!match?.[1]) return null;
+  try {
+    return JSON.parse(match[1]) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPagePayload() {
+  const response = await fetch("https://www.niftytrader.in/participant-wise-oi", {
+    method: "GET",
+    headers: {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0 Safari/537.36"
+    },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`NiftyTrader page fallback failed (${response.status}).`);
+  }
+
+  const pageData = extractNextData(await response.text());
+  const pageProps =
+    pageData && typeof pageData === "object"
+      ? (pageData.props as Record<string, unknown> | undefined)?.pageProps
+      : null;
+  const initial =
+    pageProps && typeof pageProps === "object"
+      ? (pageProps as Record<string, unknown>).initial
+      : null;
+  const initialRecord =
+    initial && typeof initial === "object" ? (initial as Record<string, unknown>) : null;
+  const rows = initialRecord?.pwOiData ?? initialRecord?.tableData ?? [];
+  const dates = initialRecord?.chartDateList ?? initialRecord?.dateList ?? [];
+
+  return {
+    resultData: {
+      data: rows,
+      date: dates
+    }
+  };
+}
+
 async function fetchPublicPayload(date: string) {
   const url = new URL(
     "https://webapi.niftytrader.in/webapi/Resource/participant-wise-oi-table-data"
@@ -161,21 +209,28 @@ async function fetchPublicPayload(date: string) {
   if (date) {
     url.searchParams.set("date", date);
   }
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      accept: "application/json, text/plain, */*",
-      origin: "https://www.niftytrader.in",
-      referer: "https://www.niftytrader.in/participant-wise-oi",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0 Safari/537.36"
-    },
-    cache: "no-store"
-  });
-  if (!response.ok) {
-    throw new Error(`NiftyTrader public API failed (${response.status}).`);
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        accept: "application/json, text/plain, */*",
+        origin: "https://www.niftytrader.in",
+        referer: "https://www.niftytrader.in/participant-wise-oi",
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0 Safari/537.36"
+      },
+      cache: "no-store"
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      if (extractRows(payload).length) return payload;
+    }
+  } catch {
+    // Fall back to the public page payload below.
   }
-  return response.json();
+
+  return fetchPagePayload();
 }
 
 export async function GET(request: Request) {
