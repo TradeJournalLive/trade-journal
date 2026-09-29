@@ -5027,19 +5027,85 @@ export default function ClientDashboard({
 
   const navItems = [
     { label: "Overview", href: "/dashboard#overview", id: "overview" },
-    { label: "Performance", href: "/dashboard#performance", id: "performance" },
-    { label: "Strategy", href: "/dashboard#strategy", id: "strategy" },
-    { label: "Day-wise", href: "/dashboard#day", id: "day" },
-    { label: "Behavior", href: "/dashboard#behavior", id: "behavior" },
-    { label: "AI Summary", href: "/dashboard#ai-summary", id: "ai-summary" },
-    { label: "Market News", href: "/dashboard/news", id: "news" },
-    { label: "Opportunities", href: "/dashboard/opportunities", id: "opportunities" },
-    { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
+    { label: "Trades", href: "/dashboard/journal", id: "journal" },
+    { label: "Analytics", href: "/dashboard#performance", id: "performance" },
+    { label: "Strategies", href: "/dashboard#strategy", id: "strategy" },
+    { label: "Psychology", href: "/dashboard#behavior", id: "behavior" },
     { label: "Participants", href: "/dashboard/participants", id: "participants" },
-    { label: "Brokers", href: "/dashboard/brokers", id: "brokers" },
-    { label: "Setup", href: "/dashboard/setup", id: "setup" },
-    { label: "Journal", href: "/dashboard/journal", id: "journal" }
+    { label: "Settings", href: "/dashboard/setup", id: "setup" }
   ];
+
+  const navIcon = (id: string) => {
+    const common = "h-5 w-5";
+    if (id === "overview") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 19V9" />
+          <path d="M10 19V5" />
+          <path d="M16 19v-7" />
+          <path d="M22 19H2" />
+        </svg>
+      );
+    }
+    if (id === "journal") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 3h8l4 4v14H7z" />
+          <path d="M15 3v5h5" />
+          <path d="M10 13h6" />
+          <path d="M10 17h4" />
+        </svg>
+      );
+    }
+    if (id === "performance") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="M7 15l4-4 3 3 5-7" />
+        </svg>
+      );
+    }
+    if (id === "strategy") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3v18" />
+          <path d="M6 8h12" />
+          <path d="M8 8v8" />
+          <path d="M16 8v8" />
+          <path d="M4 16h16" />
+        </svg>
+      );
+    }
+    if (id === "behavior") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 3a4 4 0 0 0-4 4v1a4 4 0 0 0-2 3.5A4.5 4.5 0 0 0 7.5 16H9" />
+          <path d="M15 3a4 4 0 0 1 4 4v1a4 4 0 0 1 2 3.5A4.5 4.5 0 0 1 16.5 16H15" />
+          <path d="M9 21v-6" />
+          <path d="M15 21v-6" />
+          <path d="M9 12h6" />
+        </svg>
+      );
+    }
+    if (id === "participants") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 20v-8" />
+          <path d="M12 20V6" />
+          <path d="M17 20v-5" />
+          <path d="M4 20h16" />
+          <path d="M5 8l4-3 4 4 6-6" />
+        </svg>
+      );
+    }
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7.1 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 20 7.1l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.8.8Z" />
+      </svg>
+    );
+  };
 
   const isOverviewView = view === "overview";
 
@@ -5068,43 +5134,44 @@ export default function ClientDashboard({
   }
 
   return (
-    <main className="dashboard-shell min-h-screen bg-ink text-white relative overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-grid opacity-70" />
-        <div className="absolute inset-0 bg-candles opacity-30" />
-        <div className="absolute -top-40 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[140px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] h-[360px] w-[360px] rounded-full bg-white/10 blur-[120px]" />
-      </div>
+    <main className="dashboard-shell min-h-screen bg-slate-50 text-slate-950 relative overflow-x-hidden dark:bg-ink dark:text-white">
       <div className="relative flex min-w-0 items-start">
-        <aside className="hidden h-screen w-60 flex-col border-r border-white/5 bg-panel/40 p-6 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto">
+        <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white px-4 py-5 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto dark:border-white/10 dark:bg-panel/95">
           {isOverviewView ? (
             <button
               type="button"
               onClick={() => handleSectionNav("overview")}
-              className="flex items-center gap-3 text-left"
+              className="px-2 text-left text-xl font-bold tracking-tight text-slate-950 dark:text-white"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
-                TJ
-              </div>
-              <span className="text-lg font-semibold">Trade Journal</span>
+              1to2 Trading Journal
             </button>
           ) : (
-            <Link href="/dashboard#overview" className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 border border-primary/40 text-xs font-semibold">
-                TJ
-              </div>
-              <span className="text-lg font-semibold">Trade Journal</span>
+            <Link href="/dashboard#overview" className="px-2 text-xl font-bold tracking-tight text-slate-950 dark:text-white">
+              1to2 Trading Journal
             </Link>
           )}
-          <nav className="mt-10 grid gap-1 text-sm">
+          <nav className="mt-7 grid gap-1 text-sm">
             {navItems.map((item) => {
               const isSection = sectionNavIds.includes(item.id as DashboardSection);
-              const isActive = activeSection === item.id;
-              const classes = `w-full rounded-lg px-3 py-2 text-left transition ${
+              const isActive =
+                activeSection === item.id ||
+                (!isOverviewView && view === item.id) ||
+                (!isOverviewView && view === "journal" && item.id === "journal") ||
+                (!isOverviewView && view === "participants" && item.id === "participants") ||
+                (!isOverviewView && view === "setup" && item.id === "setup");
+              const classes = `flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left font-medium transition ${
                 isActive
-                  ? "bg-[linear-gradient(135deg,rgba(37,99,235,0.18),rgba(20,184,166,0.18))] text-slate-900 dark:text-white border border-sky-300/60 dark:border-sky-400/40"
-                  : "text-muted hover:bg-[linear-gradient(135deg,rgba(37,99,235,0.12),rgba(20,184,166,0.12))] hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-sky-400/15 dark:text-sky-200"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
               }`;
+              const content = (
+                <>
+                  <span className={isActive ? "text-blue-600 dark:text-sky-200" : "text-slate-500 dark:text-slate-400"}>
+                    {navIcon(item.id)}
+                  </span>
+                  <span>{item.label}</span>
+                </>
+              );
               if (isOverviewView && isSection) {
                 return (
                   <button
@@ -5113,28 +5180,29 @@ export default function ClientDashboard({
                     onClick={() => handleSectionNav(item.id as DashboardSection)}
                     className={classes}
                   >
-                    {item.label}
+                    {content}
                   </button>
                 );
               }
               return (
                 <Link key={item.label} href={item.href} className={classes}>
-                  {item.label}
+                  {content}
                 </Link>
               );
             })}
           </nav>
-          <div className="mt-auto text-xs text-muted">
-            Data source: {dataSourceLabel}
+          <div className="mt-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+            Data source<br />
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{dataSourceLabel}</span>
           </div>
         </aside>
 
         <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-10 border-b border-white/5 bg-ink/80 backdrop-blur">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-ink/85">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
               <div>
-                <h1 className="text-xl font-semibold">Trader cockpit</h1>
-                <p className="text-xs text-muted">Review period: {dateRange}</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{view === "participants" ? "Participants" : view === "journal" ? "Trades" : view === "setup" ? "Settings" : "Overview"}</h1>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Your trading performance at a glance. Journal. Learn. Improve.</p>
               </div>
               <div className="hidden flex-wrap items-center gap-2 text-xs md:flex">
                 {isOverviewView ? (
@@ -5468,11 +5536,16 @@ export default function ClientDashboard({
               <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-sm sm:px-6">
                 {navItems.map((item) => {
                   const isSection = sectionNavIds.includes(item.id as DashboardSection);
-                  const isActive = activeSection === item.id;
+                  const isActive =
+                    activeSection === item.id ||
+                    (!isOverviewView && view === item.id) ||
+                    (!isOverviewView && view === "journal" && item.id === "journal") ||
+                    (!isOverviewView && view === "participants" && item.id === "participants") ||
+                    (!isOverviewView && view === "setup" && item.id === "setup");
                   const classes = `rounded-full border px-3 py-1.5 whitespace-nowrap font-medium ${
                     isActive
-                      ? "border-primary/40 bg-primary/20 text-white"
-                      : "border-white/10 text-muted hover:bg-primary/10 hover:text-white"
+                      ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-200"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   }`;
                   if (isOverviewView && isSection) {
                     return (
