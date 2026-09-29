@@ -4661,9 +4661,6 @@ export default function ClientDashboard({
     return validDates.slice(0, 5);
   }, [participantFlows]);
 
-  const [expandedSnapshotDate, setExpandedSnapshotDate] = useState<
-    string | null
-  >(null);
 
   const lastFiveDateTables = useMemo(() => {
     return snapshotDates.map((date) => {
@@ -4691,12 +4688,6 @@ export default function ClientDashboard({
     });
   }, [participantFlows, snapshotDates]);
 
-  const expandedSnapshot = useMemo(
-    () =>
-      lastFiveDateTables.find((item) => item.date === expandedSnapshotDate) ??
-      null,
-    [lastFiveDateTables, expandedSnapshotDate]
-  );
 
   function handleParticipantCsvDownload() {
     const lines = [
@@ -6827,305 +6818,289 @@ export default function ClientDashboard({
           {view === "participants" && (
             <section
               id="participants"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
+              className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8"
             >
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    Last 5 Days Participant OI (Photo Format)
-                  </h3>
-                  <span className="text-[11px] text-muted">Tap to enlarge</span>
+              <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-white/10 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">
+                    Participant Wise OI
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                    Market positioning overview
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+                    FII, Pro, DII, and Retail positioning from NSE participant open interest.
+                  </p>
                 </div>
-                <div className="mt-2 text-[11px] text-muted">
-                  Date-wise snapshots (latest 5): {lastFiveDateTables.map((item) => item.display).join(" • ")}
-                </div>
-                <div className="mt-3 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
-                  {lastFiveDateTables.map((table) => (
-                    <button
-                      key={table.date}
-                      type="button"
-                      onClick={() => setExpandedSnapshotDate(table.date)}
-                      className="w-[290px] min-w-[290px] snap-start overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-sky-400"
-                    >
-                      <div className="bg-slate-900 px-3 py-1.5 text-[11px] text-white">
-                        <div className="flex items-center justify-between">
-                          <div className="font-semibold">Participant Wise OI Changes</div>
-                          <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold">
-                            {table.display}
-                          </span>
-                        </div>
-                        <div className="text-slate-300">Date: {table.display}</div>
-                      </div>
-                      <table className="w-full text-[10px]">
-                        <thead className="bg-slate-200">
-                          <tr>
-                            <th className="px-2 py-1 text-left font-semibold">Participant</th>
-                            <th className="px-2 py-1 text-left font-semibold">Inst</th>
-                            <th className="px-2 py-1 text-right font-semibold">Change</th>
-                            <th className="px-2 py-1 text-left font-semibold">Activity</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {table.rows.map((row, index) => (
-                            <tr key={`${table.date}-${row.participant}-${row.instrument}`} className="border-t border-slate-200">
-                              {index % 3 === 0 ? (
-                                <td className="px-2 py-1 font-semibold" rowSpan={3}>
-                                  {row.label}
-                                </td>
-                              ) : null}
-                              <td className="px-2 py-1">{row.instrument}</td>
-                              <td className="px-2 py-1 text-right font-semibold">
-                                {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
-                              </td>
-                              <td
-                                className={`px-2 py-1 ${
-                                  row.trend === "Bullish"
-                                    ? "text-emerald-700"
-                                    : row.trend === "Bearish"
-                                      ? "text-rose-700"
-                                      : "text-slate-700"
-                                }`}
-                              >
-                                {row.activity}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="flex items-center justify-between border-t border-slate-300 bg-slate-950 px-3 py-1.5 text-[10px] text-white">
-                        <span>OVERALL TREND</span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 font-semibold ${
-                            table.overallTrend === "Bullish"
-                              ? "bg-emerald-500/20 text-emerald-200"
-                              : table.overallTrend === "Bearish"
-                                ? "bg-rose-500/20 text-rose-200"
-                                : "bg-slate-500/25 text-slate-100"
-                          }`}
-                        >
-                          {table.overallTrend}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:border-sky-300 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                    onClick={() => {
+                      const d = new Date(`${participantViewDate}T00:00:00`);
+                      d.setDate(d.getDate() - 1);
+                      const prev = d.toISOString().slice(0, 10);
+                      setParticipantViewDate(prev);
+                      setFlowDate(prev);
+                    }}
+                  >
+                    Prev
+                  </button>
+                  <input
+                    type="date"
+                    value={participantViewDate}
+                    onChange={(event) => {
+                      setParticipantViewDate(event.target.value);
+                      setFlowDate(event.target.value);
+                    }}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:border-sky-300 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                    onClick={() => {
+                      const d = new Date(`${participantViewDate}T00:00:00`);
+                      d.setDate(d.getDate() + 1);
+                      const next = d.toISOString().slice(0, 10);
+                      setParticipantViewDate(next);
+                      setFlowDate(next);
+                    }}
+                  >
+                    Next
+                  </button>
+                  <button
+                    className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-sky-400 dark:text-slate-950 dark:hover:bg-sky-300"
+                    onClick={handleFetchParticipantFromNse}
+                  >
+                    Fetch latest
+                  </button>
                 </div>
               </div>
-              {expandedSnapshot && (
-                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/65 p-4">
-                  <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-300 bg-white shadow-2xl">
-                    <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
-                      <div>
-                        <div className="text-sm font-semibold">
-                          Participant Wise Open Interest and Changes
-                        </div>
-                        <div className="mt-1 text-[11px] text-slate-300">
-                          Date: {expandedSnapshot.display}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedSnapshotDate(null)}
-                        className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/40 dark:bg-white/10 dark:text-white"
-                      >
-                        Close
-                      </button>
-                    </div>
-                    <div className="overflow-x-auto p-4">
-                      <div className="mb-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        Snapshot Date: {expandedSnapshot.display}
-                      </div>
-                      <table className="min-w-full text-xs">
-                        <thead className="bg-slate-200 text-slate-900">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-semibold">Participant</th>
-                            <th className="px-3 py-2 text-left font-semibold">Instrument</th>
-                            <th className="px-3 py-2 text-right font-semibold">Change</th>
-                            <th className="px-3 py-2 text-left font-semibold">Activity</th>
-                            <th className="px-3 py-2 text-left font-semibold">Trend</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {expandedSnapshot.rows.map((row, index) => (
-                            <tr key={`${expandedSnapshot.date}-${row.participant}-${row.instrument}`} className="border-t border-slate-200">
-                              {index % 3 === 0 ? (
-                                <td className="px-3 py-2 font-semibold" rowSpan={3}>
-                                  {row.label}
-                                </td>
-                              ) : null}
-                              <td className="px-3 py-2">{row.instrument}</td>
-                              <td className="px-3 py-2 text-right font-semibold">
-                                {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
-                              </td>
-                              <td className="px-3 py-2">{row.activity}</td>
-                              <td className="px-3 py-2">
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                    row.trend === "Bullish"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : row.trend === "Bearish"
-                                        ? "bg-rose-100 text-rose-700"
-                                        : "bg-slate-200 text-slate-700"
-                                  }`}
-                                >
-                                  {row.trend}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-xs font-semibold text-white">
-                      <span>OVERALL TREND</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 ${
-                          expandedSnapshot.overallTrend === "Bullish"
-                            ? "bg-emerald-500/20 text-emerald-200"
-                            : expandedSnapshot.overallTrend === "Bearish"
-                              ? "bg-rose-500/20 text-rose-200"
-                              : "bg-slate-500/25 text-slate-100"
-                        }`}
-                      >
-                        {expandedSnapshot.overallTrend}
-                      </span>
-                    </div>
-                  </div>
+
+              {flowStatus && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">
+                  {flowStatus}
                 </div>
               )}
 
-              <div className="card">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-lg font-semibold">
-                    {participantViewDateDisplay} - Participant Wise Open Interest and Changes
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
-                      onClick={() => {
-                        const d = new Date(`${participantViewDate}T00:00:00`);
-                        d.setDate(d.getDate() - 1);
-                        const prev = d.toISOString().slice(0, 10);
-                        setParticipantViewDate(prev);
-                        setFlowDate(prev);
-                      }}
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Overall trend</p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        participantOverallTrend === "Bullish"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200"
+                          : participantOverallTrend === "Bearish"
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-400/15 dark:text-rose-200"
+                            : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200"
+                      }`}
                     >
-                      Prev
-                    </button>
-                    <span className="text-xs text-muted">Date</span>
-                    <input
-                      type="date"
-                      value={participantViewDate}
-                      onChange={(event) => {
-                        setParticipantViewDate(event.target.value);
-                        setFlowDate(event.target.value);
-                      }}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
-                    />
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:text-white"
-                      onClick={() => {
-                        const d = new Date(`${participantViewDate}T00:00:00`);
-                        d.setDate(d.getDate() + 1);
-                        const next = d.toISOString().slice(0, 10);
-                        setParticipantViewDate(next);
-                        setFlowDate(next);
-                      }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      className="rounded-full bg-[linear-gradient(135deg,#0ea5e9,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
-                      onClick={handleFetchParticipantFromNse}
-                    >
-                      Fetch
-                    </button>
-                    <button
-                      className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100"
-                      onClick={handleParticipantCsvDownload}
-                    >
-                      Download CSV
-                    </button>
-                    <button
-                      className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                      onClick={handleParticipantPngDownload}
-                    >
-                      Download PNG
-                    </button>
+                      {participantOverallTrend}
+                    </span>
                   </div>
+                  <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
+                    {participantOverallTrend}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Weighted more toward FII and Pro activity.
+                  </p>
                 </div>
-                {flowStatus && <div className="mt-2 text-xs text-muted">{flowStatus}</div>}
-                <div className="mt-4 overflow-x-auto">
-                  <table ref={participantsTableRef} className="min-w-full text-xs">
-                    <thead className="text-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium">Participant</th>
-                        <th className="px-3 py-2 text-left font-medium">Instrument</th>
-                        <th className="px-3 py-2 text-right font-medium">Change</th>
-                        <th className="px-3 py-2 text-left font-medium">Activity</th>
-                        <th className="px-3 py-2 text-left font-medium">Trend</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {participantActivityRows.map((row, index) => (
-                        <tr key={`${row.participant}-${row.instrument}`} className="border-t border-white/5">
-                          {index % 3 === 0 ? (
-                            <td className="px-3 py-2 font-semibold align-middle" rowSpan={3}>
-                              {row.label}
-                            </td>
-                          ) : null}
-                          <td className="px-3 py-2">{row.instrument}</td>
-                          <td className="px-3 py-2 text-right font-semibold">
-                            {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
-                          </td>
-                          <td
-                            className={`px-3 py-2 ${
-                              row.activity.includes("Bought")
-                                ? "text-emerald-700 dark:text-emerald-300"
-                                : row.activity.includes("Sold")
-                                  ? "text-rose-700 dark:text-rose-300"
-                                  : "text-slate-700 dark:text-slate-200"
-                            }`}
-                          >
-                            {row.activity}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                row.trend === "Bullish"
-                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-200"
-                                  : row.trend === "Bearish"
-                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-500/25 dark:text-rose-200"
-                                    : "bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200"
+
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tracked dates</p>
+                  <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
+                    {participantDateOptions.length}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Latest loaded: {participantDateOptions[0]?.split("-").reverse().join("/") ?? "N/A"}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Active participants</p>
+                  <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
+                    {new Set(participantActivityRows.map((row) => row.participant)).size}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    FII, Pro, DII, and Retail rows expected.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total OI change</p>
+                  <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
+                    {participantActivityRows
+                      .reduce((sum, row) => sum + Math.abs(row.change), 0)
+                      .toLocaleString()}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Absolute change across futures, CE, and PE.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-white/10 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-950 dark:text-white">
+                        {participantViewDateDisplay} - Participant Wise Open Interest and Changes
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Bullish means buying futures/calls or selling puts. Bearish means selling futures/calls or buying puts.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                        onClick={handleParticipantCsvDownload}
+                      >
+                        CSV
+                      </button>
+                      <button
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-emerald-300 hover:text-emerald-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                        onClick={handleParticipantPngDownload}
+                      >
+                        PNG
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table ref={participantsTableRef} className="min-w-full text-sm">
+                      <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                        <tr>
+                          <th className="px-5 py-3 text-left font-semibold">Participant</th>
+                          <th className="px-5 py-3 text-left font-semibold">Instrument</th>
+                          <th className="px-5 py-3 text-right font-semibold">Change</th>
+                          <th className="px-5 py-3 text-left font-semibold">Activity</th>
+                          <th className="px-5 py-3 text-left font-semibold">Trend</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                        {participantActivityRows.map((row, index) => (
+                          <tr key={`${row.participant}-${row.instrument}`} className="hover:bg-slate-50/80 dark:hover:bg-white/5">
+                            {index % 3 === 0 ? (
+                              <td className="px-5 py-4 align-middle font-semibold text-slate-950 dark:text-white" rowSpan={3}>
+                                {row.label}
+                              </td>
+                            ) : null}
+                            <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{row.instrument}</td>
+                            <td
+                              className={`px-5 py-3 text-right font-semibold ${
+                                row.change > 0
+                                  ? "text-emerald-600 dark:text-emerald-300"
+                                  : row.change < 0
+                                    ? "text-rose-600 dark:text-rose-300"
+                                    : "text-slate-500 dark:text-slate-400"
                               }`}
                             >
-                              {row.trend}
+                              {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
+                            </td>
+                            <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{row.activity}</td>
+                            <td className="px-5 py-3">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                  row.trend === "Bullish"
+                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200"
+                                    : row.trend === "Bearish"
+                                      ? "bg-rose-100 text-rose-700 dark:bg-rose-400/15 dark:text-rose-200"
+                                      : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200"
+                                }`}
+                              >
+                                {row.trend}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-950 text-white dark:bg-sky-400/10">
+                          <td className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em]" colSpan={4}>
+                            Overall trend
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-950 dark:bg-sky-300 dark:text-slate-950">
+                              {participantOverallTrend}
                             </span>
                           </td>
                         </tr>
-                      ))}
-                      <tr className="border-t border-white/10">
-                        <td className="px-3 py-3 font-semibold" colSpan={4}>
-                          OVERALL TREND
-                        </td>
-                        <td className="px-3 py-3">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              participantOverallTrend === "Bullish"
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200"
-                                : participantOverallTrend === "Bearish"
-                                  ? "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200"
-                                  : "bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200"
-                            }`}
-                          >
-                            {participantOverallTrend}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
+                <aside className="space-y-4">
+                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Recent EOD snapshots</h3>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Latest valid participant days.</p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                        {lastFiveDateTables.length} days
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {lastFiveDateTables.map((table) => (
+                        <button
+                          key={table.date}
+                          type="button"
+                          onClick={() => {
+                            setParticipantViewDate(table.date);
+                            setFlowDate(table.date);
+                          }}
+                          className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                            table.date === participantViewDate
+                              ? "border-sky-300 bg-sky-50 dark:border-sky-400/40 dark:bg-sky-400/10"
+                              : "border-slate-200 bg-white hover:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-slate-950 dark:text-white">{table.display}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                table.overallTrend === "Bullish"
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200"
+                                  : table.overallTrend === "Bearish"
+                                    ? "bg-rose-100 text-rose-700 dark:bg-rose-400/15 dark:text-rose-200"
+                                    : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200"
+                              }`}
+                            >
+                              {table.overallTrend}
+                            </span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                            <div
+                              className={`h-full rounded-full ${
+                                table.overallTrend === "Bullish"
+                                  ? "bg-emerald-500"
+                                  : table.overallTrend === "Bearish"
+                                    ? "bg-rose-500"
+                                    : "bg-slate-400"
+                              }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    12,
+                                    table.rows.reduce((sum, row) => sum + Math.abs(row.change), 0) / 20000
+                                  )
+                                )}%`
+                              }}
+                            />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+                    <div className="font-semibold">Keep this panel focused</div>
+                    <p className="mt-2 text-xs leading-5">
+                      Participant Wise OI stays as the decision panel. Extra photo cards and duplicate tables have been removed from the main view.
+                    </p>
+                  </div>
+                </aside>
               </div>
             </section>
           )}
