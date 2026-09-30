@@ -145,7 +145,7 @@ type DashboardView =
   | "setup-edit";
 
 type DashboardSection = "overview" | "performance" | "strategy" | "day" | "behavior" | "ai-summary";
-type DashboardNavId = DashboardView | DashboardSection;
+type DashboardNavId = DashboardView | DashboardSection | "setups";
 
 type ParticipantType = "FII" | "DII" | "Client" | "Pro";
 type ParticipantFlow = {
@@ -5025,15 +5025,40 @@ export default function ClientDashboard({
     return null;
   }
 
-  const navItems = [
-    { label: "Overview", href: "/dashboard#overview", id: "overview" },
-    { label: "Trades", href: "/dashboard/journal", id: "journal" },
-    { label: "Analytics", href: "/dashboard#performance", id: "performance" },
-    { label: "Strategies", href: "/dashboard#strategy", id: "strategy" },
-    { label: "Psychology", href: "/dashboard#behavior", id: "behavior" },
-    { label: "Participants", href: "/dashboard/participants", id: "participants" },
-    { label: "Settings", href: "/dashboard/setup", id: "setup" }
+  const navGroups: {
+    label: string;
+    items: { label: string; href: string; id: DashboardNavId }[];
+  }[] = [
+    {
+      label: "Workspace",
+      items: [
+        { label: "Overview", href: "/dashboard#overview", id: "overview" },
+        { label: "Trade journal", href: "/dashboard/journal", id: "journal" },
+        { label: "Day-wise", href: "/dashboard#day", id: "day" },
+        { label: "Performance", href: "/dashboard#performance", id: "performance" },
+        { label: "Strategies", href: "/dashboard#strategy", id: "strategy" },
+        { label: "Setups", href: "/dashboard/setup", id: "setups" },
+        { label: "Behavior", href: "/dashboard#behavior", id: "behavior" }
+      ]
+    },
+    {
+      label: "Insights",
+      items: [
+        { label: "AI summary", href: "/dashboard#ai-summary", id: "ai-summary" },
+        { label: "Market news", href: "/dashboard/news", id: "news" },
+        { label: "Opportunities", href: "/dashboard/opportunities", id: "opportunities" },
+        { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
+        { label: "Participant data", href: "/dashboard/participants", id: "participants" },
+        { label: "Brokers", href: "/dashboard/brokers", id: "brokers" }
+      ]
+    },
+    {
+      label: "Account",
+      items: [{ label: "Settings", href: "/dashboard/profile", id: "profile" }]
+    }
   ];
+
+  const navItems = navGroups.flatMap((group) => group.items);
 
   const navIcon = (id: string) => {
     const common = "h-5 w-5";
@@ -5109,6 +5134,33 @@ export default function ClientDashboard({
 
   const isOverviewView = view === "overview";
 
+  const isNavItemActive = (id: DashboardNavId) =>
+    activeSection === id ||
+    (!isOverviewView && view === id) ||
+    (!isOverviewView && view === "journal" && id === "journal") ||
+    (!isOverviewView && view === "participants" && id === "participants") ||
+    (!isOverviewView && view === "setup" && id === "setups") ||
+    (!isOverviewView && view === "profile" && id === "profile");
+
+  const navLabel =
+    view === "participants"
+      ? "Participant data"
+      : view === "journal"
+        ? "Trade journal"
+        : view === "setup"
+          ? "Setups"
+          : view === "profile"
+            ? "Settings"
+            : view === "brokers"
+              ? "Brokers"
+              : view === "instruments"
+                ? "Instruments"
+                : view === "news"
+                  ? "Market news"
+                  : view === "opportunities"
+                    ? "Opportunities"
+                    : "Overview";
+
   const profileInitial =
     session?.user?.email?.charAt(0).toUpperCase() ?? "U";
 
@@ -5150,46 +5202,50 @@ export default function ClientDashboard({
               1to2 Trading Journal
             </Link>
           )}
-          <nav className="mt-7 grid gap-1 text-sm">
-            {navItems.map((item) => {
-              const isSection = sectionNavIds.includes(item.id as DashboardSection);
-              const isActive =
-                activeSection === item.id ||
-                (!isOverviewView && view === item.id) ||
-                (!isOverviewView && view === "journal" && item.id === "journal") ||
-                (!isOverviewView && view === "participants" && item.id === "participants") ||
-                (!isOverviewView && view === "setup" && item.id === "setup");
-              const classes = `flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left font-medium transition ${
-                isActive
-                  ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-sky-400/15 dark:text-sky-200"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-              }`;
-              const content = (
-                <>
-                  <span className={isActive ? "text-blue-600 dark:text-sky-200" : "text-slate-500 dark:text-slate-400"}>
-                    {navIcon(item.id)}
-                  </span>
-                  <span>{item.label}</span>
-                </>
-              );
-              if (isOverviewView && isSection) {
-                return (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => handleSectionNav(item.id as DashboardSection)}
-                    className={classes}
-                  >
-                    {content}
-                  </button>
-                );
-              }
-              return (
-                <Link key={item.label} href={item.href} className={classes}>
-                  {content}
-                </Link>
-              );
-            })}
+          <nav className="mt-5 space-y-5 text-sm">
+            {navGroups.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  {group.label}
+                </div>
+                <div className="grid gap-1">
+                  {group.items.map((item) => {
+                    const isSection = sectionNavIds.includes(item.id as DashboardSection);
+                    const isActive = isNavItemActive(item.id);
+                    const classes = `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-medium transition ${
+                      isActive
+                        ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-sky-400/15 dark:text-sky-200"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                    }`;
+                    const content = (
+                      <>
+                        <span className={isActive ? "text-blue-600 dark:text-sky-200" : "text-slate-500 dark:text-slate-400"}>
+                          {navIcon(item.id)}
+                        </span>
+                        <span>{item.label}</span>
+                      </>
+                    );
+                    if (isOverviewView && isSection) {
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => handleSectionNav(item.id as DashboardSection)}
+                          className={classes}
+                        >
+                          {content}
+                        </button>
+                      );
+                    }
+                    return (
+                      <Link key={item.label} href={item.href} className={classes}>
+                        {content}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
           <div className="mt-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
             Data source<br />
@@ -5201,7 +5257,7 @@ export default function ClientDashboard({
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-ink/85">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{view === "participants" ? "Participants" : view === "journal" ? "Trades" : view === "setup" ? "Settings" : "Overview"}</h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{navLabel}</h1>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Your trading performance at a glance. Journal. Learn. Improve.</p>
               </div>
               <div className="hidden flex-wrap items-center gap-2 text-xs md:flex">
@@ -5209,14 +5265,14 @@ export default function ClientDashboard({
                   <button
                     type="button"
                     onClick={() => handleSectionNav("overview")}
-                    className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-slate-700"
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                   >
                     Home
                   </button>
                 ) : (
                   <Link
                     href="/dashboard#overview"
-                    className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-slate-700"
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                   >
                     Home
                   </Link>
@@ -5225,18 +5281,18 @@ export default function ClientDashboard({
                   type="date"
                   value={globalStartDate}
                   onChange={(event) => setGlobalStartDate(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 />
                 <input
                   type="date"
                   value={globalEndDate}
                   onChange={(event) => setGlobalEndDate(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 />
                 <select
                   value={globalAccount}
                   onChange={(event) => setGlobalAccount(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   <option value="all">All accounts</option>
                   {accounts.map((account) => (
@@ -5248,7 +5304,7 @@ export default function ClientDashboard({
                 <select
                   value={globalMarket}
                   onChange={(event) => setGlobalMarket(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   <option value="all">All markets</option>
                   {marketOptions.map((item) => (
@@ -5257,10 +5313,13 @@ export default function ClientDashboard({
                     </option>
                   ))}
                 </select>
+                <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-3 text-xs font-bold text-blue-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">
+                  NIFTY 50
+                </span>
                 <select
                   value={globalInstrument}
                   onChange={(event) => setGlobalInstrument(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   <option value="all">All instruments</option>
                   {instrumentOptions.map((item) => (
@@ -5272,7 +5331,7 @@ export default function ClientDashboard({
                 <select
                   value={globalStrategy}
                   onChange={(event) => setGlobalStrategy(event.target.value)}
-                  className="rounded-full border border-white/10 bg-ink px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   <option value="all">All strategies</option>
                   {strategyOptions.map((item) => (
@@ -5282,7 +5341,7 @@ export default function ClientDashboard({
                   ))}
                 </select>
                 <button
-                  className="rounded-full border border-white/10 px-3 py-2 text-xs text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                   onClick={() => {
                     setGlobalAccount("all");
                     setGlobalMarket("all");
@@ -5299,7 +5358,7 @@ export default function ClientDashboard({
                   onChange={(event) =>
                     setCurrency(event.target.value as "INR" | "USD")
                   }
-                  className="rounded-full border border-white/10 bg-ink px-4 py-2 text-muted"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
@@ -5400,13 +5459,13 @@ export default function ClientDashboard({
                   </div>
                 )}
                 <button
-                  className="rounded-full bg-primary px-4 py-2 font-semibold"
+                  className="h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                   onClick={handleExportCsv}
                 >
                   Export CSV
                 </button>
                 <button
-                  className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
+                  className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
                   onClick={handleExportDateWiseExcel}
                 >
                   Export Excel Tabs
@@ -5416,14 +5475,14 @@ export default function ClientDashboard({
                 <button
                   type="button"
                   onClick={() => handleSectionNav("overview")}
-                  className="rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-muted"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                 >
                   Home
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileControlsOpen((prev) => !prev)}
-                  className="rounded-full bg-primary px-3 py-2 text-xs font-semibold text-on-primary"
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
                 >
                   {mobileControlsOpen ? "Hide filters" : "Filters"}
                 </button>
@@ -5536,12 +5595,7 @@ export default function ClientDashboard({
               <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-2 text-sm sm:px-6">
                 {navItems.map((item) => {
                   const isSection = sectionNavIds.includes(item.id as DashboardSection);
-                  const isActive =
-                    activeSection === item.id ||
-                    (!isOverviewView && view === item.id) ||
-                    (!isOverviewView && view === "journal" && item.id === "journal") ||
-                    (!isOverviewView && view === "participants" && item.id === "participants") ||
-                    (!isOverviewView && view === "setup" && item.id === "setup");
+                  const isActive = isNavItemActive(item.id);
                   const classes = `rounded-full border px-3 py-1.5 whitespace-nowrap font-medium ${
                     isActive
                       ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-200"
@@ -7849,7 +7903,7 @@ export default function ClientDashboard({
                     Export CSV
                   </button>
                   <button
-                    className="rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 font-semibold text-emerald-700 hover:bg-emerald-100"
+                    className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
                     onClick={handleExportDateWiseExcel}
                   >
                     Export Excel Tabs
