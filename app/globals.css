@@ -209,3 +209,203 @@ html.dark .dashboard-shell .kpi {
 .dashboard-shell .section-title {
   color: rgb(var(--color-text));
 }
+
+/* HTML prototype alignment for all dashboard screens */
+.dashboard-shell {
+  background: #f7f9fc;
+  color: #132342;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.dashboard-shell > .relative > .min-w-0.flex-1 > section,
+.dashboard-shell > .relative > .min-w-0.flex-1 > * > section {
+  max-width: 1680px !important;
+  padding: 25px 28px 38px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  gap: 14px !important;
+}
+
+.dashboard-shell section > div:first-child:not(.card):not(.kpi) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.dashboard-shell section > div:first-child:not(.card):not(.kpi) .section-title,
+.dashboard-shell section > div:first-child:not(.card):not(.kpi) h2 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  color: #132342;
+}
+
+.dashboard-shell section > div:first-child:not(.card):not(.kpi) .section-lead,
+.dashboard-shell section > div:first-child:not(.card):not(.kpi) p {
+  margin-top: 6px;
+  color: #687895;
+  font-size: 13px;
+}
+
+.dashboard-shell .card,
+.dashboard-shell .kpi,
+.dashboard-shell .rounded-xl.border,
+.dashboard-shell .rounded-lg.border.bg-white,
+.dashboard-shell .overflow-hidden.rounded-lg.border {
+  background: #ffffff !important;
+  border: 1px solid #e1e7f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(33, 60, 105, 0.035) !important;
+}
+
+.dashboard-shell .card,
+.dashboard-shell .kpi {
+  padding: 17px 18px;
+}
+
+.dashboard-shell .kpi {
+  min-height: 113px;
+  border-left-width: 1px !important;
+}
+
+.dashboard-shell .kpi .text-xs,
+.dashboard-shell .card .text-muted,
+.dashboard-shell .text-muted,
+.dashboard-shell .text-slate-500,
+.dashboard-shell .text-slate-600 {
+  color: #687895 !important;
+}
+
+.dashboard-shell .kpi .text-lg,
+.dashboard-shell .kpi .text-2xl,
+.dashboard-shell .kpi .text-3xl,
+.dashboard-shell .card .font-semibold,
+.dashboard-shell .card h3,
+.dashboard-shell .card h2 {
+  color: #132342;
+}
+
+.dashboard-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.dashboard-shell thead,
+.dashboard-shell thead tr,
+.dashboard-shell .bg-slate-100,
+.dashboard-shell .bg-slate-50 {
+  background: #fafbfd !important;
+}
+
+.dashboard-shell th {
+  color: #7786a0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 10px 9px !important;
+  border-bottom: 1px solid #e1e7f0 !important;
+  text-align: left;
+}
+
+.dashboard-shell td {
+  padding: 10px 9px !important;
+  border-bottom: 1px solid #edf0f5 !important;
+  font-size: 11px !important;
+  color: #40516e;
+}
+
+.dashboard-shell tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+.dashboard-shell input,
+.dashboard-shell select,
+.dashboard-shell textarea {
+  border: 1px solid #e1e7f0 !important;
+  background: #ffffff !important;
+  color: #40516e !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell button,
+.dashboard-shell a.rounded-full,
+.dashboard-shell a.rounded-lg,
+.dashboard-shell .btn-like {
+  border-radius: 9px;
+}
+
+.dashboard-shell button:not([aria-pressed="true"]):not([class*="bg-blue-600"]):not([class*="bg-primary"]):not([class*="bg-slate-950"]),
+.dashboard-shell a[class*="border"] {
+  box-shadow: 0 4px 16px rgba(33, 60, 105, 0.035);
+}
+
+.dashboard-shell .bg-primary,
+.dashboard-shell .bg-blue-600,
+.dashboard-shell .bg-slate-950 {
+  background: #1767e8 !important;
+  border-color: #1767e8 !important;
+  color: #ffffff !important;
+}
+
+.dashboard-shell .text-positive,
+.dashboard-shell .text-emerald-600,
+.dashboard-shell .text-emerald-700 {
+  color: #07966c !important;
+}
+
+.dashboard-shell .text-negative,
+.dashboard-shell .text-rose-600,
+.dashboard-shell .text-rose-700 {
+  color: #df4747 !important;
+}
+
+.dashboard-shell .bg-emerald-100,
+.dashboard-shell .bg-emerald-50 {
+  background: #e5f7f0 !important;
+}
+
+.dashboard-shell .bg-rose-100,
+.dashboard-shell .bg-rose-50 {
+  background: #fff0ef !important;
+}
+
+.dashboard-shell .bg-amber-100,
+.dashboard-shell .bg-amber-50 {
+  background: #fff6e6 !important;
+}
+
+.dashboard-shell .rounded-full.px-2,
+.dashboard-shell .rounded-full.px-3,
+.dashboard-shell span[class*="rounded-full"] {
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dashboard-shell .grid.gap-4,
+.dashboard-shell .grid.gap-6,
+.dashboard-shell .grid.gap-5 {
+  gap: 14px;
+}
+
+.dashboard-shell .max-w-6xl,
+.dashboard-shell .max-w-7xl {
+  max-width: 1680px !important;
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell > .relative > .min-w-0.flex-1 > section,
+  .dashboard-shell > .relative > .min-w-0.flex-1 > * > section {
+    padding: 18px 13px !important;
+  }
+
+  .dashboard-shell section > div:first-child:not(.card):not(.kpi) {
+    flex-direction: column;
+  }
+}
