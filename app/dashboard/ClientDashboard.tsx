@@ -134,6 +134,7 @@ type DashboardView =
   | "strategy"
   | "day"
   | "behavior"
+  | "ai"
   | "news"
   | "opportunities"
   | "setup"
@@ -144,8 +145,8 @@ type DashboardView =
   | "profile"
   | "setup-edit";
 
-type DashboardSection = "overview" | "performance" | "strategy" | "day" | "behavior" | "ai-summary";
-type DashboardNavId = DashboardView | DashboardSection | "setups";
+type DashboardSection = "overview";
+type DashboardNavId = DashboardView | "setups";
 
 type ParticipantType = "FII" | "DII" | "Client" | "Pro";
 type ParticipantFlow = {
@@ -2732,32 +2733,6 @@ export default function ClientDashboard({
     }
 
     setActiveSection("overview");
-    const sectionIds: DashboardSection[] = [
-      "overview",
-      "performance",
-      "strategy",
-      "day",
-      "behavior",
-      "ai-summary"
-    ];
-    const sections = sectionIds
-      .map((id) => document.getElementById(id))
-      .filter((section): section is HTMLElement => Boolean(section));
-    if (!sections.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id as DashboardSection);
-          }
-        });
-      },
-      { rootMargin: "-20% 0px -65% 0px", threshold: 0.1 }
-    );
-
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
   }, [view]);
 
   useEffect(() => {
@@ -3168,6 +3143,56 @@ export default function ClientDashboard({
     return [...grouped.values()].sort((a, b) => b.count - a.count);
   }, [derived]);
   const topLearning = learningStats[0] ?? null;
+
+  const dailyPerformance = useMemo(() => {
+    const map = new Map<string, { date: string; trades: number; totalPl: number; wins: number }>();
+    derived.forEach((trade) => {
+      const current = map.get(trade.date) ?? { date: trade.date, trades: 0, totalPl: 0, wins: 0 };
+      current.trades += 1;
+      current.totalPl += trade.pl;
+      if (trade.pl > 0) current.wins += 1;
+      map.set(trade.date, current);
+    });
+    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }, [derived]);
+
+  const selectedMonthInfo = useMemo(() => {
+    const anchor = dailyPerformance[dailyPerformance.length - 1]?.date ?? new Date().toISOString().slice(0, 10);
+    const [yearText, monthText] = anchor.split("-");
+    const year = Number(yearText);
+    const monthIndex = Number(monthText) - 1;
+    const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(
+      new Date(year, monthIndex, 1)
+    );
+    const dayCount = new Date(year, monthIndex + 1, 0).getDate();
+    const firstDay = new Date(year, monthIndex, 1).getDay();
+    const mondayOffset = (firstDay + 6) % 7;
+    const byDay = new Map(dailyPerformance.map((row) => [Number(row.date.slice(8, 10)), row]));
+    const cells = Array.from({ length: Math.ceil((mondayOffset + dayCount) / 7) * 7 }, (_, index) => {
+      const dayNumber = index - mondayOffset + 1;
+      if (dayNumber < 1 || dayNumber > dayCount) {
+        return { dayNumber: null as number | null, row: null as (typeof dailyPerformance)[number] | null };
+      }
+      return { dayNumber, row: byDay.get(dayNumber) ?? null };
+    });
+    return { monthLabel, cells };
+  }, [dailyPerformance]);
+
+  const bestCalendarDay = dailyPerformance.length
+    ? [...dailyPerformance].sort((a, b) => b.totalPl - a.totalPl)[0]
+    : null;
+  const worstCalendarDay = dailyPerformance.length
+    ? [...dailyPerformance].sort((a, b) => a.totalPl - b.totalPl)[0]
+    : null;
+
+  const behaviorQualityRows = [
+    { label: "Followed plan", value: Math.max(0, safeRiskStats.safe.count), tone: "good" },
+    { label: "Exited early", value: earlyExitCount, tone: "neutral" },
+    { label: "Low R:R trades", value: lowRRCount, tone: "bad" },
+    { label: "Stop hits", value: stopHits, tone: "bad" },
+    { label: "Target hits", value: targetHits, tone: "good" }
+  ];
+  const maxBehaviorQuality = Math.max(1, ...behaviorQualityRows.map((row) => row.value));
 
   const aiSummary = useMemo(() => {
     const performance: string[] = [];
@@ -3694,14 +3719,7 @@ export default function ClientDashboard({
     setTimeout(() => setJournalSummaryStatus(""), 2200);
   }
 
-  const sectionNavIds: DashboardSection[] = [
-    "overview",
-    "performance",
-    "strategy",
-    "day",
-    "behavior",
-    "ai-summary"
-  ];
+  const sectionNavIds: DashboardSection[] = ["overview"];
 
   const handleSectionNav = (id: DashboardSection) => {
     setActiveSection(id);
@@ -3709,7 +3727,7 @@ export default function ClientDashboard({
     if (!target) return;
     const targetTop = target.getBoundingClientRect().top + window.scrollY - 110;
     window.scrollTo({ top: Math.max(targetTop, 0), behavior: "smooth" });
-    window.history.replaceState(null, "", `/dashboard#${id}`);
+    window.history.replaceState(null, "", "/dashboard");
   };
 
   function downloadCsv(csv: string, filename: string) {
@@ -5042,19 +5060,19 @@ export default function ClientDashboard({
     {
       label: "Workspace",
       items: [
-        { label: "Overview", href: "/dashboard#overview", id: "overview" },
+        { label: "Overview", href: "/dashboard", id: "overview" },
         { label: "Trade journal", href: "/dashboard/journal", id: "journal" },
-        { label: "Day-wise", href: "/dashboard#day", id: "day" },
-        { label: "Performance", href: "/dashboard#performance", id: "performance" },
-        { label: "Strategies", href: "/dashboard#strategy", id: "strategy" },
+        { label: "Day-wise", href: "/dashboard/day", id: "day" },
+        { label: "Performance", href: "/dashboard/performance", id: "performance" },
+        { label: "Strategies", href: "/dashboard/strategies", id: "strategy" },
         { label: "Setups", href: "/dashboard/setup", id: "setups" },
-        { label: "Behavior", href: "/dashboard#behavior", id: "behavior" }
+        { label: "Behavior", href: "/dashboard/behavior", id: "behavior" }
       ]
     },
     {
       label: "Insights",
       items: [
-        { label: "AI summary", href: "/dashboard#ai-summary", id: "ai-summary" },
+        { label: "AI summary", href: "/dashboard/ai", id: "ai" },
         { label: "Market news", href: "/dashboard/news", id: "news" },
         { label: "Opportunities", href: "/dashboard/opportunities", id: "opportunities" },
         { label: "Instruments", href: "/dashboard/instruments", id: "instruments" },
@@ -5169,7 +5187,17 @@ export default function ClientDashboard({
                   ? "Market news"
                   : view === "opportunities"
                     ? "Opportunities"
-                    : "Overview";
+                    : view === "ai"
+                      ? "AI summary"
+                      : view === "day"
+                        ? "Day-wise"
+                        : view === "performance"
+                          ? "Performance"
+                          : view === "strategy"
+                            ? "Strategies"
+                            : view === "behavior"
+                              ? "Behavior"
+                              : "Overview";
 
   const profileInitial =
     session?.user?.email?.charAt(0).toUpperCase() ?? "U";
@@ -5213,7 +5241,7 @@ export default function ClientDashboard({
               <span>1to2 Trading Journal</span>
             </button>
           ) : (
-            <Link href="/dashboard#overview" className="flex h-[68px] items-center gap-2 border-b border-[#e1e7f0] px-5 text-base font-extrabold tracking-[-0.03em] text-[#132342] dark:border-white/10 dark:text-white">
+            <Link href="/dashboard" className="flex h-[68px] items-center gap-2 border-b border-[#e1e7f0] px-5 text-base font-extrabold tracking-[-0.03em] text-[#132342] dark:border-white/10 dark:text-white">
               <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#e4efff] text-[#1767e8]">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M4 17h4v-5H4zm6 0h4V8h-4zm6 0h4V4h-4z" />
@@ -5287,7 +5315,7 @@ export default function ClientDashboard({
                   </button>
                 ) : (
                   <Link
-                    href="/dashboard#overview"
+                    href="/dashboard"
                     className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                   >
                     Home
@@ -5644,7 +5672,6 @@ export default function ClientDashboard({
           </header>
 
           {view === "overview" && (
-            <>
             <section
               id="overview"
               className="mx-auto max-w-[1680px] space-y-4 px-7 py-6 scroll-mt-24"
@@ -5817,8 +5844,20 @@ export default function ClientDashboard({
                   </table>
                 </div>
               </div>
+            </section>
+          )}
 
-            <div id="ai-summary" className="card scroll-mt-24">
+          {view === "ai" && (
+            <section
+              id="ai-summary"
+              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
+            >
+              <div>
+                <h2 className="section-title">AI summary</h2>
+                <p className="section-lead">What you did right, what went wrong, and the learning to carry forward.</p>
+              </div>
+
+            <div className="card scroll-mt-24">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -5962,408 +6001,74 @@ export default function ClientDashboard({
             </div>
               </section>
 
-              <section
-                id="performance"
-                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
-              >
-            <div>
-              <h2 className="section-title">Performance</h2>
-              <p className="section-lead">
-                Daily, weekly, and monthly rhythm of P&L.
-              </p>
-            </div>
+          )}
 
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="card">
-                <h3 className="text-sm text-muted">Daily P/L</h3>
-                <div className="mt-4">
-                  <BarList rows={dayBreakdown} formatValue={signedMoney0.format} />
+          {view === "performance" && (
+            <section
+              id="performance"
+              className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="section-title"><span className="pagesymbol">↗</span> Performance analytics</h2>
+                  <p className="section-lead">Understand your edge by strategy, time, instrument and risk.</p>
                 </div>
-              </div>
-              <div className="card">
-                <h3 className="text-sm text-muted">Weekly P/L</h3>
-                <div className="mt-4">
-                  <BarList rows={weekBreakdown} formatValue={signedMoney0.format} />
-                </div>
-              </div>
-              <div className="card">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm text-muted">Monthly P/L</h3>
-                  <button
-                    type="button"
-                    onClick={handleShareMonthlyPnl}
-                    className="rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
-                  >
-                    Share
-                  </button>
-                </div>
-                <div className="mt-4">
-                  <BarList rows={monthBreakdown} formatValue={signedMoney0.format} />
-                </div>
-                {shareLink ? (
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={shareLink}
-                      className="w-full rounded-lg border border-white/10 bg-ink px-3 py-1.5 text-[11px] text-muted"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!shareLink) return;
-                        await navigator.clipboard.writeText(shareLink);
-                        setShareStatus("Share link copied.");
-                        setTimeout(() => setShareStatus(""), 1800);
-                      }}
-                      className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                ) : null}
-                {shareStatus ? (
-                  <div className="mt-2 text-[11px] text-muted">{shareStatus}</div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="card">
-                <h3 className="text-lg font-semibold">Equity curve + drawdown</h3>
-                <div className="mt-4 rounded-xl border border-white/5 bg-elevate p-4">
-                  <Sparkline
-                    data={summary.equityCurve.map((point) => point.equity)}
-                  />
-                </div>
-                <div className="mt-4 rounded-xl border border-white/5 bg-elevate p-4">
-                  <Sparkline
-                    data={summary.drawdownSeries}
-                    stroke="#EF4444"
-                    fill="rgba(239, 68, 68, 0.15)"
-                  />
-                </div>
+                <button className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white">Export report</button>
               </div>
 
-              <div className="card">
-                <h3 className="text-lg font-semibold">Monthly win rate</h3>
-                <div className="mt-4 space-y-3 text-sm">
-                  {monthWinRate.map((row) => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-muted">{row.label}</span>
-                      <span>{formatPercent(row.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-              </section>
-
-              <section
-                id="strategy"
-                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
-              >
-            <div>
-              <h2 className="section-title">Strategy analysis</h2>
-              <p className="section-lead">
-                Spot your strongest and weakest playbooks.
-              </p>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="card">
-                <h3 className="text-sm text-muted">Strategy-wise performance</h3>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full text-left text-xs">
-                    <thead className="text-muted">
-                      <tr>
-                        <th className="pb-2">Strategy</th>
-                        <th className="pb-2">Trades</th>
-                        <th className="pb-2">Win%</th>
-                        <th className="pb-2">Net P/L</th>
-                        <th className="pb-2">Avg R:R</th>
-                        <th className="pb-2">Expectancy</th>
-                        <th className="pb-2">Profit factor</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {strategyStats.map((row) => (
-                        <tr key={row.name} className="border-t border-white/5">
-                          <td className="py-2 text-muted">{row.name}</td>
-                          <td className="py-2">{row.trades}</td>
-                          <td className="py-2">{formatPercent(row.winRate)}</td>
-                          <td
-                            className={`py-2 ${
-                              row.totalPl >= 0 ? "text-positive" : "text-negative"
-                            }`}
-                          >
-                            {signedMoney2.format(row.totalPl)}
-                          </td>
-                          <td className="py-2 text-muted">
-                            {row.avgRR ? row.avgRR.toFixed(2) : "—"}
-                          </td>
-                          <td className="py-2 text-muted">
-                            {row.expectancyR ? `${row.expectancyR.toFixed(2)}R` : "—"}
-                          </td>
-                          <td className="py-2 text-muted">
-                            {row.profitFactor ? row.profitFactor.toFixed(2) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="grid gap-4 lg:grid-cols-5">
+                <div className="kpi"><span className="text-xs font-bold text-muted">Total trades</span><strong className="mt-3 block text-2xl">{summary.totalTrades}</strong><span className="text-[11px] text-muted">Selected period</span></div>
+                <div className="kpi"><span className="text-xs font-bold text-muted">Win rate</span><strong className="mt-3 block text-2xl">{formatPercent(summary.winRate)}</strong><span className="text-[11px] text-muted">{summary.wins} wins / {summary.losses} losses</span></div>
+                <div className="kpi"><span className="text-xs font-bold text-muted">Profit factor</span><strong className="mt-3 block text-2xl">{profitFactorLabel}</strong><span className="text-[11px] text-muted">Gross profit + gross loss</span></div>
+                <div className="kpi"><span className="text-xs font-bold text-muted">Avg R multiple</span><strong className="mt-3 block text-2xl text-positive">{expectancyLabel}</strong><span className="text-[11px] text-muted">Per trade</span></div>
+                <div className="kpi"><span className="text-xs font-bold text-muted">Largest drawdown</span><strong className="mt-3 block text-2xl text-negative">{signedMoney0.format(summary.maxDrawdown)}</strong><span className="text-[11px] text-muted">Peak-to-trough</span></div>
               </div>
 
-              <div className="space-y-6">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
                 <div className="card">
-                  <h3 className="text-sm text-muted">Best & worst strategy</h3>
-                  <div className="mt-4 space-y-3 text-sm">
-                    {bestStrategy ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">Best</span>
-                        <span className="text-positive">
-                          {bestStrategy.name} · {signedMoney2.format(bestStrategy.totalPl)}
-                        </span>
-                      </div>
-                    ) : null}
-                    {worstStrategy ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">Worst</span>
-                        <span className="text-negative">
-                          {worstStrategy.name} · {signedMoney2.format(worstStrategy.totalPl)}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
+                  <div className="mb-4 flex items-center justify-between"><div><h3 className="text-sm font-extrabold">Cumulative P&amp;L</h3><p className="text-[11px] text-muted">Equity curve · daily net results</p></div><div className="flex gap-2 text-[11px] font-bold text-[#52627d]"><span className="rounded-lg border border-[#e1e7f0] px-3 py-1.5">1W</span><span className="rounded-lg bg-[#e1efff] px-3 py-1.5 text-[#1767e8]">1M</span><span className="rounded-lg border border-[#e1e7f0] px-3 py-1.5">3M</span><span className="rounded-lg border border-[#e1e7f0] px-3 py-1.5">All</span></div></div>
+                  <Sparkline data={summary.equityCurve.map((point) => point.equity)} />
                 </div>
-
                 <div className="card">
-                  <h3 className="text-sm text-muted">Instrument-wise performance</h3>
-                  <div className="mt-4 space-y-2 text-xs">
-                    {instrumentStats.slice(0, 6).map((row) => (
-                      <div key={row.name} className="flex items-center justify-between">
-                        <span className="text-muted">{row.name}</span>
-                        <span className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>
-                          {signedMoney2.format(row.totalPl)}
-                        </span>
-                      </div>
+                  <h3 className="text-sm font-extrabold">P&amp;L distribution</h3>
+                  <div className="mt-5 space-y-4 text-xs">
+                    {[{ label: "Winners", count: summary.wins, color: "#07966c" }, { label: "Losers", count: summary.losses, color: "#df4747" }, { label: "Breakeven", count: summary.breakeven, color: "#1767e8" }].map((row) => (
+                      <div key={row.label} className="grid grid-cols-[80px_1fr_70px] items-center gap-3"><span className="text-muted">{row.label}</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className="block h-2 rounded-full" style={{ width: `${summary.totalTrades ? Math.max(8, (row.count / summary.totalTrades) * 100) : 0}%`, backgroundColor: row.color }} /></span><b>{row.count} trades</b></div>
                     ))}
                   </div>
-                </div>
-              </div>
-            </div>
-              </section>
-
-              <section
-                id="day"
-                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
-              >
-            <div>
-              <h2 className="section-title">Day-wise analysis</h2>
-              <p className="section-lead">
-                Identify which days consistently perform.
-              </p>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="card">
-                <h3 className="text-sm text-muted">P/L by day</h3>
-                <div className="mt-4 space-y-2 text-sm">
-                  {dayStats.map((row) => (
-                    <div key={row.day} className="flex items-center justify-between">
-                      <span className="text-muted">{row.day}</span>
-                      <span className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>
-                        {signedMoney2.format(row.totalPl)}
-                      </span>
-                    </div>
-                  ))}
+                  <div className="mt-6 border-t border-[#e1e7f0] pt-4 text-xs"><div className="flex justify-between"><span className="text-muted">Avg win</span><b className="text-positive">{money0.format(summary.avgWin)}</b></div><div className="mt-3 flex justify-between"><span className="text-muted">Avg loss</span><b className="text-negative">-{money0.format(summary.avgLoss).replace(/^[-+]/, "")}</b></div></div>
                 </div>
               </div>
 
-              <div className="card">
-                <h3 className="text-sm text-muted">Win rate by day</h3>
-                <div className="mt-4 space-y-2 text-sm">
-                  {dayStats.map((row) => (
-                    <div key={row.day} className="flex items-center justify-between">
-                      <span className="text-muted">{row.day}</span>
-                      <span>{formatPercent(row.winRate)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 space-y-2 text-xs text-muted">
-                  {bestDay ? (
-                    <div>Best day: {bestDay.day}</div>
-                  ) : null}
-                  {worstDay ? (
-                    <div>Worst day: {worstDay.day}</div>
-                  ) : null}
-                </div>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="card"><div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Performance by strategy</h3><span className="rounded-lg bg-[#f1f5fb] px-3 py-1.5 text-[11px] font-bold text-muted">{summary.totalTrades} trades</span></div><div className="space-y-3 text-xs">{strategyStats.slice(0, 5).map((row) => <div key={row.name} className="grid grid-cols-[120px_1fr_82px] items-center gap-3"><span className="text-muted">{row.name}</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className={`block h-2 rounded-full ${row.totalPl >= 0 ? "bg-[#07966c]" : "bg-[#df4747]"}`} style={{ width: `${Math.max(10, Math.min(100, Math.abs(row.totalPl) / Math.max(1, Math.abs(bestStrategy?.totalPl ?? row.totalPl)) * 100))}%` }} /></span><b className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>{signedMoney0.format(row.totalPl)}</b></div>)}</div></div>
+                <div className="card"><h3 className="text-sm font-extrabold">Risk and execution</h3><div className="mt-5 space-y-3 text-xs"><div className="grid grid-cols-[120px_1fr_70px] items-center gap-3"><span className="text-muted">Within risk rule</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className="block h-2 rounded-full bg-[#07966c]" style={{ width: `${summary.totalTrades ? (safeRiskStats.safe.count / summary.totalTrades) * 100 : 0}%` }} /></span><b>{safeRiskStats.safe.count} trades</b></div><div className="grid grid-cols-[120px_1fr_70px] items-center gap-3"><span className="text-muted">Exceeded risk</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className="block h-2 rounded-full bg-[#df4747]" style={{ width: `${summary.totalTrades ? (safeRiskStats.risky.count / summary.totalTrades) * 100 : 0}%` }} /></span><b>{safeRiskStats.risky.count} trades</b></div></div><p className="mt-5 rounded-lg bg-[#f5f8fc] px-4 py-3 text-xs text-muted">Compare results after brokerage and taxes. Use consistent net P&amp;L values for reliable expectancy.</p></div>
               </div>
-            </div>
-              </section>
-
-              <section
-                id="behavior"
-                className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24"
-              >
-            <div>
-              <h2 className="section-title">Behavior & risk insights</h2>
-              <p className="section-lead">
-                Detect patterns that impact discipline and expectancy.
-              </p>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-              <div className="card">
-                <h3 className="text-sm text-muted">Exit reasons</h3>
-                <div className="mt-4 space-y-2 text-sm">
-                  {exitReasons.map((row) => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-muted">{row.label}</span>
-                      <span>{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="text-sm text-muted">Psychology tracking</h3>
-                {!hasPsychologyData && (
-                  <div className="mt-4 text-sm text-muted">
-                    Tag emotions and mindset in trades to unlock insights.
-                  </div>
-                )}
-                {hasPsychologyData && (
-                  <div className="mt-4 space-y-4 text-sm">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Emotion tags
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {emotionStats
-                          .filter((row) => row.label !== "Unspecified")
-                          .slice(0, 3)
-                          .map((row) => (
-                            <div
-                              key={row.label}
-                              className="flex items-center justify-between"
-                            >
-                              <span className="text-muted">{row.label}</span>
-                              <span>
-                                {formatPercent(row.winRate)} · {row.trades}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Mindset state
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {mindsetStats
-                          .filter((row) => row.label !== "Unspecified")
-                          .slice(0, 3)
-                          .map((row) => (
-                            <div
-                              key={row.label}
-                              className="flex items-center justify-between"
-                            >
-                              <span className="text-muted">{row.label}</span>
-                              <span>
-                                {formatPercent(row.winRate)} · {row.trades}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Emotion–behavior alignment
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {alignmentStats.slice(0, 3).map((row) => (
-                          <div
-                            key={row.label}
-                            className="flex items-center justify-between"
-                          >
-                            <span className="text-muted">{row.label}</span>
-                            <span>{row.count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted">
-                        Safe vs risky split
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted">Safe</span>
-                          <span>
-                            {formatPercent(safeRiskStats.safe.winRate)} ·{" "}
-                            {signedMoney2.format(safeRiskStats.safe.totalPl)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted">Risky</span>
-                          <span>
-                            {formatPercent(safeRiskStats.risky.winRate)} ·{" "}
-                            {signedMoney2.format(safeRiskStats.risky.totalPl)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="card">
-                <h3 className="text-sm text-muted">Risk flags</h3>
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Low R:R trades (&lt; 1)</span>
-                    <span className="text-negative">{lowRRCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Early exits</span>
-                    <span className="text-negative">{earlyExitCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Stop hits</span>
-                    <span>{stopHits}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Target hits</span>
-                    <span>{targetHits}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="text-sm text-muted">Overtrading days</h3>
-                <div className="mt-4 space-y-2 text-sm">
-                  {overtradeList.length === 0 && (
-                    <div className="text-muted">No spikes yet</div>
-                  )}
-                  {overtradeList.map((row) => (
-                    <div
-                      key={`${row.date}-${row.accountName}`}
-                      className="flex items-center justify-between gap-3"
-                    >
-                      <span className="text-muted">
-                        {row.date} · {row.accountName}
-                      </span>
-                      <span className="text-negative">
-                        {row.count}/{row.limit} trades
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
             </section>
-            </>
+          )}
+
+          {view === "strategy" && (
+            <section id="strategy" className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="section-title"><span className="pagesymbol">⌘</span> Strategies</h2><p className="section-lead">Compare setups using the same rules and a consistent sample size.</p></div><Link href="/dashboard/setup" className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white">+ New strategy</Link></div>
+              <div className="grid gap-4 lg:grid-cols-5"><div className="kpi"><span className="text-xs font-bold text-muted">Active strategies</span><strong className="mt-3 block text-2xl">{strategyStats.length}</strong><span className="text-[11px] text-muted">{strategies.length} saved</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Best expectancy</span><strong className="mt-3 block text-2xl text-positive">{bestStrategy?.expectancyR ? `${bestStrategy.expectancyR.toFixed(2)}R` : "—"}</strong><span className="text-[11px] text-muted">{bestStrategy?.name ?? "No setup yet"}</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Most used</span><strong className="mt-3 block text-2xl">{strategyStats[0]?.name ?? "—"}</strong><span className="text-[11px] text-muted">{strategyStats[0]?.trades ?? 0} trades</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Needs review</span><strong className="mt-3 block text-2xl text-negative">{strategyStats.filter((row) => row.totalPl < 0).length} strategy</strong><span className="text-[11px] text-muted">Negative expectancy</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Rule adherence</span><strong className="mt-3 block text-2xl">{formatPercent(safeRiskStats.safe.count / Math.max(1, summary.totalTrades))}</strong><span className="text-[11px] text-muted">Across all tagged trades</span></div></div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]"><div className="card space-y-4"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold">Strategy performance</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">Sort: Expectancy</span></div>{strategyStats.slice(0, 4).map((row) => <div key={row.name} className="rounded-xl border border-[#e1e7f0] p-4"><div className="flex items-center justify-between"><h4 className="font-extrabold text-[#132342]">{row.name}</h4><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${row.totalPl >= 0 ? "bg-[#e5f7f0] text-[#07966c]" : "bg-[#fff0ef] text-[#df4747]"}`}>{row.totalPl >= 0 ? "Positive edge" : "Needs review"}</span></div><p className="mt-3 text-sm text-muted">{strategies.find((item) => item.name === row.name)?.rules || "Rules not written yet."}</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-lg border border-[#e1e7f0] p-3"><span className="text-[11px] text-muted">Trades</span><b className="block text-lg">{row.trades}</b></div><div className="rounded-lg border border-[#e1e7f0] p-3"><span className="text-[11px] text-muted">Win rate</span><b className="block text-lg">{formatPercent(row.winRate)}</b></div><div className="rounded-lg border border-[#e1e7f0] p-3"><span className="text-[11px] text-muted">Expectancy</span><b className={row.totalPl >= 0 ? "block text-lg text-positive" : "block text-lg text-negative"}>{row.expectancyR ? `${row.expectancyR.toFixed(2)}R` : "—"}</b></div></div></div>)}</div><div className="space-y-4"><div className="card"><h3 className="text-sm font-extrabold">Strategy comparison</h3><div className="mt-5 space-y-4 text-xs">{strategyStats.slice(0, 6).map((row) => <div key={row.name} className="grid grid-cols-[120px_1fr_64px] items-center gap-3"><span className="text-muted">{row.name}</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className={`block h-2 rounded-full ${row.totalPl >= 0 ? "bg-[#07966c]" : "bg-[#df4747]"}`} style={{ width: `${Math.max(10, Math.min(100, Math.abs(row.totalPl) / Math.max(1, Math.abs(bestStrategy?.totalPl ?? row.totalPl)) * 100))}%` }} /></span><b className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>{row.expectancyR ? `${row.expectancyR.toFixed(2)}R` : "—"}</b></div>)}</div></div><div className="card"><h3 className="text-sm font-extrabold">Review queue</h3><div className="mt-4 rounded-lg border border-[#f4e5c9] bg-[#fff6e6] p-4 text-xs text-[#75664b]"><b className="text-[#132342]">{worstStrategy?.name ?? "No strategy"} needs review</b><p className="mt-1">{worstStrategy ? `${worstStrategy.trades} trades · ${signedMoney0.format(worstStrategy.totalPl)} net result.` : "Add trades to build a queue."}</p></div></div></div></div>
+            </section>
+          )}
+
+          {view === "day" && (
+            <section id="day" className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="section-title"><span className="pagesymbol">▦</span> Day-wise performance</h2><p className="section-lead">Spot your strongest sessions, drawdown days and weekly rhythm.</p></div><div className="flex gap-2"><button className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-xs font-bold">‹</button><span className="rounded-lg border border-[#e1e7f0] px-4 py-2 text-xs font-bold">{selectedMonthInfo.monthLabel}</span><button className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-xs font-bold">›</button></div></div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]"><div className="card"><div className="mb-4 flex items-start justify-between"><div><h3 className="text-sm font-extrabold">{selectedMonthInfo.monthLabel}</h3><p className="text-[11px] text-muted">Daily net P&amp;L · select a day to review trades</p></div><div className="flex gap-2"><span className="rounded-full bg-[#e5f7f0] px-3 py-1 text-[10px] font-bold text-[#07966c]">Profit day</span><span className="rounded-full bg-[#fff0ef] px-3 py-1 text-[10px] font-bold text-[#df4747]">Loss day</span></div></div><div className="grid grid-cols-7 gap-2 text-xs"><div className="text-center font-bold text-muted">Mon</div><div className="text-center font-bold text-muted">Tue</div><div className="text-center font-bold text-muted">Wed</div><div className="text-center font-bold text-muted">Thu</div><div className="text-center font-bold text-muted">Fri</div><div className="text-center font-bold text-muted">Sat</div><div className="text-center font-bold text-muted">Sun</div>{selectedMonthInfo.cells.map((cell, index) => <div key={index} className={`min-h-[66px] rounded-lg border p-2 ${cell.row ? cell.row.totalPl >= 0 ? "border-[#cbeee2] bg-[#edf9f4]" : "border-[#ffd9d6] bg-[#fff3f1]" : "border-[#e1e7f0] bg-white"}`}><span className="text-[11px] text-muted">{cell.dayNumber ?? ""}</span>{cell.row ? <b className={`mt-3 block ${cell.row.totalPl >= 0 ? "text-positive" : "text-negative"}`}>{signedMoney0.format(cell.row.totalPl)}</b> : null}</div>)}</div></div><div className="space-y-4"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"><div className="card"><span className="text-xs font-bold text-muted">Best day</span><strong className="mt-3 block text-2xl text-positive">{bestCalendarDay ? signedMoney0.format(bestCalendarDay.totalPl) : "—"}</strong><span className="text-[11px] text-muted">{bestCalendarDay ? `${bestCalendarDay.date} · ${bestCalendarDay.trades} trades` : "No trades"}</span></div><div className="card"><span className="text-xs font-bold text-muted">Worst day</span><strong className="mt-3 block text-2xl text-negative">{worstCalendarDay ? signedMoney0.format(worstCalendarDay.totalPl) : "—"}</strong><span className="text-[11px] text-muted">{worstCalendarDay ? `${worstCalendarDay.date} · ${worstCalendarDay.trades} trades` : "No trades"}</span></div></div><div className="card"><h3 className="text-sm font-extrabold">Weekday pattern</h3><div className="mt-5 space-y-3 text-xs">{dayStats.map((row) => <div key={row.day} className="grid grid-cols-[84px_1fr_70px] items-center gap-3"><span className="text-muted">{row.day}</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className={`block h-2 rounded-full ${row.totalPl >= 0 ? "bg-[#07966c]" : "bg-[#df4747]"}`} style={{ width: `${Math.max(8, Math.min(100, Math.abs(row.totalPl) / Math.max(1, Math.abs(bestDay?.totalPl ?? row.totalPl)) * 100))}%` }} /></span><b className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>{signedMoney0.format(row.totalPl)}</b></div>)}</div></div><div className="card"><h3 className="text-sm font-extrabold">Session note</h3><p className="mt-4 rounded-lg bg-[#f5f8fc] px-4 py-3 text-xs text-muted">Your best results came from the strongest green sessions. Review loss days for size, timing and rule breaks.</p></div></div></div>
+              <div className="card"><div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Daily summary</h3><button className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold">Download</button></div><div className="overflow-auto"><table><thead><tr><th>Date</th><th>Trades</th><th>Wins</th><th>Win rate</th><th>P&amp;L</th></tr></thead><tbody>{dailyPerformance.map((row) => <tr key={row.date}><td>{row.date}</td><td>{row.trades}</td><td>{row.wins}</td><td>{formatPercent(row.trades ? row.wins / row.trades : 0)}</td><td className={row.totalPl >= 0 ? "text-positive" : "text-negative"}>{signedMoney0.format(row.totalPl)}</td></tr>)}</tbody></table></div></div>
+            </section>
+          )}
+
+          {view === "behavior" && (
+            <section id="behavior" className="mx-auto max-w-6xl space-y-6 px-6 py-8 scroll-mt-24">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="section-title"><span className="pagesymbol">◎</span> Behavior &amp; psychology</h2><p className="section-lead">Review the habits that shape your execution, beyond the chart.</p></div><button className="rounded-lg border border-[#e1e7f0] px-4 py-2 text-xs font-bold">Last 30 days</button></div>
+              <div className="grid gap-4 lg:grid-cols-5"><div className="kpi"><span className="text-xs font-bold text-muted">Plan adherence</span><strong className="mt-3 block text-2xl">{formatPercent(safeRiskStats.safe.count / Math.max(1, summary.totalTrades))}</strong><span className="text-[11px] text-muted">{safeRiskStats.safe.count} of {summary.totalTrades} trades</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Emotional trades</span><strong className="mt-3 block text-2xl text-negative">{earlyExitCount + lowRRCount}</strong><span className="text-[11px] text-muted">Execution flags</span></div><div className="kpi"><span className="text-xs font-bold text-muted">After a loss</span><strong className="mt-3 block text-2xl text-positive">{expectancyLabel}</strong><span className="text-[11px] text-muted">Current expectancy</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Overtrading days</span><strong className="mt-3 block text-2xl text-negative">{overtradeList.length}</strong><span className="text-[11px] text-muted">More than daily limit</span></div><div className="kpi"><span className="text-xs font-bold text-muted">Best state</span><strong className="mt-3 block text-2xl">{emotionStats[0]?.label ?? "Patient"}</strong><span className="text-[11px] text-muted">Highest rule adherence</span></div></div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]"><div className="card"><h3 className="text-sm font-extrabold">Execution quality by behavior</h3><p className="text-[11px] text-muted">Tag each trade after exit</p><div className="mt-5 space-y-4 text-xs">{behaviorQualityRows.map((row) => <div key={row.label} className="grid grid-cols-[120px_1fr_70px] items-center gap-3"><span className="text-muted">{row.label}</span><span className="h-2 rounded-full bg-[#edf1f7]"><span className={`block h-2 rounded-full ${row.tone === "good" ? "bg-[#07966c]" : row.tone === "bad" ? "bg-[#df4747]" : "bg-[#1767e8]"}`} style={{ width: `${Math.max(8, (row.value / maxBehaviorQuality) * 100)}%` }} /></span><b>{row.value} trades</b></div>)}</div></div><div className="space-y-4"><div className="card"><h3 className="text-sm font-extrabold">Emotion tags</h3><div className="mt-4 flex flex-wrap gap-2">{emotionStats.filter((row) => row.label !== "Unspecified").slice(0, 5).map((row) => <span key={row.label} className="rounded-full bg-[#e9f2ff] px-3 py-1 text-[10px] font-bold text-[#1767e8]">{row.label} · {row.trades}</span>)}{!hasPsychologyData ? <span className="text-xs text-muted">No emotion tags yet.</span> : null}</div><p className="mt-4 rounded-lg bg-[#f5f8fc] px-4 py-3 text-xs text-muted">Compare emotion-tagged entries with your written setup rules.</p></div><div className="card"><h3 className="text-sm font-extrabold">Reflection prompts</h3><ol className="mt-4 space-y-2 text-xs text-muted"><li>1. Did I wait for my setup?</li><li>2. Was the stop fixed before entry?</li><li>3. What will I repeat or change tomorrow?</li></ol></div></div></div>
+            </section>
           )}
 
           {view === "setup" && (
