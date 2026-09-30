@@ -1914,6 +1914,12 @@ function AddTradeForm({
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
+        <input
+          placeholder="Screenshot link (optional)"
+          value={pnlScreenshotUrl}
+          onChange={(event) => setPnlScreenshotUrl(event.target.value)}
+          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
+        />
         <div className="flex h-10 items-center justify-between rounded-lg border border-white/10 bg-ink px-2 text-white">
           <label className="inline-flex cursor-pointer items-center rounded-full border border-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10 whitespace-nowrap">
             Upload SS
@@ -2077,6 +2083,8 @@ export default function ClientDashboard({
     isSupabaseConfigured ? [] : seedTrades
   );
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
+  const [journalFormOpen, setJournalFormOpen] = useState(false);
+  const [selectedJournalTradeId, setSelectedJournalTradeId] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("light");
@@ -2738,6 +2746,8 @@ export default function ClientDashboard({
   useEffect(() => {
     if (view !== "journal") {
       setEditingTrade(null);
+      setJournalFormOpen(false);
+      setSelectedJournalTradeId(null);
     }
   }, [view, loadMarketNews]);
 
@@ -3193,6 +3203,18 @@ export default function ClientDashboard({
     { label: "Target hits", value: targetHits, tone: "good" }
   ];
   const maxBehaviorQuality = Math.max(1, ...behaviorQualityRows.map((row) => row.value));
+
+  const selectedJournalTrade = selectedJournalTradeId
+    ? derived.find((trade) => trade.tradeId === selectedJournalTradeId) ?? null
+    : null;
+  const selectedJournalIndex = selectedJournalTrade
+    ? derived.findIndex((trade) => trade.tradeId === selectedJournalTrade.tradeId)
+    : -1;
+  const previousJournalTrade = selectedJournalIndex > 0 ? derived[selectedJournalIndex - 1] : null;
+  const nextJournalTrade =
+    selectedJournalIndex >= 0 && selectedJournalIndex < derived.length - 1
+      ? derived[selectedJournalIndex + 1]
+      : null;
 
   const aiSummary = useMemo(() => {
     const performance: string[] = [];
@@ -3974,8 +3996,71 @@ export default function ClientDashboard({
     setImportStatus("All trades cleared.");
   }
 
+  async function reloadTradesFromSupabase() {
+    if (!supabase || !session) return null;
+    const { data, error } = await supabase
+      .from("trades")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .is("team_id", null)
+      .order("date", { ascending: false })
+      .order("entry_time", { ascending: false });
+    if (error) return error.message;
+    if (data) setTradeList(data.map((row) => fromSupabaseRow(row)));
+    return null;
+  }
+
+  async function handleJournalAddTrade(trade: Trade) {
+    if (dataSource === "supabase") {
+      if (!supabase) return "Supabase is not configured.";
+      if (!session) return "Please sign in to save trades.";
+      const { error } = await supabase
+        .from("trades")
+        .insert(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id));
+      if (error) {
+        setImportStatus(`Supabase insert failed: ${error.message}`);
+        return `Supabase error: ${error.message}`;
+      }
+      const reloadError = await reloadTradesFromSupabase();
+      if (reloadError) return `Supabase fetch error: ${reloadError}`;
+    } else {
+      setTradeList((prev) => [trade, ...prev]);
+    }
+    setJournalFormOpen(false);
+    setEditingTrade(null);
+    setSelectedJournalTradeId(trade.tradeId);
+    return null;
+  }
+
+  async function handleJournalUpdateTrade(trade: Trade) {
+    if (dataSource === "supabase") {
+      if (!supabase) return "Supabase is not configured.";
+      if (!session) return "Please sign in to save trades.";
+      const { error } = await supabase
+        .from("trades")
+        .update(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id))
+        .eq("user_id", session.user.id)
+        .eq("trade_id", trade.tradeId);
+      if (error) {
+        setImportStatus(`Supabase update failed: ${error.message}`);
+        return `Supabase error: ${error.message}`;
+      }
+      const reloadError = await reloadTradesFromSupabase();
+      if (reloadError) return `Supabase fetch error: ${reloadError}`;
+    } else {
+      setTradeList((prev) =>
+        prev.map((item) => (item.tradeId === trade.tradeId ? trade : item))
+      );
+    }
+    setJournalFormOpen(false);
+    setEditingTrade(null);
+    setSelectedJournalTradeId(trade.tradeId);
+    return null;
+  }
+
   function handleEditTrade(trade: Trade) {
     setEditingTrade(trade);
+    setJournalFormOpen(true);
   }
 
   async function handleDeleteTrades(tradeIds: string[]) {
@@ -7161,446 +7246,113 @@ export default function ClientDashboard({
           )}
 
           {view === "journal" && (
-            <section
-              id="journal"
-              className="mx-auto max-w-6xl space-y-6 px-6 py-8"
-            >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="section-title">Trade journal</h2>
-                <p className="section-lead">
-                  {presetInstrument
-                    ? `Filtered to ${presetInstrument}`
-                    : "Add, edit, and review trades with full context."}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Link
-                  href="/dashboard/journal/nifty"
-                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
-                >
-                  Nifty
-                </Link>
-                <Link
-                  href="/dashboard/journal/bnifty"
-                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
-                >
-                  B.Nifty
-                </Link>
-                <Link
-                  href="/dashboard/journal/sensex"
-                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
-                >
-                  Sensex
-                </Link>
-                <Link
-                  href="/dashboard/journal"
-                  className="rounded-full border border-white/10 px-3 py-1 text-muted hover:text-white"
-                >
-                  All
-                </Link>
-              </div>
-            </div>
-            <AddTradeForm
-              instruments={instruments}
-              strategies={strategies}
-              accounts={accounts}
-              defaultAccountId={defaultTradingAccount?.id}
-              editingTrade={editingTrade}
-              onCancelEdit={() => setEditingTrade(null)}
-              onUploadPnlScreenshot={
-                dataSource === "supabase" ? uploadTradeScreenshot : undefined
-              }
-              onAdd={async (trade) => {
-                if (dataSource === "supabase") {
-                  if (!supabase) return "Supabase is not configured.";
-                  if (!session) return "Please sign in to save trades.";
-                  const { error } = await supabase
-                    .from("trades")
-                    .insert(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id));
-                  if (error) {
-                    setImportStatus(`Supabase insert failed: ${error.message}`);
-                    return `Supabase error: ${error.message}`;
-                  }
-                  const { data, error: fetchError } = await supabase
-                    .from("trades")
-                    .select("*")
-                    .eq("user_id", session.user.id)
-                    .is("team_id", null)
-                    .order("date", { ascending: false })
-                    .order("entry_time", { ascending: false });
-                  if (fetchError) {
-                    setImportStatus(`Supabase fetch failed: ${fetchError.message}`);
-                    return `Supabase fetch error: ${fetchError.message}`;
-                  }
-                  if (data) {
-                    setTradeList(data.map((row) => fromSupabaseRow(row)));
-                  }
-                  return null;
-                }
-                setTradeList((prev) => [trade, ...prev]);
-                return null;
-              }}
-              onUpdate={async (trade) => {
-                if (dataSource === "supabase") {
-                  if (!supabase) return "Supabase is not configured.";
-                  if (!session) return "Please sign in to save trades.";
-                  const { error } = await supabase
-                    .from("trades")
-                    .update(toSupabaseRow(withValidAccountId(trade, accounts), session.user.id))
-                    .eq("user_id", session.user.id)
-                    .eq("trade_id", trade.tradeId);
-                  if (error) {
-                    setImportStatus(`Supabase update failed: ${error.message}`);
-                    return `Supabase error: ${error.message}`;
-                  }
-                  const { data, error: fetchError } = await supabase
-                    .from("trades")
-                    .select("*")
-                    .eq("user_id", session.user.id)
-                    .is("team_id", null)
-                    .order("date", { ascending: false })
-                    .order("entry_time", { ascending: false });
-                  if (fetchError) {
-                    setImportStatus(`Supabase fetch failed: ${fetchError.message}`);
-                    return `Supabase fetch error: ${fetchError.message}`;
-                  }
-                  if (data) {
-                    setTradeList(data.map((row) => fromSupabaseRow(row)));
-                  }
-                  return null;
-                }
-                setTradeList((prev) =>
-                  prev.map((item) =>
-                    item.tradeId === trade.tradeId ? trade : item
-                  )
-                );
-                return null;
-              }}
-            />
-
-            <div className="card">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+            <section id="journal" className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-semibold">Monthly Journal Summary Link</h3>
-                  <p className="text-sm text-muted">
-                    Single share link with date tabs, market snapshot, checklist, motivation quote, and PnL screenshot.
+                  <h2 className="section-title"><span className="pagesymbol">▣</span> Trade journal</h2>
+                  <p className="section-lead">
+                    {selectedJournalTrade
+                      ? "Review your execution notes, chart references and lessons learned."
+                      : "Log every trade with its setup, risk, execution and review."}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="month"
-                    value={journalSummaryMonth}
-                    onChange={(event) => setJournalSummaryMonth(event.target.value)}
-                    className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-xs text-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleGenerateJournalSummaryLink}
-                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:brightness-105"
-                  >
-                    Generate Link
-                  </button>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {selectedJournalTrade ? (
+                    <>
+                      <button type="button" onClick={() => setSelectedJournalTradeId(null)} className="rounded-lg border border-[#e1e7f0] bg-white px-4 py-2 font-bold text-[#425370]">← Back to journal</button>
+                      <button type="button" disabled={!previousJournalTrade} onClick={() => previousJournalTrade && setSelectedJournalTradeId(previousJournalTrade.tradeId)} className="rounded-lg border border-[#e1e7f0] bg-white px-4 py-2 font-bold text-[#425370] disabled:opacity-40">Previous trade</button>
+                      <button type="button" disabled={!nextJournalTrade} onClick={() => nextJournalTrade && setSelectedJournalTradeId(nextJournalTrade.tradeId)} className="rounded-lg border border-[#e1e7f0] bg-white px-4 py-2 font-bold text-[#425370] disabled:opacity-40">Next trade</button>
+                    </>
+                  ) : (
+                    <>
+                      <Link href="/dashboard/journal/nifty" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 font-bold text-[#425370]">Nifty</Link>
+                      <Link href="/dashboard/journal/bnifty" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 font-bold text-[#425370]">B.Nifty</Link>
+                      <Link href="/dashboard/journal/sensex" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 font-bold text-[#425370]">Sensex</Link>
+                      <Link href="/dashboard/journal" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 font-bold text-[#425370]">All</Link>
+                      <button type="button" onClick={handleExportCsv} className="rounded-lg bg-primary px-4 py-2 font-bold text-white">Export CSV</button>
+                    </>
+                  )}
+                  <button type="button" onClick={() => { setEditingTrade(null); setJournalFormOpen(true); }} className="rounded-lg bg-primary px-4 py-2 font-bold text-white">+ Add trade</button>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Daily Pre-Market Checklist (Top Left)
-                  </div>
-                  <div className="grid gap-3 text-xs">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input
-                        type="date"
-                        value={journalDailyDate}
-                        onChange={(event) => setJournalDailyDate(event.target.value)}
-                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      />
-                      <select
-                        value={journalDailyDate}
-                        onChange={(event) => setJournalDailyDate(event.target.value)}
-                        className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      >
-                        {journalMonthDates.length === 0 ? (
-                          <option value="">No saved dates in month</option>
-                        ) : null}
-                        {journalMonthDates.map((date) => (
-                          <option key={date} value={date}>
-                            {date}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      placeholder="Sentiment of market today (Bullish/Bearish/Neutral)"
-                      value={selectedJournalDailyInput.sentimentToday}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          sentimentToday: event.target.value
-                        })
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <input
-                      placeholder="View went right/wrong (Yes/No)"
-                      value={selectedJournalDailyInput.viewOutcome}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          viewOutcome: event.target.value
-                        })
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <input
-                      placeholder="Motivation quote (manual)"
-                      value={selectedJournalDailyInput.motivationQuote ?? ""}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          motivationQuote: event.target.value
-                        })
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <div>
-                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-                        Today&apos;s Observations
+              {selectedJournalTrade ? (
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.95fr)]">
+                  <div className="space-y-4">
+                    <div className="card">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2"><h3 className="text-base font-extrabold text-[#132342]">{selectedJournalTrade.instrument}</h3><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${selectedJournalTrade.pl >= 0 ? "bg-[#e5f7f0] text-[#07966c]" : "bg-[#fff0ef] text-[#df4747]"}`}>{selectedJournalTrade.winLoss}</span></div>
+                          <p className="mt-1 text-xs text-muted">{selectedJournalTrade.date} · {selectedJournalTrade.entryTime}–{selectedJournalTrade.exitTime} · {selectedJournalTrade.strategy} · {selectedJournalTrade.lots ?? 1} lot × {selectedJournalTrade.lotSize ?? selectedJournalTrade.sizeQty} qty</p>
+                        </div>
+                        <button type="button" onClick={() => handleEditTrade(selectedJournalTrade)} className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 text-[11px] font-bold text-[#425370]">Edit trade</button>
                       </div>
-                      <textarea
-                        placeholder="Add observations. Paste links too."
-                        value={selectedJournalDailyInput.observations}
-                        onChange={(event) =>
-                          updateJournalDailyInput(journalDailyDate, {
-                            observations: event.target.value
-                          })
-                        }
-                        rows={2}
-                        className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                        disabled={!journalDailyDate}
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                        {[{ label: "Entry", value: selectedJournalTrade.entryPrice }, { label: "Exit", value: selectedJournalTrade.exitPrice }, { label: "Stop", value: selectedJournalTrade.stopLoss }, { label: "Target", value: selectedJournalTrade.targetPrice }, { label: "Net P&L", value: signedMoney0.format(selectedJournalTrade.pl), tone: selectedJournalTrade.pl >= 0 ? "text-positive" : "text-negative" }, { label: "R:R", value: selectedJournalTrade.rMultiple === null ? "—" : `${selectedJournalTrade.rMultiple.toFixed(1)}R` }].map((item) => (
+                          <div key={item.label} className="rounded-lg border border-[#e1e7f0] bg-white p-3"><span className="text-[11px] text-muted">{item.label}</span><b className={`mt-1 block text-lg ${item.tone ?? "text-[#132342]"}`}>{item.value}</b></div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="card">
+                      <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Chart &amp; execution</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">•••</span></div>
+                      <div className="grid min-h-[225px] place-items-center rounded-xl border border-dashed border-[#cbd7e8] bg-[#fbfdff] p-6 text-center text-sm text-muted">
+                        {selectedJournalTrade.pnlScreenshotUrl ? (
+                          <img src={selectedJournalTrade.pnlScreenshotUrl} alt="Trade screenshot" className="max-h-[360px] rounded-lg object-contain" />
+                        ) : selectedJournalTrade.chartUrl ? (
+                          <a href={selectedJournalTrade.chartUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-[#e1e7f0] bg-white px-4 py-2 text-xs font-bold text-[#425370]">Open chart link</a>
+                        ) : (
+                          <div><div className="text-lg">↝</div><p>Attach chart screenshot or paste a chart link while adding the trade.</p></div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="card">
+                      <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Review notes</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">•••</span></div>
+                      <div className="grid gap-3 md:grid-cols-2"><div><span className="text-[11px] font-bold text-muted">What went well</span><p className="mt-2 rounded-lg bg-[#f5f8fc] p-3 text-xs text-muted">{selectedJournalTrade.remarks || "No entry reason written yet."}</p></div><div><span className="text-[11px] font-bold text-muted">What to improve</span><p className="mt-2 rounded-lg bg-[#f5f8fc] p-3 text-xs text-muted">{selectedJournalTrade.mindsetNotes || "Add review notes after the trade."}</p></div></div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="card"><div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Trade plan</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">•••</span></div><div className="space-y-3 text-xs text-muted"><div>✅ Strategy: {selectedJournalTrade.strategy}</div><div>✅ Exit reason: {selectedJournalTrade.exitReason}</div><div>✅ Trade type: {selectedJournalTrade.tradeType ?? "Unspecified"}</div><div>⬜ Avoided oversized candle</div></div></div>
+                    <div className="card"><div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Psychology tags</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">•••</span></div><div className="flex flex-wrap gap-2"><span className="rounded-full bg-[#e5f7f0] px-3 py-1 text-[10px] font-bold text-[#07966c]">{selectedJournalTrade.emotionalState || "Patient"}</span><span className="rounded-full bg-[#e9f2ff] px-3 py-1 text-[10px] font-bold text-[#1767e8]">{selectedJournalTrade.emotionTag || "Followed plan"}</span></div></div>
+                    <div className="card"><div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold">Learning</h3><span className="rounded-lg border border-[#e1e7f0] px-3 py-2 text-[11px] font-bold text-muted">•••</span></div><p className="rounded-lg bg-[#f5f8fc] p-3 text-xs text-muted">{selectedJournalTrade.learning || "Add one clean lesson from this trade."}</p><p className="mt-3 text-[11px] text-muted">Saved to your journal · {selectedJournalTrade.date}</p></div>
+                  </div>
+                </div>
+              ) : (
+                <TradeJournal
+                  trades={filteredTrades}
+                  currency={currency}
+                  onEdit={handleEditTrade}
+                  onDelete={handleDeleteTrades}
+                  onReview={(trade) => setSelectedJournalTradeId(trade.tradeId)}
+                />
+              )}
+
+              {journalFormOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#132342]/35 px-4 py-8 backdrop-blur-sm">
+                  <div className="max-h-[86vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white shadow-2xl">
+                    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e1e7f0] bg-white px-5 py-4">
+                      <div><h3 className="text-base font-extrabold text-[#132342]">{editingTrade ? "Edit trade" : "Add a trade"}</h3><p className="text-xs text-muted">Record the plan and review it after exit.</p></div>
+                      <button type="button" onClick={() => { setJournalFormOpen(false); setEditingTrade(null); }} className="grid h-8 w-8 place-items-center rounded-lg border border-[#e1e7f0] text-[#425370]">×</button>
+                    </div>
+                    <div className="p-5">
+                      <AddTradeForm
+                        instruments={instruments}
+                        strategies={strategies}
+                        accounts={accounts}
+                        defaultAccountId={defaultTradingAccount?.id}
+                        editingTrade={editingTrade}
+                        onCancelEdit={() => { setEditingTrade(null); setJournalFormOpen(false); }}
+                        onUploadPnlScreenshot={dataSource === "supabase" ? uploadTradeScreenshot : undefined}
+                        onAdd={handleJournalAddTrade}
+                        onUpdate={handleJournalUpdateTrade}
                       />
                     </div>
-                    <input
-                      placeholder="Previous day market (Bullish/Bearish/Neutral)"
-                      value={selectedJournalDailyInput.previousDayMarket}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          previousDayMarket: event.target.value
-                        })
-                      }
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <textarea
-                      placeholder="Extra note (optional)"
-                      value={selectedJournalDailyInput.notes}
-                      onChange={(event) =>
-                        updateJournalDailyInput(journalDailyDate, {
-                          notes: event.target.value
-                        })
-                      }
-                      rows={2}
-                      className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                      disabled={!journalDailyDate}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveChecklistAndSnapshot}
-                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/10 dark:text-white"
-                        disabled={!journalDailyDate}
-                      >
-                        Save
-                      </button>
-                      {checklistSaveStatus ? (
-                        <span className="text-[11px] text-muted">{checklistSaveStatus}</span>
-                      ) : null}
-                    </div>
                   </div>
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Market Snapshot (Manual) (Top Right)
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead className="text-muted">
-                        <tr>
-                          <th className="px-2 py-1 text-left font-semibold">Index</th>
-                          <th className="px-2 py-1 text-right font-semibold">Prev Close</th>
-                          <th className="px-2 py-1 text-right font-semibold">Last Close</th>
-                          <th className="px-2 py-1 text-right font-semibold">Diff</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {marketSnapshotRows.map((row) => (
-                          <tr key={row.label} className="border-t border-white/10">
-                            <td className="px-2 py-1">{row.label}</td>
-                            <td className="px-2 py-1">
-                              <input
-                                type="number"
-                                step="any"
-                                value={row.previous ?? ""}
-                                onChange={(event) =>
-                                  handleMarketSnapshotInput(
-                                    row.label,
-                                    "previous",
-                                    event.target.value
-                                  )
-                                }
-                                className="w-full rounded-md border border-white/15 bg-ink px-2 py-1 text-right text-white"
-                              />
-                            </td>
-                            <td className="px-2 py-1">
-                              <input
-                                type="number"
-                                step="any"
-                                value={row.current ?? ""}
-                                onChange={(event) =>
-                                  handleMarketSnapshotInput(
-                                    row.label,
-                                    "current",
-                                    event.target.value
-                                  )
-                                }
-                                className="w-full rounded-md border border-white/15 bg-ink px-2 py-1 text-right text-white"
-                              />
-                            </td>
-                            <td
-                              className={`px-2 py-1 text-right font-semibold ${
-                                (row.diffPct ?? 0) >= 0 ? "text-positive" : "text-negative"
-                              }`}
-                            >
-                              {row.diffPct === null ? "—" : `${row.diffPct.toFixed(2)}%`}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              {journalSummaryLink ? (
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    readOnly
-                    value={journalSummaryLink}
-                    className="w-full rounded-lg border border-white/10 bg-ink px-3 py-2 text-[11px] text-muted"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!journalSummaryLink) return;
-                      await navigator.clipboard.writeText(journalSummaryLink);
-                      setJournalSummaryStatus("Summary link copied.");
-                      setTimeout(() => setJournalSummaryStatus(""), 1600);
-                    }}
-                    className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
-                  >
-                    Copy
-                  </button>
                 </div>
               ) : null}
-              {journalSummaryStatus ? (
-                <div className="mt-2 text-xs text-muted">{journalSummaryStatus}</div>
-              ) : null}
-            </div>
-
-            <div className="card">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold">CSV import/export</h3>
-                  <p className="text-sm text-muted">
-                    Use the exact headers. Download the template if needed.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <button
-                    className="rounded-full border border-white/10 px-4 py-2"
-                    onClick={handleDownloadTemplate}
-                  >
-                    Download template
-                  </button>
-                  <button
-                    className="rounded-full border border-white/10 px-4 py-2"
-                    onClick={handleExportCsv}
-                  >
-                    Export CSV
-                  </button>
-                  <button
-                    className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
-                    onClick={handleExportDateWiseExcel}
-                  >
-                    Export Excel Tabs
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      handleImportFile(file);
-                    }
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <label className="flex items-center gap-2 text-muted">
-                  <input
-                    type="checkbox"
-                    checked={replaceOnImport}
-                    onChange={(event) => setReplaceOnImport(event.target.checked)}
-                  />
-                  Replace existing trades on import
-                </label>
-                {importStatus && (
-                  <span className="text-muted">{importStatus}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-              <span>
-                {tradeList.length} trades · Data source:{" "}
-                {dataSource === "supabase" ? "Supabase" : "Local"}
-              </span>
-              <div className="flex gap-3">
-                <button
-                  className="rounded-full border border-white/10 px-4 py-2"
-                  onClick={() => setTradeList(seedTrades)}
-                >
-                  Restore demo data
-                </button>
-                <button
-                  className="rounded-full border border-white/10 px-4 py-2"
-                  onClick={handleClearAllTrades}
-                >
-                  Clear all
-                </button>
-                <Link
-                  href="/"
-                  className="rounded-full border border-white/10 px-4 py-2"
-                >
-                  Back to landing
-                </Link>
-              </div>
-            </div>
-
-            <TradeJournal
-              trades={filteredTrades}
-              currency={currency}
-              onEdit={handleEditTrade}
-              onDelete={handleDeleteTrades}
-            />
-          </section>
+            </section>
           )}
         </div>
       </div>

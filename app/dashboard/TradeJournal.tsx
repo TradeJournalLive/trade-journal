@@ -44,12 +44,14 @@ export default function TradeJournal({
   trades,
   currency,
   onEdit,
-  onDelete
+  onDelete,
+  onReview
 }: {
   trades: Trade[];
   currency: "INR" | "USD";
   onEdit?: (trade: Trade) => void;
   onDelete?: (tradeIds: string[]) => void;
+  onReview?: (trade: Trade) => void;
 }) {
   const derived = useMemo(() => deriveTrades(trades), [trades]);
   const instruments = useMemo(
@@ -65,6 +67,7 @@ export default function TradeJournal({
     [derived]
   );
 
+  const [search, setSearch] = useState("");
   const [instrument, setInstrument] = useState("all");
   const [strategy, setStrategy] = useState("all");
   const [market, setMarket] = useState("all");
@@ -100,6 +103,11 @@ export default function TradeJournal({
   );
 
   const filtered = derived.filter((trade) => {
+    const query = search.trim().toLowerCase();
+    if (query) {
+      const haystack = `${trade.instrument} ${trade.strategy} ${trade.market} ${trade.tradeId}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
     if (instrument !== "all" && trade.instrument !== instrument) return false;
     if (strategy !== "all" && trade.strategy !== strategy) return false;
     if (market !== "all" && trade.market !== market) return false;
@@ -145,16 +153,31 @@ export default function TradeJournal({
 
   return (
     <div className="card">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">Trade journal</h3>
-          <p className="text-sm text-muted">
-            Filter by date, instrument, market, or strategy.
-          </p>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <input
+          placeholder="Search instrument or setup..."
+          value={search}
+          className="h-9 min-w-[220px] rounded-lg border border-[#e1e7f0] bg-white px-3 text-[#40516e]"
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <select value={instrument} onChange={(event) => setInstrument(event.target.value)} className="h-9 rounded-lg border border-[#e1e7f0] bg-white px-3 text-[#40516e]">
+          <option value="all">All instruments</option>
+          {instruments.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={strategy} onChange={(event) => setStrategy(event.target.value)} className="h-9 rounded-lg border border-[#e1e7f0] bg-white px-3 text-[#40516e]">
+          <option value="all">All strategies</option>
+          {strategies.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={result} onChange={(event) => setResult(event.target.value)} className="h-9 rounded-lg border border-[#e1e7f0] bg-white px-3 text-[#40516e]">
+          <option value="all">All outcomes</option>
+          <option value="Win">Win</option>
+          <option value="Loss">Loss</option>
+          <option value="BE">Breakeven</option>
+        </select>
         <button
-          className="rounded-full border border-white/10 px-4 py-2 text-xs"
+          className="h-9 rounded-lg border border-[#e1e7f0] bg-white px-3 text-xs font-bold text-[#425370]"
           onClick={() => {
+            setSearch("");
             setInstrument("all");
             setStrategy("all");
             setMarket("all");
@@ -165,408 +188,82 @@ export default function TradeJournal({
             setEndDate("");
           }}
         >
-          Reset filters
+          Reset
         </button>
-      </div>
-
-      <div className="mt-4 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
-        <select
-          value={instrument}
-          onChange={(event) => setInstrument(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All instruments</option>
-          {instruments.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={strategy}
-          onChange={(event) => setStrategy(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All strategies</option>
-          {strategies.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={market}
-          onChange={(event) => setMarket(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All markets</option>
-          {markets.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={direction}
-          onChange={(event) => setDirection(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All sides</option>
-          <option value="Long">Call (Buy)</option>
-          <option value="Short">Put (Buy)</option>
-        </select>
-
-        <select
-          value={result}
-          onChange={(event) => setResult(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All outcomes</option>
-          <option value="Win">Win</option>
-          <option value="Loss">Loss</option>
-          <option value="BE">Breakeven</option>
-        </select>
-
-        <select
-          value={tradeType}
-          onChange={(event) => setTradeType(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        >
-          <option value="all">All trade types</option>
-          <option value="Safe">Safe</option>
-          <option value="Risky">Risky</option>
-          <option value="Unspecified">Unspecified</option>
-        </select>
-
-        <input
-          type="date"
-          value={startDate}
-          onChange={(event) => setStartDate(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
-
-        <input
-          type="date"
-          value={endDate}
-          onChange={(event) => setEndDate(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3 text-muted">
-          <span>{filtered.length} trades</span>
-          {selectedCount > 0 && (
-            <span className="text-primary">{selectedCount} selected</span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-lg bg-[#f1f5fb] px-3 py-2 text-[11px] font-bold text-muted">{filtered.length} trades</span>
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 text-[11px] font-bold text-[#425370]"
             onClick={() => {
               setSelectMode((prev) => !prev);
               setSelectedIds(new Set());
             }}
           >
-            {selectMode ? "Cancel selection" : "Select trades"}
+            {selectMode ? "Cancel" : "Select"}
           </button>
           {selectMode && (
-            <>
-              <button
-                type="button"
-                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-                onClick={toggleSelectAll}
-              >
-                {allSelected ? "Clear all" : "Select all"}
-              </button>
-              <button
-                type="button"
-                className="rounded-full bg-negative/90 px-3 py-1 text-xs font-semibold text-white"
-                onClick={handleDeleteSelected}
-                disabled={selectedCount === 0}
-              >
-                Delete selected
-              </button>
-            </>
+            <button
+              type="button"
+              className="rounded-lg bg-[#df4747] px-3 py-2 text-[11px] font-bold text-white"
+              onClick={handleDeleteSelected}
+              disabled={selectedCount === 0}
+            >
+              Delete selected
+            </button>
           )}
         </div>
       </div>
 
-      <div className="mt-6 space-y-4">
-        {filtered.length === 0 && (
-          <div className="rounded-xl border border-white/10 bg-panel/30 p-6 text-sm text-muted">
-            No trades match the selected filters.
-          </div>
-        )}
-
-        {filtered.map((trade) => (
-          <div
-            key={trade.tradeId}
-            className="rounded-xl border border-white/10 bg-panel/30 p-5"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-                {selectMode && (
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(trade.tradeId)}
-                    onChange={() => toggleSelect(trade.tradeId)}
-                  />
-                )}
-                <span className="text-sm font-semibold text-white">
-                  {trade.tradeId}
-                </span>
-                <span>{trade.date}</span>
-                <span>· {trade.day}</span>
-                <span>· {trade.entryTime} → {trade.exitTime}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {onEdit && (
-                  <button
-                    type="button"
-                    onClick={() => onEdit(trade)}
-                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-                  >
-                    Edit
-                  </button>
-                )}
-                {onDelete && (
-                  <button
-                    type="button"
-                    onClick={() => onDelete([trade.tradeId])}
-                    className="rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-200"
-                  >
-                    Delete
-                  </button>
-                )}
-                {trade.chartUrl ? (
-                  <a
-                    href={trade.chartUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-primary hover:border-primary/60 hover:bg-primary hover:text-white"
-                  >
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-[10px] text-white">
-                      ↗
-                    </span>
-                    Show trade
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] text-muted opacity-60"
-                    disabled
-                  >
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-teal-300 to-blue-400 text-[10px] text-white">
-                      ↗
-                    </span>
-                    Show trade
-                  </button>
-                )}
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
-                  {formatDirectionLabel(trade.direction)}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-muted">
-                  {trade.winLoss}
-                </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                    trade.tradeType === "Safe"
-                      ? "border-positive/40 bg-positive/15 text-positive"
-                      : trade.tradeType === "Risky"
-                      ? "border-negative/40 bg-negative/15 text-negative"
-                      : "border-white/10 bg-white/5 text-muted"
-                  }`}
-                >
-                  {trade.tradeType ?? "Unspecified"}
-                </span>
-                <span
-                  className={`text-sm font-semibold ${
-                    trade.pl >= 0 ? "text-positive" : "text-negative"
-                  }`}
-                >
-                  {signedMoney.format(trade.pl)}
-                </span>
-                {trade.chartUrl && (
-                  <a
-                    href={trade.chartUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-primary hover:underline"
-                  >
-                    Chart
-                  </a>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 text-xs md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  Instrument
-                </div>
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Symbol</span>
-                    <span className="font-semibold">{trade.instrument}</span>
+      <div className="overflow-auto">
+        <table>
+          <thead>
+            <tr>
+              {selectMode ? <th>Select</th> : null}
+              <th>Date</th>
+              <th>Instrument</th>
+              <th>Setup</th>
+              <th>Side</th>
+              <th>Entry</th>
+              <th>Exit</th>
+              <th>Qty</th>
+              <th>P&amp;L ({currency === "INR" ? "₹" : "$"})</th>
+              <th>Risk</th>
+              <th>Result</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((trade) => (
+              <tr key={trade.tradeId}>
+                {selectMode ? (
+                  <td><input type="checkbox" checked={selectedIds.has(trade.tradeId)} onChange={() => toggleSelect(trade.tradeId)} /></td>
+                ) : null}
+                <td>{trade.date}</td>
+                <td className="font-bold text-[#132342]">{trade.instrument}</td>
+                <td>{trade.strategy}</td>
+                <td><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${trade.direction === "Long" ? "bg-[#e5f7f0] text-[#07966c]" : "bg-[#fff0ef] text-[#df4747]"}`}>{trade.direction}</span></td>
+                <td>{trade.entryPrice}</td>
+                <td>{trade.exitPrice}</td>
+                <td>{trade.sizeQty}</td>
+                <td className={trade.pl >= 0 ? "text-positive" : "text-negative"}>{signedMoney.format(trade.pl)}</td>
+                <td>{trade.rMultiple === null ? "—" : `${Math.abs(trade.rMultiple).toFixed(1)}R`}</td>
+                <td><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${trade.winLoss === "Win" ? "bg-[#e5f7f0] text-[#07966c]" : trade.winLoss === "Loss" ? "bg-[#fff0ef] text-[#df4747]" : "bg-[#e9f2ff] text-[#1767e8]"}`}>{trade.winLoss}</span></td>
+                <td>
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 text-[11px] font-bold text-[#425370]" onClick={() => onReview?.(trade)}>Review</button>
+                    {onEdit ? <button type="button" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 text-[11px] font-bold text-[#425370]" onClick={() => onEdit(trade)}>Edit</button> : null}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Market</span>
-                    <span>{trade.market}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Lots</span>
-                    <span>
-                      {trade.lots ?? 1} × {trade.lotSize ?? trade.sizeQty}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Qty</span>
-                    <span>{trade.sizeQty}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Platform</span>
-                    <span>{trade.platform}</span>
-                  </div>
-                  {trade.remarks && (
-                    <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
-                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[10px] text-white">
-                        ✎
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-300">Entry reason:</span>{" "}
-                        {trade.remarks}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  Strategy
-                </div>
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Name</span>
-                    <span className="font-semibold">{trade.strategy}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Exit</span>
-                    <span>{trade.exitReason}</span>
-                  </div>
-                  {trade.emotionTag && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Emotion</span>
-                      <span>{trade.emotionTag}</span>
-                    </div>
-                  )}
-                  {trade.emotionalState && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">State</span>
-                      <span>{trade.emotionalState}</span>
-                    </div>
-                  )}
-                  {trade.emotionTag && trade.emotionalState && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Alignment</span>
-                      <span
-                        className={
-                          getAlignmentLabel(trade) === "Aligned"
-                            ? "text-positive"
-                            : getAlignmentLabel(trade) === "Process-driven"
-                            ? "text-primary"
-                            : getAlignmentLabel(trade) === "Emotion-driven"
-                            ? "text-negative"
-                            : ""
-                        }
-                      >
-                        {getAlignmentLabel(trade)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Duration</span>
-                    <span>{formatMinutes(trade.tradeDuration)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Invested</span>
-                    <span>{money.format(trade.totalInvestment)}</span>
-                  </div>
-                  {trade.learning && (
-                    <div className="mt-2 flex items-start gap-2 text-[11px] text-sky-300">
-                      <span className="font-semibold">Learning:</span>
-                      <span>{trade.learning}</span>
-                    </div>
-                  )}
-                  {trade.mindsetNotes && (
-                    <div className="mt-2 flex items-start gap-2 text-muted text-[11px]">
-                      <span className="mt-[2px] inline-flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-[10px] text-white">
-                        ✦
-                      </span>
-                      <span>{trade.mindsetNotes}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  Prices
-                </div>
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Entry</span>
-                    <span>{trade.entryPrice}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Exit</span>
-                    <span>{trade.exitPrice}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Stop</span>
-                    <span>{trade.stopLoss}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Target</span>
-                    <span>{trade.targetPrice}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  Risk &amp; Reward
-                </div>
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Risk</span>
-                    <span>{money.format(trade.risk)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Reward</span>
-                    <span>{money.format(trade.reward)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">R:R</span>
-                    <span>
-                      {trade.riskReward ? `1:${trade.riskReward.toFixed(2)}` : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Brokerage</span>
-                    <span>{money.format(trade.brokerage ?? 0)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+                </td>
+              </tr>
+            ))}
+            {!filtered.length ? (
+              <tr><td colSpan={selectMode ? 12 : 11} className="text-center text-muted">No trades match the selected filters.</td></tr>
+            ) : null}
+          </tbody>
+        </table>
       </div>
+      <p className="mt-4 text-[11px] text-muted">Select a row to open the full trade review, chart and notes.</p>
     </div>
   );
 }
