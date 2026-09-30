@@ -5188,38 +5188,48 @@ export default function ClientDashboard({
   return (
     <main className="dashboard-shell min-h-screen bg-slate-50 text-slate-950 relative overflow-x-hidden dark:bg-ink dark:text-white">
       <div className="relative flex min-w-0 items-start">
-        <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white px-4 py-5 lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto dark:border-white/10 dark:bg-panel/95">
+        <aside className="hidden h-screen w-[244px] flex-col border-r border-[#e1e7f0] bg-[#f5f8ff] lg:flex lg:sticky lg:top-0 lg:self-start overflow-y-auto dark:border-white/10 dark:bg-panel/95">
           {isOverviewView ? (
             <button
               type="button"
               onClick={() => handleSectionNav("overview")}
-              className="px-2 text-left text-xl font-bold tracking-tight text-slate-950 dark:text-white"
+              className="flex h-[68px] w-full items-center gap-2 border-b border-[#e1e7f0] px-5 text-left text-base font-extrabold tracking-[-0.03em] text-[#132342] dark:border-white/10 dark:text-white"
             >
-              1to2 Trading Journal
+              <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#e4efff] text-[#1767e8]">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M4 17h4v-5H4zm6 0h4V8h-4zm6 0h4V4h-4z" />
+                </svg>
+              </span>
+              <span>1to2 Trading Journal</span>
             </button>
           ) : (
-            <Link href="/dashboard#overview" className="px-2 text-xl font-bold tracking-tight text-slate-950 dark:text-white">
-              1to2 Trading Journal
+            <Link href="/dashboard#overview" className="flex h-[68px] items-center gap-2 border-b border-[#e1e7f0] px-5 text-base font-extrabold tracking-[-0.03em] text-[#132342] dark:border-white/10 dark:text-white">
+              <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#e4efff] text-[#1767e8]">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M4 17h4v-5H4zm6 0h4V8h-4zm6 0h4V4h-4z" />
+                </svg>
+              </span>
+              <span>1to2 Trading Journal</span>
             </Link>
           )}
-          <nav className="mt-5 space-y-5 text-sm">
+          <nav className="space-y-5 px-3 py-4 text-sm">
             {navGroups.map((group) => (
               <div key={group.label}>
-                <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                <div className="px-3 pb-2 text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#96a2b6] dark:text-slate-500">
                   {group.label}
                 </div>
                 <div className="grid gap-1">
                   {group.items.map((item) => {
                     const isSection = sectionNavIds.includes(item.id as DashboardSection);
                     const isActive = isNavItemActive(item.id);
-                    const classes = `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-medium transition ${
+                    const classes = `flex w-full items-center gap-3 h-[39px] rounded-[9px] px-3 text-left font-semibold transition ${
                       isActive
-                        ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-sky-400/15 dark:text-sky-200"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                        ? "bg-[#e1efff] text-[#1767e8] dark:bg-sky-400/15 dark:text-sky-200"
+                        : "text-[#52627d] hover:bg-[#edf3fd] hover:text-[#132342] dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                     }`;
                     const content = (
                       <>
-                        <span className={isActive ? "text-blue-600 dark:text-sky-200" : "text-slate-500 dark:text-slate-400"}>
+                        <span className={isActive ? "text-[#1767e8] dark:text-sky-200" : "text-[#52627d] dark:text-slate-400"}>
                           {navIcon(item.id)}
                         </span>
                         <span>{item.label}</span>
@@ -5247,19 +5257,15 @@ export default function ClientDashboard({
               </div>
             ))}
           </nav>
-          <div className="mt-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+          <div className="mt-auto border-t border-[#e1e7f0] px-4 py-3 text-[11px] text-[#71809b] dark:border-white/10 dark:text-slate-400">
             Data source<br />
             <span className="font-semibold text-slate-700 dark:text-slate-200">{dataSourceLabel}</span>
           </div>
         </aside>
 
         <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-ink/85">
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{navLabel}</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Your trading performance at a glance. Journal. Learn. Improve.</p>
-              </div>
+          <header className="sticky top-0 z-10 border-b border-[#e1e7f0] bg-white/95 backdrop-blur dark:border-white/10 dark:bg-ink/85">
+            <div className="mx-auto flex min-h-[68px] max-w-[1680px] flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6 lg:px-7">
               <div className="hidden flex-wrap items-center gap-2 text-xs md:flex">
                 {isOverviewView ? (
                   <button
@@ -5599,7 +5605,7 @@ export default function ClientDashboard({
                   const classes = `rounded-full border px-3 py-1.5 whitespace-nowrap font-medium ${
                     isActive
                       ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-200"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                      : "border-slate-200 text-[#52627d] hover:bg-[#edf3fd] hover:text-[#132342] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   }`;
                   if (isOverviewView && isSection) {
                     return (
@@ -7013,7 +7019,7 @@ export default function ClientDashboard({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Overall trend</p>
+                    <p className="text-xs font-semibold text-[#52627d] dark:text-slate-400">Overall trend</p>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         participantOverallTrend === "Bullish"
@@ -7029,39 +7035,39 @@ export default function ClientDashboard({
                   <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
                     {participantOverallTrend}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-2 text-xs text-[#52627d] dark:text-slate-400">
                     Weighted more toward FII and Pro activity.
                   </p>
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tracked dates</p>
+                  <p className="text-xs font-semibold text-[#52627d] dark:text-slate-400">Tracked dates</p>
                   <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
                     {participantDateOptions.length}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-2 text-xs text-[#52627d] dark:text-slate-400">
                     Latest loaded: {participantDateOptions[0]?.split("-").reverse().join("/") ?? "N/A"}
                   </p>
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Active participants</p>
+                  <p className="text-xs font-semibold text-[#52627d] dark:text-slate-400">Active participants</p>
                   <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
                     {new Set(participantActivityRows.map((row) => row.participant)).size}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-2 text-xs text-[#52627d] dark:text-slate-400">
                     FII, Pro, DII, and Retail rows expected.
                   </p>
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total OI change</p>
+                  <p className="text-xs font-semibold text-[#52627d] dark:text-slate-400">Total OI change</p>
                   <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
                     {participantActivityRows
                       .reduce((sum, row) => sum + Math.abs(row.change), 0)
                       .toLocaleString()}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-2 text-xs text-[#52627d] dark:text-slate-400">
                     Absolute change across futures, CE, and PE.
                   </p>
                 </div>
@@ -7074,7 +7080,7 @@ export default function ClientDashboard({
                       <h3 className="text-lg font-semibold text-slate-950 dark:text-white">
                         {participantViewDateDisplay} - Participant Wise Open Interest and Changes
                       </h3>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 text-xs text-[#52627d] dark:text-slate-400">
                         Bullish means buying futures/calls or selling puts. Bearish means selling futures/calls or buying puts.
                       </p>
                     </div>
@@ -7120,7 +7126,7 @@ export default function ClientDashboard({
                                   ? "text-emerald-600 dark:text-emerald-300"
                                   : row.change < 0
                                     ? "text-rose-600 dark:text-rose-300"
-                                    : "text-slate-500 dark:text-slate-400"
+                                    : "text-[#52627d] dark:text-slate-400"
                               }`}
                             >
                               {row.change > 0 ? `+${row.change.toLocaleString()}` : row.change.toLocaleString()}
@@ -7161,7 +7167,7 @@ export default function ClientDashboard({
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Recent EOD snapshots</h3>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Latest valid participant days.</p>
+                        <p className="mt-1 text-xs text-[#52627d] dark:text-slate-400">Latest valid participant days.</p>
                       </div>
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
                         {lastFiveDateTables.length} days
