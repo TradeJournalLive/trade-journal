@@ -2961,6 +2961,16 @@ export default function ClientDashboard({
     };
   }, [derived]);
 
+  const overviewProfitStats = useMemo(() => {
+    const grossProfit = derived
+      .filter((trade) => trade.pl > 0)
+      .reduce((sum, trade) => sum + trade.pl, 0);
+    const grossLoss = derived
+      .filter((trade) => trade.pl < 0)
+      .reduce((sum, trade) => sum + trade.pl, 0);
+    return { grossProfit, grossLoss };
+  }, [derived]);
+
   const strategyStats = useMemo(
     () =>
       groupStats(derived, (trade) => trade.strategy).sort(
@@ -5635,270 +5645,178 @@ export default function ClientDashboard({
 
           {view === "overview" && (
             <>
-              <section
-                id="overview"
-                className="mx-auto max-w-6xl space-y-8 px-6 py-8 scroll-mt-24"
-              >
-            <div>
-              <h2 className="section-title">Overview</h2>
-              <p className="section-lead">
-                High-signal KPIs for edge, risk, and execution.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              {kpis.map((kpi, index) => (
-                <div
-                  key={kpi.label}
-                  className={`kpi border-l-4 ${
-                    index % 5 === 0
-                      ? "border-l-blue-400"
-                      : index % 5 === 1
-                        ? "border-l-teal-400"
-                        : index % 5 === 2
-                          ? "border-l-amber-400"
-                          : index % 5 === 3
-                            ? "border-l-indigo-400"
-                            : "border-l-rose-400"
-                  }`}
-                >
-                  <div className="text-xs text-muted">{kpi.label}</div>
-                  <div className="mt-1 text-lg font-semibold">{kpi.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="card">
-                <h3 className="text-sm text-muted">Safe trades</h3>
-                <div className="mt-2 text-2xl font-semibold">
-                  {safeRiskStats.safe.count}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  Win rate {formatPercent(safeRiskStats.safe.winRate)}
-                </div>
-                <div
-                  className={`mt-2 text-sm font-semibold ${
-                    safeRiskStats.safe.totalPl >= 0
-                      ? "text-positive"
-                      : "text-negative"
-                  }`}
-                >
-                  {signedMoney2.format(safeRiskStats.safe.totalPl)}
+            <section
+              id="overview"
+              className="mx-auto max-w-[1680px] space-y-4 px-7 py-6 scroll-mt-24"
+            >
+              <div className="pagehead">
+                <div>
+                  <h2 className="section-title">
+                    <span className="pagesymbol">◇</span>
+                    Overview
+                  </h2>
+                  <p className="section-lead">
+                    Your trading performance at a glance. Journal. Learn. Improve.
+                  </p>
                 </div>
               </div>
-              <div className="card">
-                <h3 className="text-sm text-muted">Risky trades</h3>
-                <div className="mt-2 text-2xl font-semibold">
-                  {safeRiskStats.risky.count}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  Win rate {formatPercent(safeRiskStats.risky.winRate)}
-                </div>
-                <div
-                  className={`mt-2 text-sm font-semibold ${
-                    safeRiskStats.risky.totalPl >= 0
-                      ? "text-positive"
-                      : "text-negative"
-                  }`}
-                >
-                  {signedMoney2.format(safeRiskStats.risky.totalPl)}
-                </div>
-              </div>
-            </div>
 
-            <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Equity curve</h3>
-                  <span
-                    className={
-                      summary.totalPl >= 0
-                        ? "text-positive text-sm"
-                        : "text-negative text-sm"
-                    }
-                  >
-                    {signedMoney0.format(summary.totalPl)} total
+              <div className="grid gap-4 lg:grid-cols-5">
+                <div className="kpi">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
+                    <span>Net P&amp;L</span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e5f7f0] text-[#07966c]">↗</span>
+                  </div>
+                  <strong className={`mt-3 block text-2xl tracking-[-0.03em] ${summary.totalPl >= 0 ? "text-positive" : "text-negative"}`}>
+                    {signedMoney0.format(summary.totalPl)}
+                  </strong>
+                  <span className="mt-2 block text-[11px] text-muted">Selected period · {dateRange}</span>
+                </div>
+                <div className="kpi">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
+                    <span>Win rate</span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e9f2ff] text-[#1767e8]">●</span>
+                  </div>
+                  <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
+                    {formatPercent(summary.winRate)}
+                  </strong>
+                  <span className="mt-2 block text-[11px] text-muted">{summary.wins} wins / {summary.losses} losses</span>
+                </div>
+                <div className="kpi">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
+                    <span>Profit factor</span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e9f2ff] text-[#1767e8]">♙</span>
+                  </div>
+                  <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
+                    {profitFactorLabel}
+                  </strong>
+                  <span className="mt-2 block text-[11px] text-muted">
+                    Gross profit {money0.format(overviewProfitStats.grossProfit)} · Gross loss {money0.format(Math.abs(overviewProfitStats.grossLoss))}
                   </span>
                 </div>
-                <div className="mt-4 rounded-xl border border-white/5 bg-elevate p-4">
-                  <Sparkline
-                    data={summary.equityCurve.map((point) => point.equity)}
-                  />
-                </div>
-                <div className="mt-4 grid gap-3 text-xs text-muted md:grid-cols-3">
-                  <div>Profit factor: {profitFactorLabel}</div>
-                  <div>Avg R:R: {avgRRLabel}</div>
-                  <div>Max DD %: {maxDrawdownPct}</div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="card">
-                  <h3 className="text-sm text-muted">Win/Loss mix</h3>
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="text-3xl font-semibold">
-                      {formatPercent(summary.winRate)}
-                    </div>
-                    <DonutChart value={summary.winRate} />
+                <div className="kpi">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
+                    <span>Expectancy</span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e5f7f0] text-[#07966c]">✦</span>
                   </div>
-                  <div className="mt-4 text-xs text-muted">
-                    {summary.wins} wins · {summary.losses} losses · {summary.breakeven} BE
-                  </div>
-                </div>
-
-                <div className="card">
-                  <h3 className="text-sm text-muted">Expectancy</h3>
-                  <div className="mt-4 text-2xl font-semibold">
+                  <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
                     {expectancyLabel}
+                  </strong>
+                  <span className="mt-2 block text-[11px] text-muted">Per trade · {summary.totalTrades} trades</span>
+                </div>
+                <div className="kpi">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
+                    <span>Max drawdown</span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#fff0ef] text-[#df4747]">↘</span>
                   </div>
-                  <div className="mt-2 text-xs text-muted">
-                    Max profit {signedMoney2.format(summary.maxProfitTrade)} · Max loss {signedMoney2.format(summary.maxLossTrade)}
+                  <strong className="mt-3 block text-2xl tracking-[-0.03em] text-negative">
+                    {signedMoney0.format(summary.maxDrawdown)}
+                  </strong>
+                  <span className="mt-2 block text-[11px] text-muted">From peak equity · {maxDrawdownPct}</span>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.95fr)]">
+                <div className="card">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-[#132342]">Cumulative P&amp;L</h3>
+                      <p className="mt-1 text-[11px] text-muted">Equity curve · daily net results</p>
+                    </div>
+                    <div className="flex gap-2 text-[11px] font-bold text-[#52627d]">
+                      <span className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-1.5">1W</span>
+                      <span className="rounded-lg bg-[#e1efff] px-3 py-1.5 text-[#1767e8]">1M</span>
+                      <span className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-1.5">3M</span>
+                      <span className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-1.5">All</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[#e1e7f0] bg-white p-4">
+                    <Sparkline data={summary.equityCurve.map((point) => point.equity)} />
                   </div>
                 </div>
 
+                <div className="card">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-extrabold text-[#132342]">Win / Loss breakdown</h3>
+                    <p className="mt-1 text-[11px] text-muted">Results in selected period</p>
+                  </div>
+                  <div className="flex min-h-[170px] items-center justify-center gap-7">
+                    <DonutChart value={summary.winRate} />
+                    <div className="grid gap-2 text-[11px] text-[#596984]">
+                      <div><span className="text-positive">●</span> Wins&nbsp; <b>{summary.wins}</b> · {formatPercent(summary.winRate)}</div>
+                      <div><span className="text-negative">●</span> Losses&nbsp; <b>{summary.losses}</b> · {formatPercent(summary.totalTrades ? summary.losses / summary.totalTrades : 0)}</div>
+                      <div>Average win&nbsp; <b className="text-positive">{money0.format(summary.avgWin)}</b></div>
+                      <div>Average loss&nbsp; <b className="text-negative">{money0.format(Math.abs(summary.avgLoss))}</b></div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex gap-3 rounded-[10px] border border-[#f4e5c9] bg-[#fff6e6] p-3 text-xs text-[#75664b]">
+                    <span className="text-lg text-[#d78a19]">!</span>
+                    <div>
+                      <strong className="text-[#132342]">Risky trades account for most losses</strong>
+                      <p className="mt-1">Trades above your risk rule have a lower win rate.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="card">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold">India market impact news</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void loadMarketNews({ page: 1, append: false, pageSize: 6 })}
-                    className="rounded-full bg-[linear-gradient(135deg,#2563eb,#14b8a6)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:brightness-105"
-                  >
-                    Refresh
-                  </button>
-                  <Link
-                    href="/dashboard/news"
-                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    View all
+              <div className="card">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#132342]">Recent trades</h3>
+                    <p className="mt-1 text-[11px] text-muted">Latest entries from your journal</p>
+                  </div>
+                  <Link href="/dashboard/journal" className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-2 text-[11px] font-bold text-[#425370] shadow-sm">
+                    View all trades →
                   </Link>
                 </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {newsLoading && (
-                  <div className="text-sm text-muted">Loading latest headlines...</div>
-                )}
-                {!newsLoading && newsError && (
-                  <div className="text-sm text-negative">{newsError}</div>
-                )}
-                {!newsLoading && !newsError && marketNews.length === 0 && (
-                  <div className="text-sm text-muted">No headlines available right now.</div>
-                )}
-                {!newsLoading &&
-                  !newsError &&
-                  marketNews.slice(0, 6).map((item) => (
-                    <a
-                      key={`${item.link}-${item.publishedAt}`}
-                      href={item.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40"
-                    >
-                      <div className="h-28 bg-[linear-gradient(135deg,rgba(37,99,235,0.14),rgba(20,184,166,0.12))]">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : null}
-                      </div>
-                      <div className="space-y-2 p-3">
-                        <div className="line-clamp-2 text-sm font-semibold text-slate-900">
-                          {item.title}
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span>{item.source}</span>
-                          <span>{item.impact}</span>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold">Stock Suggestions (Intraday / Swing)</h3>
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">
-                  Target 10-25%
-                </span>
-              </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-[1100px] w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-semibold">Symbol</th>
-                      <th className="px-3 py-2 text-left font-semibold">Style</th>
-                      <th className="px-3 py-2 text-left font-semibold">Entry Zone</th>
-                      <th className="px-3 py-2 text-left font-semibold">Exit Price</th>
-                      <th className="px-3 py-2 text-left font-semibold">SL</th>
-                      <th className="px-3 py-2 text-left font-semibold">Target %</th>
-                      <th className="px-3 py-2 text-left font-semibold">R:R</th>
-                      <th className="px-3 py-2 text-left font-semibold">Conviction</th>
-                      <th className="px-3 py-2 text-left font-semibold">Reason</th>
-                      <th className="px-3 py-2 text-left font-semibold">Timeframe</th>
-                      <th className="px-3 py-2 text-left font-semibold">Size %</th>
-                      <th className="px-3 py-2 text-left font-semibold">Valid Till</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stockSuggestions.map((item) => (
-                      <tr key={`${item.symbol}-${item.style}`} className="border-t border-slate-200">
-                        <td className="px-3 py-2 font-semibold">{item.symbol}</td>
-                        <td className="px-3 py-2">{item.style}</td>
-                        <td className="px-3 py-2">{item.entryZone}</td>
-                        <td className="px-3 py-2">{item.exitPrice}</td>
-                        <td className="px-3 py-2">
-                          {item.stopLossPrice} ({item.stopLossPct}%)
-                        </td>
-                        <td className="px-3 py-2">
-                          {item.targetMinPct}% - {item.targetMaxPct}%
-                        </td>
-                        <td className="px-3 py-2 font-semibold text-sky-700">{item.riskReward}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              item.convictionScore >= 8
-                                ? "bg-emerald-100 text-emerald-700"
-                                : item.convictionScore >= 6
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-rose-100 text-rose-700"
-                            }`}
-                          >
-                            {item.convictionScore}/10
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{item.convictionReason}</div>
-                          <div className="text-[11px] text-muted">Trigger: {item.entryTrigger}</div>
-                          <div className="text-[11px] text-muted">Invalidation: {item.invalidation}</div>
-                        </td>
-                        <td className="px-3 py-2">{item.timeframe}</td>
-                        <td className="px-3 py-2">{item.positionSizePct}%</td>
-                        <td className="px-3 py-2">{item.validTill}</td>
-                      </tr>
-                    ))}
-                    {stockSuggestions.length === 0 ? (
+                <div className="overflow-auto">
+                  <table>
+                    <thead>
                       <tr>
-                        <td colSpan={12} className="px-3 py-4 text-center text-muted">
-                          No stock suggestions available.
-                        </td>
+                        <th>Date</th>
+                        <th>Instrument</th>
+                        <th>Setup</th>
+                        <th>Side</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Qty</th>
+                        <th>P&amp;L ({currency === "INR" ? "₹" : "$"})</th>
+                        <th>Risk</th>
+                        <th>Result</th>
                       </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {derived.slice(0, 5).map((trade) => (
+                        <tr key={trade.tradeId}>
+                          <td>{trade.date}</td>
+                          <td className="font-bold text-[#132342]">{trade.instrument}</td>
+                          <td>{trade.strategy}</td>
+                          <td>
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${trade.direction === "Long" ? "bg-[#e5f7f0] text-[#07966c]" : "bg-[#fff0ef] text-[#df4747]"}`}>
+                              {trade.direction}
+                            </span>
+                          </td>
+                          <td>{trade.entryPrice}</td>
+                          <td>{trade.exitPrice}</td>
+                          <td>{trade.sizeQty}</td>
+                          <td className={trade.pl >= 0 ? "text-positive" : "text-negative"}>{signedMoney0.format(trade.pl)}</td>
+                          <td>{trade.tradeType ?? "—"}</td>
+                          <td>
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${trade.pl >= 0 ? "bg-[#e5f7f0] text-[#07966c]" : "bg-[#fff0ef] text-[#df4747]"}`}>
+                              {trade.pl >= 0 ? "Win" : "Loss"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {!derived.length && (
+                        <tr>
+                          <td colSpan={10} className="text-center text-muted">No trades in this filter.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                {stockSuggestionStatus || "Educational watchlist only. Use your own risk management."}
-              </div>
-            </div>
 
             <div id="ai-summary" className="card scroll-mt-24">
               <div className="flex items-center justify-between">
@@ -6444,7 +6362,7 @@ export default function ClientDashboard({
                 </div>
               </div>
             </div>
-              </section>
+            </section>
             </>
           )}
 
