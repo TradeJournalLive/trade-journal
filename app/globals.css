@@ -409,3 +409,32 @@ html.dark .dashboard-shell .kpi {
     flex-direction: column;
   }
 }
+
+
+.dashboard-shell .card [class~="bg-ink"],
+.dashboard-shell .card [class~="bg-elevate"],
+.dashboard-shell .card [class*="bg-white/5"] {
+  background: #ffffff !important;
+}
+
+.dashboard-shell .card [class*="border-white/10"],
+.dashboard-shell .card [class*="border-white/5"] {
+  border-color: #e1e7f0 !important;
+}
+
+.dashboard-shell .card [class~="text-white"],
+.dashboard-shell section [class~="text-slate-950"] {
+  color: #132342 !important;
+}
+
+.dashboard-shell .card [class*="hover:text-white"]:hover {
+  color: #1767e8 !important;
+}
+
+.dashboard-shell .card [class~="bg-primary"],
+.dashboard-shell .card [class~="bg-blue-600"],
+.dashboard-shell .card [class~="bg-slate-950"] {
+  background: #1767e8 !important;
+  border-color: #1767e8 !important;
+  color: #ffffff !important;
+}
