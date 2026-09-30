@@ -438,3 +438,128 @@ html.dark .dashboard-shell .kpi {
   border-color: #1767e8 !important;
   color: #ffffff !important;
 }
+
+
+.dashboard-shell .trade-form-card {
+  background: #ffffff;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  color: #132342;
+}
+
+.dashboard-shell .trade-form-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 14px 14px 16px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfdff, #f7faff);
+}
+
+.dashboard-shell .trade-form-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: #132342;
+}
+
+.dashboard-shell .trade-form-head p {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #687895;
+}
+
+.dashboard-shell .trade-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  margin-top: 13px;
+}
+
+.dashboard-shell .trade-form-grid-primary {
+  grid-template-columns: 0.8fr 1fr 1.15fr 1.15fr 1fr 1fr;
+}
+
+.dashboard-shell .trade-form-grid-wide {
+  grid-template-columns: 1fr 1.2fr 1.4fr 1.35fr 1fr;
+}
+
+.dashboard-shell #trade-form input,
+.dashboard-shell #trade-form select,
+.dashboard-shell #trade-form textarea {
+  min-height: 42px;
+  border: 1px solid #dbe4f0 !important;
+  background: #fbfdff !important;
+  color: #132342 !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 12px;
+  font-weight: 650;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.dashboard-shell #trade-form input:focus,
+.dashboard-shell #trade-form select:focus,
+.dashboard-shell #trade-form textarea:focus {
+  border-color: #1767e8 !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(23, 103, 232, 0.1) !important;
+}
+
+.dashboard-shell #trade-form input[readonly] {
+  background: #f3f6fb !important;
+  color: #687895 !important;
+}
+
+.dashboard-shell .trade-upload-box {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px dashed #b9c8dd;
+  background: #f8fbff;
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+
+.dashboard-shell .trade-upload-button {
+  display: inline-flex;
+  cursor: pointer;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 8px;
+  background: #1767e8;
+  padding: 7px 10px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-shell .trade-form-grid,
+  .dashboard-shell .trade-form-grid-primary,
+  .dashboard-shell .trade-form-grid-wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .dashboard-shell .trade-form-head,
+  .dashboard-shell .trade-form-grid,
+  .dashboard-shell .trade-form-grid-primary,
+  .dashboard-shell .trade-form-grid-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-shell .trade-form-head {
+    flex-direction: column;
+  }
+}

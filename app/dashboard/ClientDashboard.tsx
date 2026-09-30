@@ -1443,10 +1443,7 @@ function AddTradeForm({
       exitReasonChoice === "Custom"
         ? exitReasonCustom.trim()
         : exitReasonChoice;
-    const platformValue =
-      platformChoice === "Custom"
-        ? platformCustom.trim()
-        : platformChoice;
+    const platformValue = "Journal";
     const chartUrlValue = normalizeUrl(chartUrl);
     const pnlScreenshotUrlValue = normalizeUrl(pnlScreenshotUrl);
 
@@ -1465,7 +1462,6 @@ function AddTradeForm({
     if (!stopLoss) nextFieldErrors.stopLoss = "Required";
     if (!targetPrice) nextFieldErrors.targetPrice = "Required";
     if (!exitReasonValue) nextFieldErrors.exitReason = "Required";
-    if (!platformValue) nextFieldErrors.platform = "Required";
     if (!tradeType) nextFieldErrors.tradeType = "Required";
 
     setFieldErrors(nextFieldErrors);
@@ -1627,21 +1623,17 @@ function AddTradeForm({
   }
 
   return (
-    <form id="trade-form" onSubmit={handleSubmit} className="card">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <form id="trade-form" onSubmit={handleSubmit} className="trade-form-card">
+      <div className="trade-form-head">
         <div>
-          <h3 className="text-lg font-semibold">
-            {isEditing ? "Edit trade" : "Add trade"}
-          </h3>
-          <p className="text-sm text-muted">
-            Enter trade inputs — analytics update instantly.
-          </p>
+          <h3>{isEditing ? "Edit trade" : "Add trade"}</h3>
+          <p>Record the plan, execution, screenshot and post-trade lesson.</p>
         </div>
         <div className="flex items-center gap-2">
           {isEditing && (
             <button
               type="button"
-              className="rounded-full border border-white/10 px-4 py-2 text-xs text-muted"
+              className="rounded-lg border border-[#e1e7f0] bg-white px-4 py-2 text-xs font-bold text-[#425370]"
               onClick={onCancelEdit}
             >
               Cancel edit
@@ -1649,7 +1641,7 @@ function AddTradeForm({
           )}
           <button
             type="submit"
-            className="rounded-full bg-primary px-4 py-2 text-xs font-semibold"
+            className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white"
             disabled={saving}
           >
             {saving ? "Saving..." : isEditing ? "Update trade" : "Save trade"}
@@ -1665,7 +1657,7 @@ function AddTradeForm({
         </p>
       )}
 
-      <div className="mt-4 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
+      <div className="trade-form-grid trade-form-grid-primary">
         <input
           placeholder="Trade ID (Auto)"
           value={tradeId}
@@ -1751,7 +1743,7 @@ function AddTradeForm({
         />
       </div>
 
-      <div className="mt-3 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
+      <div className="trade-form-grid">
         <select
           value={strategyChoice}
           onChange={(event) => setStrategyChoice(event.target.value)}
@@ -1840,7 +1832,7 @@ function AddTradeForm({
           : "Select an instrument to load its lot size"}
       </p>
 
-      <div className="mt-3 grid gap-3 text-xs md:grid-cols-3 lg:grid-cols-6">
+      <div className="trade-form-grid trade-form-grid-wide">
         <input
           placeholder="Target Price"
           value={targetPrice}
@@ -1877,52 +1869,15 @@ function AddTradeForm({
             />
           )}
         </div>
-        <div className="flex flex-col gap-2">
-          <select
-            value={platformChoice}
-            onChange={(event) => {
-              setPlatformChoice(event.target.value);
-              if (event.target.value !== "Custom") {
-                setPlatformCustom("");
-              }
-            }}
-            className={withFieldError(
-              "platform",
-              "rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-            )}
-          >
-            <option value="" disabled>
-              Select platform
-            </option>
-            <option value="Backtest">Backtest</option>
-            <option value="Frontpage">Frontpage</option>
-            <option value="Fyers">Fyers</option>
-            <option value="Custom">Custom</option>
-          </select>
-          {platformChoice === "Custom" && (
-            <input
-              placeholder="Custom platform"
-              value={platformCustom}
-              onChange={(event) => setPlatformCustom(event.target.value)}
-              className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-            />
-          )}
-        </div>
         <input
           placeholder="Chart link (optional)"
           value={chartUrl}
           onChange={(event) => setChartUrl(event.target.value)}
           className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
         />
-        <input
-          placeholder="Screenshot link (optional)"
-          value={pnlScreenshotUrl}
-          onChange={(event) => setPnlScreenshotUrl(event.target.value)}
-          className="rounded-lg border border-white/10 bg-ink px-3 py-2 text-white"
-        />
-        <div className="flex h-10 items-center justify-between rounded-lg border border-white/10 bg-ink px-2 text-white">
-          <label className="inline-flex cursor-pointer items-center rounded-full border border-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10 whitespace-nowrap">
-            Upload SS
+        <div className="trade-upload-box">
+          <label className="trade-upload-button">
+            Upload screenshot
             <input
               type="file"
               accept="image/*"
@@ -1934,13 +1889,13 @@ function AddTradeForm({
             />
           </label>
           <div className="ml-2 flex shrink-0 items-center gap-1">
-            <span className={`text-[10px] ${pnlScreenshotUrl ? "text-emerald-300" : "text-muted"}`}>
+            <span className={`text-[11px] font-bold ${pnlScreenshotUrl ? "text-positive" : "text-muted"}`}>
               {uploadingScreenshot ? "Uploading..." : pnlScreenshotUrl ? "Added" : "No SS"}
             </span>
             {pnlScreenshotUrl ? (
               <button
                 type="button"
-                className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-white/10"
+                className="rounded-lg border border-[#e1e7f0] bg-white px-2 py-1 text-[10px] font-bold text-[#425370]"
                 onClick={() => setPnlScreenshotUrl("")}
               >
                 X
@@ -7331,7 +7286,7 @@ export default function ClientDashboard({
 
               {journalFormOpen ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#132342]/35 px-4 py-8 backdrop-blur-sm">
-                  <div className="max-h-[86vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white shadow-2xl">
+                  <div className="max-h-[86vh] w-full max-w-5xl overflow-auto rounded-2xl bg-white shadow-2xl">
                     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e1e7f0] bg-white px-5 py-4">
                       <div><h3 className="text-base font-extrabold text-[#132342]">{editingTrade ? "Edit trade" : "Add a trade"}</h3><p className="text-xs text-muted">Record the plan and review it after exit.</p></div>
                       <button type="button" onClick={() => { setJournalFormOpen(false); setEditingTrade(null); }} className="grid h-8 w-8 place-items-center rounded-lg border border-[#e1e7f0] text-[#425370]">×</button>
