@@ -31,11 +31,12 @@ export function Sparkline({
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="h-28 w-full"
+      className="w-full"
+      style={{ height }}
       preserveAspectRatio="none"
     >
       <path d={area} fill={fill} />
-      <path d={line} fill="none" stroke={stroke} strokeWidth={2} />
+      <path d={line} fill="none" stroke={stroke} strokeWidth={2.4} />
     </svg>
   );
 }

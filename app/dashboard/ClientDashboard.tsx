@@ -5719,7 +5719,7 @@ export default function ClientDashboard({
               <div className="pagehead">
                 <div>
                   <h2 className="section-title">
-                    <span className="pagesymbol">◇</span>
+                    <span className="pagesymbol overview-page-symbol">◆</span>
                     Overview
                   </h2>
                   <p className="section-lead">
@@ -5732,7 +5732,7 @@ export default function ClientDashboard({
                 <div className="kpi">
                   <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
                     <span>Net P&amp;L</span>
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e5f7f0] text-[#07966c]">↗</span>
+                    <span className="overview-kpi-icon overview-kpi-icon-good">↗</span>
                   </div>
                   <strong className={`mt-3 block text-2xl tracking-[-0.03em] ${summary.totalPl >= 0 ? "text-positive" : "text-negative"}`}>
                     {signedMoney0.format(summary.totalPl)}
@@ -5742,7 +5742,7 @@ export default function ClientDashboard({
                 <div className="kpi">
                   <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
                     <span>Win rate</span>
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e9f2ff] text-[#1767e8]">●</span>
+                    <span className="overview-kpi-icon overview-kpi-icon-blue">●</span>
                   </div>
                   <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
                     {formatPercent(summary.winRate)}
@@ -5752,7 +5752,7 @@ export default function ClientDashboard({
                 <div className="kpi">
                   <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
                     <span>Profit factor</span>
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e9f2ff] text-[#1767e8]">♙</span>
+                    <span className="overview-kpi-icon overview-kpi-icon-blue">♙</span>
                   </div>
                   <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
                     {profitFactorLabel}
@@ -5764,7 +5764,7 @@ export default function ClientDashboard({
                 <div className="kpi">
                   <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
                     <span>Expectancy</span>
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#e5f7f0] text-[#07966c]">✦</span>
+                    <span className="overview-kpi-icon overview-kpi-icon-good">✦</span>
                   </div>
                   <strong className="mt-3 block text-2xl tracking-[-0.03em] text-[#132342]">
                     {expectancyLabel}
@@ -5774,7 +5774,7 @@ export default function ClientDashboard({
                 <div className="kpi">
                   <div className="flex items-center justify-between text-xs font-bold text-[#5e6f8c]">
                     <span>Max drawdown</span>
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#fff0ef] text-[#df4747]">↘</span>
+                    <span className="overview-kpi-icon overview-kpi-icon-bad">↘</span>
                   </div>
                   <strong className="mt-3 block text-2xl tracking-[-0.03em] text-negative">
                     {signedMoney0.format(summary.maxDrawdown)}
@@ -5797,8 +5797,22 @@ export default function ClientDashboard({
                       <span className="rounded-lg border border-[#e1e7f0] bg-white px-3 py-1.5">All</span>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-[#e1e7f0] bg-white p-4">
-                    <Sparkline data={summary.equityCurve.map((point) => point.equity)} />
+                  <div className="overview-chart-box">
+                    <div className="overview-chart-axis">
+                      <span>₹6k</span>
+                      <span>₹4k</span>
+                      <span>₹2k</span>
+                      <span>₹0</span>
+                      <span>-₹2k</span>
+                    </div>
+                    <div className="overview-chart-plot">
+                      <Sparkline
+                        data={summary.equityCurve.map((point) => point.equity)}
+                        height={178}
+                        stroke="#07966c"
+                        fill="rgba(7,150,108,0.12)"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -5807,8 +5821,19 @@ export default function ClientDashboard({
                     <h3 className="text-sm font-extrabold text-[#132342]">Win / Loss breakdown</h3>
                     <p className="mt-1 text-[11px] text-muted">Results in selected period</p>
                   </div>
-                  <div className="flex min-h-[170px] items-center justify-center gap-7">
-                    <DonutChart value={summary.winRate} />
+                  <div className="flex min-h-[190px] items-center justify-center gap-7">
+                    <div className="overview-donut-wrap">
+                      <DonutChart
+                        value={summary.winRate}
+                        size={138}
+                        stroke="#07966c"
+                        track="#ef5656"
+                      />
+                      <div className="overview-donut-center">
+                        <strong>{summary.totalTrades}</strong>
+                        <span>trades</span>
+                      </div>
+                    </div>
                     <div className="grid gap-2 text-[11px] text-[#596984]">
                       <div><span className="text-positive">●</span> Wins&nbsp; <b>{summary.wins}</b> · {formatPercent(summary.winRate)}</div>
                       <div><span className="text-negative">●</span> Losses&nbsp; <b>{summary.losses}</b> · {formatPercent(summary.totalTrades ? summary.losses / summary.totalTrades : 0)}</div>
