@@ -24,12 +24,6 @@ type AlgoSection =
   | "settings"
   | "admin";
 
-type BacktestResult = {
-  pnl: string;
-  winRate: string;
-  drawdown: string;
-  trades: string;
-};
 
 type NavGroup = {
   label: string;
@@ -136,7 +130,6 @@ export default function AlgoTradingPanel() {
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [killSwitchActive, setKillSwitchActive] = useState(false);
   const [paperModeActive, setPaperModeActive] = useState(false);
-  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [savedStrategyName, setSavedStrategyName] = useState("NIFTY EMA Protection");
   const [webhookSecretVisible, setWebhookSecretVisible] = useState(false);
 
@@ -151,9 +144,8 @@ export default function AlgoTradingPanel() {
   }
 
   function runBacktest() {
-    setBacktestResult({ pnl: "+₹18,420", winRate: "62.8%", drawdown: "-₹3,250", trades: "48" });
     setActiveSection("backtests");
-    setStatus("Backtest completed with brokerage, STT, GST, slippage and execution-delay assumptions.");
+    setStatus("Backtest needs real data first: connect TradingView, import historical signals, or recreate the indicator logic in Strategy DSL.");
   }
 
   function activateKillSwitch() {
@@ -206,7 +198,7 @@ export default function AlgoTradingPanel() {
   }
 
   function renderBacktests() {
-    return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Backtests</h3><p>Use normalized historical candles and actual option contracts where available.</p></div><button type="button" onClick={runBacktest} className="algo-action primary">Run backtest</button></div>{backtestResult ? <div className="result-row mt-4"><h3>Latest Result</h3><div><span>Net P&L</span><b className="good-text">{backtestResult.pnl}</b></div><div><span>Win rate</span><b>{backtestResult.winRate}</b></div><div><span>Drawdown</span><b className="bad-text">{backtestResult.drawdown}</b></div><div><span>Trades</span><b>{backtestResult.trades}</b></div></div> : <div className="algo-empty-state">No backtest yet. Run one to see equity, drawdown and trade distribution.</div>}</div><div className="algo-os-card"><h3>Assumptions</h3><div className="algo-rule-list"><div><span>Brokerage</span><b>Included</b></div><div><span>STT / GST / Exchange</span><b>Included</b></div><div><span>Slippage</span><b>Configurable</b></div><div><span>Options data</span><b>Actual contracts only</b></div></div></div></div>;
+    return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Backtests</h3><p>Backtest is locked until real strategy/signal data is available. No sample P&L is shown.</p></div><button type="button" onClick={() => setActiveSection("tradingview")} className="algo-action primary">Connect TradingView first</button></div><div className="algo-empty-state">No backtest data yet. Connect TradingView for realtime signals, import historical signal CSV, or recreate accessible Pine logic in the Strategy DSL.</div><div className="algo-rule-list"><div><span>Historical protected indicator</span><b>Needs imported signals</b></div><div><span>Accessible Pine logic</span><b>Convert to Strategy DSL</b></div><div><span>Forward test</span><b>TradingView signals + Dhan paper/live</b></div></div></div><div className="algo-os-card"><h3>Assumptions</h3><div className="algo-rule-list"><div><span>Entry execution</span><b>Signal price / next candle open</b></div><div><span>Brokerage + taxes</span><b>Configured before test</b></div><div><span>Slippage</span><b>Configured before test</b></div><div><span>Options data</span><b>Actual contracts only</b></div></div></div></div>;
   }
 
   function renderPaper() {
@@ -214,7 +206,7 @@ export default function AlgoTradingPanel() {
   }
 
   function renderLive() {
-    return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><h3>Live Strategies</h3><p>Native, TradingView and API signals all normalize to the same Signal object before risk and execution.</p><div className="algo-lifecycle-line">{["Draft", "Backtested", "Paper", "Ready", "Live"].map((item, index) => <span key={item} className={index === 0 || (backtestResult && index === 1) || (paperModeActive && index === 2) ? "active" : ""}>{item}</span>)}</div><button type="button" onClick={() => setStatus("Live deployment blocked until Dhan is connected and strategy passes risk validation.")} className="algo-action secondary wide">Check live readiness</button></div><div className="algo-os-card"><h3>Execution Guardrails</h3><div className="algo-rule-list"><div><span>Idempotency</span><b>Required</b></div><div><span>Risk validation</span><b>Before order</b></div><div><span>Broker status</span><b>Dhan pending</b></div><div><span>Kill switch</span><b>{killSwitchActive ? "Active" : "Ready"}</b></div></div></div></div>;
+    return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><h3>Live Strategies</h3><p>Native, TradingView and API signals all normalize to the same Signal object before risk and execution.</p><div className="algo-lifecycle-line">{["Draft", "Backtested", "Paper", "Ready", "Live"].map((item, index) => <span key={item} className={index === 0 || (paperModeActive && index === 2) ? "active" : ""}>{item}</span>)}</div><button type="button" onClick={() => setStatus("Live deployment blocked until Dhan is connected and strategy passes risk validation.")} className="algo-action secondary wide">Check live readiness</button></div><div className="algo-os-card"><h3>Execution Guardrails</h3><div className="algo-rule-list"><div><span>Idempotency</span><b>Required</b></div><div><span>Risk validation</span><b>Before order</b></div><div><span>Broker status</span><b>Dhan pending</b></div><div><span>Kill switch</span><b>{killSwitchActive ? "Active" : "Ready"}</b></div></div></div></div>;
   }
 
   function renderTemplates() {
@@ -282,13 +274,13 @@ export default function AlgoTradingPanel() {
         </div>
 
         <div className="algo-os-grid five">
-          {[["Net P&L", "+₹6,850", "Realtime paper sample"], ["Today's P&L", "+₹1,240", "Open P&L included"], ["Total Trades", "23", "Realtime dataset"], ["Win Rate", "65.2%", "Realtime closed trades"], ["Webhook Health", "Healthy", "Last webhook 8s ago"]].map(([label, value, helper]) => <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>)}
+          {[["Net P&L", "--", "Waiting for signals"], ["Today's P&L", "--", "No realtime fills yet"], ["Total Trades", "0", "No TradingView trades"], ["Win Rate", "--", "Needs closed trades"], ["Webhook Health", "Not connected", "No webhook received"]].map(([label, value, helper]) => <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>)}
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
           <div className="algo-os-card">
             <div className="algo-card-head"><div><h3>Performance Comparison</h3><p>Historical and realtime performance stay separate. Combined is shown only as a labelled aggregate.</p></div><span className="algo-pill good">Separated</span></div>
-            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Dataset</th><th>Trades</th><th>Win Rate</th><th>Net P&L</th><th>Profit Factor</th><th>Max DD</th></tr></thead><tbody><tr><td>BACKTEST · Jan-Sep 2026</td><td>428</td><td>61.2%</td><td>₹84,500</td><td>1.72</td><td>₹18,200</td></tr><tr><td>PAPER · Realtime</td><td>23</td><td>65.2%</td><td>₹6,850</td><td>1.91</td><td>₹1,450</td></tr><tr><td>COMBINED · Labelled only</td><td>451</td><td>61.4%</td><td>₹91,350</td><td>1.75</td><td>₹18,200</td></tr></tbody></table></div>
+            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Dataset</th><th>Trades</th><th>Win Rate</th><th>Net P&L</th><th>Profit Factor</th><th>Max DD</th></tr></thead><tbody><tr><td>BACKTEST · Not run</td><td>0</td><td>--</td><td>--</td><td>--</td><td>--</td></tr><tr><td>PAPER · Realtime not connected</td><td>0</td><td>--</td><td>--</td><td>--</td><td>--</td></tr><tr><td>COMBINED · Disabled until data exists</td><td>0</td><td>--</td><td>--</td><td>--</td><td>--</td></tr></tbody></table></div>
           </div>
 
           <div className="algo-os-card">
@@ -302,12 +294,12 @@ export default function AlgoTradingPanel() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
           <div className="algo-os-card">
             <div className="algo-card-head"><h3>Realtime Signal Feed</h3><span className="algo-pill good">Receiving Signals</span></div>
-            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Time</th><th>Action</th><th>Symbol</th><th>Price</th><th>Source</th><th>Status</th><th>Execution</th></tr></thead><tbody><tr><td>09:15:32</td><td>BUY</td><td>NSE:NIFTY</td><td>25,250</td><td>TRADINGVIEW</td><td>VALIDATED</td><td>Paper entry</td></tr><tr><td>09:35:11</td><td>EXIT</td><td>NSE:NIFTY</td><td>25,285</td><td>TRADINGVIEW</td><td>EXECUTED</td><td>+₹1,240</td></tr><tr><td>10:05:43</td><td>BUY</td><td>NSE:NIFTY</td><td>25,310</td><td>TRADINGVIEW</td><td>REJECTED</td><td>Duplicate signal</td></tr></tbody></table></div>
+            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Time</th><th>Action</th><th>Symbol</th><th>Price</th><th>Source</th><th>Status</th><th>Execution</th></tr></thead><tbody><tr><td colSpan={7}>No TradingView signals received yet. Create an alert in TradingView and point it to this webhook URL.</td></tr></tbody></table></div>
           </div>
 
           <div className="algo-os-card">
             <h3>Webhook Health</h3>
-            <div className="algo-rule-list"><div><span>Status</span><b>Healthy</b></div><div><span>Last signal</span><b>09:42:18</b></div><div><span>Signals today</span><b>7</b></div><div><span>Failed webhooks</span><b>0</b></div><div><span>Duplicate signals</span><b>1</b></div><div><span>Processing latency</span><b>42ms receiver target</b></div></div>
+            <div className="algo-rule-list"><div><span>Status</span><b>No recent signals</b></div><div><span>Last signal</span><b>Never</b></div><div><span>Signals today</span><b>0</b></div><div><span>Failed webhooks</span><b>0</b></div><div><span>Duplicate signals</span><b>0</b></div><div><span>Processing latency</span><b>Waiting for first webhook</b></div></div>
           </div>
         </div>
 
