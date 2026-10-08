@@ -230,7 +230,106 @@ export default function AlgoTradingPanel() {
   function renderJournal() { return <div className="algo-os-card"><h3>Automated Journal</h3><p>Paper and live fills will create journal entries with strategy, version, signal ID, execution mode and risk decisions.</p><div className="algo-rule-list"><div><span>Execution mode</span><b>BACKTEST / PAPER / LIVE</b></div><div><span>Signal lineage</span><b>strategyId + version + signalId</b></div><div><span>Review loop</span><b>Feeds Analytics</b></div></div></div>; }
   function renderAnalytics() { return <div className="algo-os-grid three"><div className="algo-os-card metric"><span>Profit Factor</span><strong>--</strong><p>Requires completed algo trades.</p></div><div className="algo-os-card metric"><span>Expectancy</span><strong>--</strong><p>By strategy version.</p></div><div className="algo-os-card metric"><span>Max Drawdown</span><strong>--</strong><p>Backtest/paper/live separated.</p></div></div>; }
   function renderDhan() { return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Integration</h3><p>All Dhan access must go through DhanBrokerAdapter.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">Connect Dhan</button></div><div className="algo-rule-list compact"><div><span>Profile</span><b>Pending</b></div><div><span>Funds</span><b>Pending</b></div><div><span>Orders</span><b>Adapter planned</b></div><div><span>WebSocket</span><b>Planned</b></div></div></div><div className="algo-os-card"><h3>Adapter Contract</h3><p>connect, funds, positions, orders, place/modify/cancel, exitAll, killSwitch, order updates.</p></div></div>; }
-  function renderTradingView() { return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><h3>TradingView Webhook</h3><p>TradingView signals normalize to Signal, then pass idempotency, risk and execution checks.</p><div className="algo-rule-list"><div><span>Webhook URL</span><b>/api/v1/webhooks/tradingview</b></div><div><span>Secret</span><b>{webhookSecretVisible ? "tv_demo_secret_123" : "********"}</b></div><div><span>Actions</span><b>BUY / SELL / EXIT</b></div></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/api/v1/webhooks/tradingview`)} className="algo-action secondary">Copy URL</button><button type="button" onClick={() => setWebhookSecretVisible((prev) => !prev)} className="algo-action secondary">{webhookSecretVisible ? "Hide" : "Show"} Secret</button><button type="button" onClick={() => setStatus("Webhook secret regenerated locally. Backend persistence is next.")} className="algo-action primary">Regenerate Secret</button></div></div><div className="algo-os-card"><h3>Payload Mapping</h3><pre className="algo-code-block">{`{\n  "action": "BUY",\n  "symbol": "NIFTY",\n  "strategy": "VWAP Pullback",\n  "signalId": "{{strategy.order.id}}"\n}`}</pre></div></div>; }
+  function renderTradingView() {
+    const webhookUrl = "/api/v1/webhooks/tradingview";
+    return (
+      <div className="space-y-4">
+        <div className="algo-warning-card">
+          <b>TradingView limitation</b>
+          <span>TradingView webhooks provide realtime alert events. They do not provide the indicator&apos;s complete historical signal history. For protected indicators, import historical signals or recreate the logic in TradingOS.</span>
+        </div>
+
+        <div className="algo-os-grid two">
+          <div className="algo-os-card">
+            <div className="algo-card-head">
+              <div><h3>Mode A · Accessible Pine Logic</h3><p>Recreate the logic in the TradingOS Strategy DSL. TradingOS becomes the source of truth for historical signals, entries, exits, P&L and analytics.</p></div>
+              <span className="algo-pill good">Native backtest</span>
+            </div>
+            <div className="algo-rule-list"><div><span>Historical signals</span><b>Calculated by TradingOS</b></div><div><span>Performance engine</span><b>Backtest / Paper / Live</b></div><div><span>Look-ahead bias</span><b>Avoided by replay engine</b></div></div>
+          </div>
+
+          <div className="algo-os-card">
+            <div className="algo-card-head">
+              <div><h3>Mode B · Protected Indicator</h3><p>Treat TradingView as a black-box signal provider. No scraping, no reverse engineering, no Strategy Tester dependency.</p></div>
+              <span className="algo-pill pending">Webhook source</span>
+            </div>
+            <div className="algo-rule-list"><div><span>Realtime signals</span><b>TradingView alerts</b></div><div><span>Historical performance</span><b>Import signal CSV</b></div><div><span>Execution</span><b>Risk engine first</b></div></div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+          <div className="algo-os-card">
+            <h3>TradingView Webhook</h3>
+            <p>TradingView signals normalize to Signal, then pass validation, idempotency, risk and execution checks.</p>
+            <div className="algo-rule-list"><div><span>Webhook URL</span><b>{webhookUrl}</b></div><div><span>Secret</span><b>{webhookSecretVisible ? "tv_demo_secret_123" : "********"}</b></div><div><span>Actions</span><b>BUY / SELL / EXIT / CLOSE_LONG / CLOSE_SHORT</b></div><div><span>Security</span><b>Secret, timestamp, duplicate and optional HMAC checks</b></div></div>
+            <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy URL</button><button type="button" onClick={() => setWebhookSecretVisible((prev) => !prev)} className="algo-action secondary">{webhookSecretVisible ? "Hide" : "Show"} Secret</button><button type="button" onClick={() => setStatus("Webhook secret regenerated locally. Backend persistence is next.")} className="algo-action primary">Regenerate Secret</button></div>
+          </div>
+
+          <div className="algo-os-card">
+            <h3>Payload Mapping</h3>
+            <pre className="algo-code-block">{`{
+  "secret": "USER_SECRET",
+  "strategyId": "strategy_123",
+  "signalId": "tv_123456",
+  "symbol": "NSE:NIFTY",
+  "timeframe": "5m",
+  "action": "BUY",
+  "timestamp": "2026-10-08T09:30:00+05:30",
+  "price": 25250,
+  "metadata": { "indicator": "My Indicator", "signal": "BUY" }
+}`}</pre>
+          </div>
+        </div>
+
+        <div className="algo-os-grid five">
+          {[["Net P&L", "+₹6,850", "Realtime paper sample"], ["Today's P&L", "+₹1,240", "Open P&L included"], ["Total Trades", "23", "Realtime dataset"], ["Win Rate", "65.2%", "Realtime closed trades"], ["Webhook Health", "Healthy", "Last webhook 8s ago"]].map(([label, value, helper]) => <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>)}
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
+          <div className="algo-os-card">
+            <div className="algo-card-head"><div><h3>Performance Comparison</h3><p>Historical and realtime performance stay separate. Combined is shown only as a labelled aggregate.</p></div><span className="algo-pill good">Separated</span></div>
+            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Dataset</th><th>Trades</th><th>Win Rate</th><th>Net P&L</th><th>Profit Factor</th><th>Max DD</th></tr></thead><tbody><tr><td>BACKTEST · Jan-Sep 2026</td><td>428</td><td>61.2%</td><td>₹84,500</td><td>1.72</td><td>₹18,200</td></tr><tr><td>PAPER · Realtime</td><td>23</td><td>65.2%</td><td>₹6,850</td><td>1.91</td><td>₹1,450</td></tr><tr><td>COMBINED · Labelled only</td><td>451</td><td>61.4%</td><td>₹91,350</td><td>1.75</td><td>₹18,200</td></tr></tbody></table></div>
+          </div>
+
+          <div className="algo-os-card">
+            <h3>Import Historical Signals</h3>
+            <p>For protected indicators, import signal CSV. Required columns: timestamp, symbol, action, price.</p>
+            <div className="algo-import-box"><span>CSV upload area</span><b>timestamp,symbol,action,price</b><small>Validation: timezone, duplicates, chronological order, missing values.</small></div>
+            <button type="button" onClick={() => setStatus("Historical signal import UI is ready. Persistence and file parsing are the next backend step.")} className="algo-action secondary wide">Prepare import</button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
+          <div className="algo-os-card">
+            <div className="algo-card-head"><h3>Realtime Signal Feed</h3><span className="algo-pill good">Receiving Signals</span></div>
+            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Time</th><th>Action</th><th>Symbol</th><th>Price</th><th>Source</th><th>Status</th><th>Execution</th></tr></thead><tbody><tr><td>09:15:32</td><td>BUY</td><td>NSE:NIFTY</td><td>25,250</td><td>TRADINGVIEW</td><td>VALIDATED</td><td>Paper entry</td></tr><tr><td>09:35:11</td><td>EXIT</td><td>NSE:NIFTY</td><td>25,285</td><td>TRADINGVIEW</td><td>EXECUTED</td><td>+₹1,240</td></tr><tr><td>10:05:43</td><td>BUY</td><td>NSE:NIFTY</td><td>25,310</td><td>TRADINGVIEW</td><td>REJECTED</td><td>Duplicate signal</td></tr></tbody></table></div>
+          </div>
+
+          <div className="algo-os-card">
+            <h3>Webhook Health</h3>
+            <div className="algo-rule-list"><div><span>Status</span><b>Healthy</b></div><div><span>Last signal</span><b>09:42:18</b></div><div><span>Signals today</span><b>7</b></div><div><span>Failed webhooks</span><b>0</b></div><div><span>Duplicate signals</span><b>1</b></div><div><span>Processing latency</span><b>42ms receiver target</b></div></div>
+          </div>
+        </div>
+
+        <div className="algo-os-card">
+          <h3>Normalized Signal Model</h3>
+          <pre className="algo-code-block">{`{
+  "id": "tv_123456",
+  "strategyId": "strategy_123",
+  "source": "TRADINGVIEW",
+  "symbol": "NSE:NIFTY",
+  "action": "BUY",
+  "timestamp": "2026-10-08T09:30:00+05:30",
+  "price": 25250,
+  "timeframe": "5m",
+  "status": "VALIDATED",
+  "metadata": { "indicator": "My Indicator" }
+}`}</pre>
+        </div>
+      </div>
+    );
+  }
+
   function renderSettings() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Platform Settings</h3><div className="algo-rule-list"><div><span>Default mode</span><b>Paper first</b></div><div><span>Market</span><b>India</b></div><div><span>Initial instruments</span><b>NIFTY, BANKNIFTY, FINNIFTY</b></div><div><span>Emergency control</span><b>Always visible</b></div></div></div><div className="algo-os-card"><h3>Security</h3><p>Live broker tokens must never be exposed in the frontend.</p><button type="button" onClick={() => setStatus("Security reminder: implement encrypted credential storage before live broker execution.")} className="algo-action secondary wide">Run security checklist</button></div></div>; }
   function renderAdmin() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Admin</h3><div className="algo-rule-list"><div><span>Users</span><b>Planned</b></div><div><span>Broker audit</span><b>Planned</b></div><div><span>Webhook audit</span><b>Planned</b></div></div></div><div className="algo-os-card"><h3>System Health</h3><div className="algo-rule-list"><div><span>Market data</span><b>Pending</b></div><div><span>Queue</span><b>Not configured</b></div><div><span>Execution service</span><b>Frontend scaffold</b></div></div></div></div>; }
 

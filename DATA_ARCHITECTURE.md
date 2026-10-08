@@ -10,3 +10,14 @@ Provider -> Ingestion -> Normalization -> Validation -> Historical Database -> B
 
 ## Instrument Master
 Fields include exchange, segment, symbol, tradingSymbol, securityId, instrumentType, underlying, expiry, strike, optionType, lotSize and tickSize.
+
+
+## TradingView Historical Signals
+
+Protected TradingView indicators do not expose historical alert history through webhooks. Historical performance requires one of:
+- imported historical signal CSV;
+- reproducible Pine logic converted into Strategy DSL;
+- another supported historical signal source;
+- prospectively collected webhook signals.
+
+Imported signal CSV must validate timestamp, symbol, action, price, timezone, duplicates, missing values and chronological order before conversion into Signal records.

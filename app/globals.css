@@ -1590,3 +1590,53 @@ html.dark .dashboard-shell .kpi {
     grid-template-columns: 1fr;
   }
 }
+
+
+.algo-shell .algo-warning-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #f4d7a4;
+  border-radius: 14px;
+  background: #fff8e8;
+  padding: 14px 16px;
+  color: #6d521f;
+}
+
+.algo-shell .algo-warning-card b {
+  color: #10203f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.algo-shell .algo-warning-card span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.algo-shell .algo-import-box {
+  margin: 16px 0;
+  display: grid;
+  gap: 8px;
+  border: 1px dashed #b7c6da;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 18px;
+}
+
+.algo-shell .algo-import-box span {
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8090aa;
+}
+
+.algo-shell .algo-import-box b {
+  font-size: 13px;
+  color: #10203f;
+}
+
+.algo-shell .algo-import-box small {
+  color: #667792;
+  font-size: 11px;
+}
