@@ -1071,3 +1071,463 @@ html.dark .dashboard-shell .kpi {
     grid-template-columns: 1fr;
   }
 }
+
+.algo-shell {
+  color: #10203f;
+}
+
+.algo-shell .algo-action {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 850;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.algo-shell .algo-action:hover {
+  transform: translateY(-1px);
+}
+
+.algo-shell .algo-action.primary {
+  background: #1767e8;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(23, 103, 232, 0.18);
+}
+
+.algo-shell .algo-action.secondary {
+  border: 1px solid #d8e2ef;
+  background: #ffffff;
+  color: #394b68;
+}
+
+.algo-shell .algo-action.danger {
+  background: #df4747;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(223, 71, 71, 0.18);
+}
+
+.algo-shell .algo-action.wide {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.algo-shell .algo-os-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #d8e2ef;
+  border-radius: 16px;
+  padding: 24px;
+  background: linear-gradient(135deg, #0b1730, #14294d 55%, #1767e8);
+  color: #ffffff;
+  box-shadow: 0 18px 45px rgba(16, 32, 63, 0.14);
+}
+
+.algo-shell .algo-os-eyebrow {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9cc7ff;
+}
+
+.algo-shell .algo-os-hero h1 {
+  font-size: clamp(30px, 3.2vw, 48px);
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.algo-shell .algo-os-hero p {
+  margin-top: 12px;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #d9e7ff;
+}
+
+.algo-shell .algo-os-status {
+  min-width: min(360px, 100%);
+  align-self: stretch;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 16px;
+}
+
+.algo-shell .algo-os-status span {
+  display: block;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9cc7ff;
+}
+
+.algo-shell .algo-os-status b {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #ffffff;
+}
+
+.algo-shell .algo-os-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.algo-shell .algo-os-grid.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.algo-shell .algo-os-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.algo-shell .algo-os-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.algo-shell .algo-os-grid.small {
+  margin: 16px 0;
+}
+
+.algo-shell .algo-os-card {
+  border: 1px solid #d8e2ef;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 18px;
+  box-shadow: 0 14px 34px rgba(16, 32, 63, 0.055);
+}
+
+.algo-shell .algo-os-card.metric span,
+.algo-shell .algo-os-grid.small span,
+.algo-shell .algo-rule-list span,
+.algo-shell .algo-flow span,
+.algo-shell .result-row span {
+  display: block;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8090aa;
+}
+
+.algo-shell .algo-os-card.metric strong,
+.algo-shell .algo-os-grid.small strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 950;
+  color: #10203f;
+}
+
+.algo-shell .algo-os-card.metric p,
+.algo-shell .algo-os-card p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #667792;
+}
+
+.algo-shell .algo-os-card h3 {
+  font-size: 16px;
+  font-weight: 950;
+  color: #10203f;
+}
+
+.algo-shell .algo-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.algo-shell .algo-flow {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.algo-shell .algo-flow > div {
+  border: 1px solid #d8e2ef;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 15px;
+}
+
+.algo-shell .algo-flow b {
+  display: block;
+  margin-top: 7px;
+  color: #10203f;
+}
+
+.algo-shell .algo-flow > strong {
+  width: max-content;
+  border-radius: 999px;
+  background: #e7f0ff;
+  padding: 7px 12px;
+  font-size: 10px;
+  color: #1767e8;
+}
+
+.algo-shell .algo-tag-row {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.algo-shell .algo-tag-row span,
+.algo-shell .algo-pill {
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.algo-shell .algo-tag-row span {
+  background: #eef4fb;
+  color: #394b68;
+}
+
+.algo-shell .algo-pill.good {
+  background: #e0f7ef;
+  color: #07966c;
+}
+
+.algo-shell .algo-pill.pending {
+  background: #fff5df;
+  color: #986a13;
+}
+
+.algo-shell .algo-rule-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.algo-shell .algo-rule-list.compact {
+  gap: 8px;
+}
+
+.algo-shell .algo-rule-list div,
+.algo-shell .algo-broker-line,
+.algo-shell .algo-alert-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 12px;
+  background: #f7faff;
+  padding: 12px;
+}
+
+.algo-shell .algo-rule-list b,
+.algo-shell .algo-broker-line b,
+.algo-shell .algo-alert-box b,
+.algo-shell .result-row b {
+  font-size: 13px;
+  color: #10203f;
+}
+
+.algo-shell .algo-broker-line {
+  margin-top: 16px;
+  border: 1px solid #d8e2ef;
+  background: #ffffff;
+}
+
+.algo-shell .algo-broker-line span,
+.algo-shell .algo-alert-box span {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #667792;
+}
+
+.algo-shell .algo-broker-line button {
+  border-radius: 9px;
+  background: #1767e8;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.algo-shell .algo-lifecycle-line {
+  margin: 16px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.algo-shell .algo-lifecycle-line span {
+  border-radius: 10px;
+  background: #eef4fb;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 850;
+  color: #667792;
+}
+
+.algo-shell .algo-lifecycle-line span.active {
+  background: #e5f7f0;
+  color: #07966c;
+}
+
+.algo-shell .result-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(4, minmax(120px, 0.5fr));
+  align-items: center;
+  gap: 12px;
+}
+
+.algo-shell .good-text { color: #07966c !important; }
+.algo-shell .bad-text { color: #df4747 !important; }
+
+.algo-shell .algo-os-table {
+  margin-top: 14px;
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.algo-shell .algo-os-table th,
+.algo-shell .algo-os-table td {
+  border-bottom: 1px solid #edf1f7;
+  padding: 13px 12px;
+  text-align: left;
+}
+
+.algo-shell .algo-os-table th {
+  background: #f7faff;
+  color: #8090aa;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.algo-shell .algo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 22, 41, 0.42);
+  padding: 20px;
+  backdrop-filter: blur(6px);
+}
+
+.algo-shell .algo-modal {
+  width: min(760px, 100%);
+  max-height: 86vh;
+  overflow: auto;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 20px;
+  box-shadow: 0 30px 80px rgba(9, 22, 41, 0.28);
+}
+
+.algo-shell .algo-modal.small {
+  width: min(520px, 100%);
+}
+
+.algo-shell .algo-modal .algo-card-head button {
+  display: grid;
+  height: 32px;
+  width: 32px;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid #d8e2ef;
+  color: #394b68;
+}
+
+.algo-shell .algo-form-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.algo-shell .algo-form-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.algo-shell label {
+  display: grid;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #667792;
+}
+
+.algo-shell input,
+.algo-shell select,
+.algo-shell textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #d8e2ef;
+  background: #fbfdff;
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #10203f;
+}
+
+.algo-shell .algo-textarea-label {
+  margin-top: 12px;
+}
+
+.algo-shell textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.algo-shell .algo-modal-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.algo-shell .danger-modal h3 {
+  font-size: 22px;
+  font-weight: 950;
+  color: #df4747;
+}
+
+.algo-shell .danger-modal p {
+  margin-top: 10px;
+  color: #667792;
+}
+
+@media (max-width: 1280px) {
+  .algo-shell .algo-os-grid.five,
+  .algo-shell .algo-os-grid.three,
+  .algo-shell .result-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .algo-shell .algo-os-hero,
+  .algo-shell .algo-card-head,
+  .algo-shell .result-row {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .algo-shell .algo-os-grid.five,
+  .algo-shell .algo-os-grid.three,
+  .algo-shell .algo-os-grid.two,
+  .algo-shell .algo-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
