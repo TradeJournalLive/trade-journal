@@ -1531,3 +1531,62 @@ html.dark .dashboard-shell .kpi {
     grid-template-columns: 1fr;
   }
 }
+
+.algo-shell .algo-nav-label {
+  margin: 0 0 6px 10px;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.algo-shell .algo-builder-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.algo-shell .algo-code-block {
+  margin-top: 14px;
+  max-height: 520px;
+  overflow: auto;
+  border-radius: 14px;
+  background: #091629;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #dbeafe;
+}
+
+.algo-shell .algo-empty-state {
+  margin-top: 16px;
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  border: 1px dashed #c8d5e6;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 22px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 750;
+  color: #667792;
+}
+
+.algo-shell .algo-mini-button {
+  border-radius: 8px;
+  border: 1px solid #d8e2ef;
+  background: #ffffff;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #1767e8;
+}
+
+@media (max-width: 760px) {
+  .algo-shell .algo-builder-grid {
+    grid-template-columns: 1fr;
+  }
+}
