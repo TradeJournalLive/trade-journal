@@ -143,6 +143,7 @@ type DashboardView =
   | "brokers"
   | "journal"
   | "profile"
+  | "algo"
   | "setup-edit";
 
 type DashboardSection = "overview";
@@ -5101,6 +5102,7 @@ export default function ClientDashboard({
       label: "Workspace",
       items: [
         { label: "Overview", href: "/dashboard", id: "overview" },
+        { label: "Algo Trading", href: "/dashboard/algo", id: "algo" },
         { label: "Trade journal", href: "/dashboard/journal", id: "journal" },
         { label: "Day-wise", href: "/dashboard/day", id: "day" },
         { label: "Performance", href: "/dashboard/performance", id: "performance" },
@@ -5147,6 +5149,17 @@ export default function ClientDashboard({
           <path d="M15 3v5h5" />
           <path d="M10 13h6" />
           <path d="M10 17h4" />
+        </svg>
+      );
+    }
+    if (id === "algo") {
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 17h4l2-9 4 12 2-7h4" />
+          <path d="M5 5h4" />
+          <path d="M15 5h4" />
+          <path d="M7 5v5" />
+          <path d="M17 5v7" />
         </svg>
       );
     }
@@ -5206,6 +5219,7 @@ export default function ClientDashboard({
     activeSection === id ||
     (!isOverviewView && view === id) ||
     (!isOverviewView && view === "journal" && id === "journal") ||
+    (!isOverviewView && view === "algo" && id === "algo") ||
     (!isOverviewView && view === "participants" && id === "participants") ||
     (!isOverviewView && view === "setup" && id === "setups") ||
     (!isOverviewView && view === "profile" && id === "profile");
@@ -5215,6 +5229,8 @@ export default function ClientDashboard({
       ? "Participant data"
       : view === "journal"
         ? "Trade journal"
+        : view === "algo"
+          ? "Algo Trading"
         : view === "setup"
           ? "Setups"
           : view === "profile"
@@ -5343,7 +5359,11 @@ export default function ClientDashboard({
 
         <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-10 border-b border-[#e1e7f0] bg-white/95 backdrop-blur dark:border-white/10 dark:bg-ink/85">
-            <div className="mx-auto flex min-h-[68px] max-w-[1680px] flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6 lg:px-7">
+            <div className="mx-auto flex min-h-[68px] max-w-[1680px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-7">
+              <div className="algo-panel-switch flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-bold shadow-sm dark:border-white/10 dark:bg-white/5">
+                <Link href="/dashboard" className={`rounded-lg px-3 py-2 transition ${view === "algo" ? "text-slate-600 hover:bg-white dark:text-slate-300" : "bg-white text-blue-700 shadow-sm dark:bg-white/10 dark:text-sky-200"}`}>Journal</Link>
+                <Link href="/dashboard/algo" className={`rounded-lg px-3 py-2 transition ${view === "algo" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-white/10"}`}>Algo Trading</Link>
+              </div>
               <div className="hidden flex-wrap items-center gap-2 text-xs md:flex">
                 {isOverviewView ? (
                   <button
@@ -5710,6 +5730,159 @@ export default function ClientDashboard({
               </div>
             </div>
           </header>
+
+          {view === "algo" && (
+            <section id="algo" className="mx-auto max-w-[1680px] space-y-5 px-7 py-6">
+              <div className="algo-hero">
+                <div>
+                  <div className="algo-eyebrow">1to2 Trading OS</div>
+                  <h2 className="section-title"><span className="pagesymbol algo-page-symbol">AT</span> Algo Trading</h2>
+                  <p className="section-lead">Build. Test. Trade. Protect. Dhan-first automation, risk controls, paper trading and journal feedback inside your existing 1to2 workspace.</p>
+                </div>
+                <div className="algo-hero-actions">
+                  <Link href="/dashboard/brokers" className="algo-secondary-button">Connect Dhan</Link>
+                  <button type="button" className="algo-danger-button">EXIT ALL</button>
+                </div>
+              </div>
+
+              <div className="algo-metrics-grid">
+                {[
+                  { label: "Today P&L", value: signedMoney0.format(summary.totalPl), helper: `${formatPercent(summary.winRate)} win rate from journal`, tone: summary.totalPl >= 0 ? "good" : "bad" },
+                  { label: "Running strategies", value: "0", helper: "No live strategy deployed yet", tone: "blue" },
+                  { label: "Capital deployed", value: money0.format(defaultTradingAccount?.baseCapital ?? 0), helper: defaultTradingAccount?.name ?? "Primary account", tone: "blue" },
+                  { label: "Risk active", value: `${Math.max(0, overtradeList.length)} flags`, helper: overtradeList[0] ? `Daily limit broken: ${overtradeList[0].date}` : "All journal limits clean", tone: overtradeList.length ? "bad" : "good" },
+                  { label: "Broker health", value: "Dhan ready", helper: "Adapter-first foundation", tone: "good" }
+                ].map((item) => (
+                  <div key={item.label} className="algo-kpi-card">
+                    <span className={`algo-kpi-dot algo-kpi-${item.tone}`} />
+                    <span className="text-xs font-bold text-muted">{item.label}</span>
+                    <strong>{item.value}</strong>
+                    <p>{item.helper}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+                <div className="algo-panel algo-builder-panel">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3>Strategy Builder</h3>
+                      <p>No-code rule builder for NIFTY, BANKNIFTY, FINNIFTY, options and equities.</p>
+                    </div>
+                    <button type="button" className="algo-primary-button">+ New strategy</button>
+                  </div>
+                  <div className="algo-rule-stack">
+                    <div className="algo-rule-card">
+                      <span>WHEN</span>
+                      <b>NIFTY · 5 minute</b>
+                      <p>EMA(9) crosses above EMA(21) AND RSI(14) &gt; 55 AND Close &gt; VWAP</p>
+                    </div>
+                    <div className="algo-rule-connector">THEN</div>
+                    <div className="algo-rule-card">
+                      <span>BUY</span>
+                      <b>NIFTY ATM CE · Current expiry</b>
+                      <p>1 lot · SL 20% · Target 40% · Trail by 10% after +30%</p>
+                    </div>
+                  </div>
+                  <div className="algo-chip-row">
+                    {['EMA', 'VWAP', 'RSI', 'MACD', 'Supertrend', 'ATR', 'Bollinger Bands', 'ADX'].map((item) => <span key={item}>{item}</span>)}
+                  </div>
+                </div>
+
+                <div className="algo-panel algo-risk-panel">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3>Risk Engine</h3>
+                      <p>Runs before every order. Failed checks reject the signal.</p>
+                    </div>
+                    <span className="algo-status-pill good">Armed</span>
+                  </div>
+                  <div className="algo-risk-list">
+                    {[
+                      ['Daily loss limit', '₹5,000'],
+                      ['Daily profit target', '₹10,000'],
+                      ['Max trades per day', String(defaultTradingAccount?.dailyTradeLimit ?? DEFAULT_DAILY_TRADE_LIMIT)],
+                      ['Max open positions', '2'],
+                      ['No new entries after', '3:15 PM']
+                    ].map(([label, value]) => (
+                      <div key={label}><span>{label}</span><b>{value}</b></div>
+                    ))}
+                  </div>
+                  <button type="button" className="algo-danger-wide">Activate kill switch</button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-3">
+                <div className="algo-panel">
+                  <h3>Broker Connections</h3>
+                  <p>Dhan is the first live broker. Future adapters stay separate from strategy logic.</p>
+                  <div className="algo-broker-card">
+                    <div><b>Dhan</b><span>Primary broker</span></div>
+                    <span className="algo-status-pill pending">Not connected</span>
+                  </div>
+                  <div className="algo-mini-list">
+                    <div><span>Profile</span><b>Secure server-side token</b></div>
+                    <div><span>Funds</span><b>Pending connection</b></div>
+                    <div><span>Orders</span><b>Adapter ready</b></div>
+                  </div>
+                </div>
+
+                <div className="algo-panel">
+                  <h3>Backtest & Paper</h3>
+                  <p>Validate with slippage, brokerage, taxes, execution delay and options data availability.</p>
+                  <div className="algo-mode-grid">
+                    <div><span>Backtests</span><b>0</b><small>Create from strategy builder</small></div>
+                    <div><span>Paper mode</span><b>Ready</b><small>Stores as executionMode = PAPER</small></div>
+                  </div>
+                  <button type="button" className="algo-secondary-button w-full">Run sample backtest</button>
+                </div>
+
+                <div className="algo-panel">
+                  <h3>Live Trading</h3>
+                  <p>Signals must pass lifecycle, broker health, duplicate checks and risk validation.</p>
+                  <div className="algo-lifecycle">
+                    {['Draft', 'Backtested', 'Paper', 'Ready', 'Live'].map((item, index) => <span key={item} className={index === 0 ? 'active' : ''}>{item}</span>)}
+                  </div>
+                  <div className="algo-mini-list">
+                    <div><span>Duplicate signal guard</span><b>Required</b></div>
+                    <div><span>Order state check</span><b>Required</b></div>
+                    <div><span>Journal sync</span><b>Automatic</b></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+                <div className="algo-panel">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3>Positions & Orders</h3>
+                    <span className="algo-status-pill pending">Waiting for broker</span>
+                  </div>
+                  <div className="overflow-auto">
+                    <table className="algo-table">
+                      <thead><tr><th>Strategy</th><th>Instrument</th><th>Mode</th><th>Status</th><th>P&L</th><th>Risk</th></tr></thead>
+                      <tbody>
+                        <tr><td>NIFTY EMA 9/21</td><td>NIFTY ATM CE</td><td>Paper</td><td>Draft</td><td>₹0</td><td>20% SL</td></tr>
+                        <tr><td>Opening range</td><td>BANKNIFTY Futures</td><td>Paper</td><td>Paused</td><td>₹0</td><td>1 lot max</td></tr>
+                        <tr><td>VWAP pullback</td><td>NIFTY 50</td><td>Backtest</td><td>Ready to test</td><td>₹0</td><td>Time filter</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="algo-panel">
+                  <h3>Auto Journal Feedback</h3>
+                  <p>Every paper/live fill should become a journal trade and feed analysis.</p>
+                  <div className="algo-feedback-box">
+                    <b>Top learning</b>
+                    <span>{topLearning ? `${topLearning.label} appeared in ${topLearning.count} trade${topLearning.count > 1 ? 's' : ''}.` : 'Add learning notes to see strategy feedback here.'}</span>
+                  </div>
+                  <div className="algo-feedback-box muted">
+                    <b>What to protect</b>
+                    <span>{overtradeList[0] ? `${overtradeList[0].accountName} crossed the daily trade limit.` : 'Keep risk limits green before deploying live.'}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {view === "overview" && (
             <section

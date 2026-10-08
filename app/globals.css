@@ -681,3 +681,393 @@ html.dark .dashboard-shell .kpi {
   font-weight: 700;
   color: #687895;
 }
+
+
+.dashboard-shell .algo-panel-switch {
+  flex-shrink: 0;
+}
+
+.dashboard-shell .algo-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #dbe5f2;
+  border-radius: 14px;
+  padding: 22px;
+  background:
+    linear-gradient(135deg, rgba(23,103,232,0.1), transparent 38%),
+    linear-gradient(90deg, #ffffff, #f8fbff);
+  box-shadow: 0 12px 30px rgba(27, 43, 74, 0.05);
+}
+
+.dashboard-shell .algo-eyebrow {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #1767e8;
+}
+
+.dashboard-shell .algo-page-symbol {
+  width: 34px;
+  height: 34px;
+  margin-right: 10px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #e4efff;
+  color: #1767e8;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.dashboard-shell .algo-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.dashboard-shell .algo-primary-button,
+.dashboard-shell .algo-secondary-button,
+.dashboard-shell .algo-danger-button,
+.dashboard-shell .algo-danger-wide {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 800;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.dashboard-shell .algo-primary-button {
+  background: #1767e8;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(23,103,232,0.18);
+}
+
+.dashboard-shell .algo-secondary-button {
+  border: 1px solid #dbe5f2;
+  background: #ffffff;
+  color: #425370;
+}
+
+.dashboard-shell .algo-danger-button,
+.dashboard-shell .algo-danger-wide {
+  background: #df4747;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(223,71,71,0.18);
+}
+
+.dashboard-shell .algo-danger-wide {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.dashboard-shell .algo-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-shell .algo-kpi-card,
+.dashboard-shell .algo-panel {
+  position: relative;
+  border: 1px solid #dbe5f2;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(27,43,74,0.045);
+}
+
+.dashboard-shell .algo-kpi-card {
+  min-height: 126px;
+  padding: 18px;
+}
+
+.dashboard-shell .algo-kpi-card strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: #132342;
+}
+
+.dashboard-shell .algo-kpi-card p {
+  margin-top: 9px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #687895;
+}
+
+.dashboard-shell .algo-kpi-dot {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+}
+
+.dashboard-shell .algo-kpi-good { background: #dff7ef; }
+.dashboard-shell .algo-kpi-blue { background: #e4efff; }
+.dashboard-shell .algo-kpi-bad { background: #fff0ef; }
+
+.dashboard-shell .algo-panel {
+  padding: 18px;
+}
+
+.dashboard-shell .algo-panel h3 {
+  font-size: 15px;
+  font-weight: 900;
+  color: #132342;
+}
+
+.dashboard-shell .algo-panel p {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #687895;
+}
+
+.dashboard-shell .algo-rule-stack {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-shell .algo-rule-card {
+  border: 1px solid #dbe5f2;
+  border-radius: 13px;
+  background: #fbfdff;
+  padding: 14px;
+}
+
+.dashboard-shell .algo-rule-card span,
+.dashboard-shell .algo-mode-grid span,
+.dashboard-shell .algo-mini-list span,
+.dashboard-shell .algo-risk-list span {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8b9ab1;
+}
+
+.dashboard-shell .algo-rule-card b {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  color: #132342;
+}
+
+.dashboard-shell .algo-rule-card p {
+  margin-top: 7px;
+}
+
+.dashboard-shell .algo-rule-connector {
+  width: max-content;
+  border-radius: 999px;
+  background: #e9f2ff;
+  padding: 6px 11px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #1767e8;
+}
+
+.dashboard-shell .algo-chip-row {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-shell .algo-chip-row span {
+  border-radius: 999px;
+  background: #eef4fb;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #425370;
+}
+
+.dashboard-shell .algo-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.dashboard-shell .algo-status-pill.good {
+  background: #dff7ef;
+  color: #07966c;
+}
+
+.dashboard-shell .algo-status-pill.pending {
+  background: #fff6e6;
+  color: #986a13;
+}
+
+.dashboard-shell .algo-risk-list,
+.dashboard-shell .algo-mini-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-shell .algo-risk-list div,
+.dashboard-shell .algo-mini-list div,
+.dashboard-shell .algo-broker-card,
+.dashboard-shell .algo-feedback-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 11px;
+  background: #f6f9fd;
+  padding: 12px;
+}
+
+.dashboard-shell .algo-risk-list b,
+.dashboard-shell .algo-mini-list b {
+  font-size: 12px;
+  color: #132342;
+}
+
+.dashboard-shell .algo-broker-card {
+  margin-top: 16px;
+  border: 1px solid #dbe5f2;
+  background: #ffffff;
+}
+
+.dashboard-shell .algo-broker-card b {
+  display: block;
+  color: #132342;
+}
+
+.dashboard-shell .algo-broker-card span:not(.algo-status-pill) {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #687895;
+}
+
+.dashboard-shell .algo-mode-grid {
+  margin: 16px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-shell .algo-mode-grid div {
+  border: 1px solid #dbe5f2;
+  border-radius: 12px;
+  padding: 13px;
+}
+
+.dashboard-shell .algo-mode-grid b {
+  display: block;
+  margin-top: 8px;
+  font-size: 18px;
+  color: #132342;
+}
+
+.dashboard-shell .algo-mode-grid small {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #687895;
+}
+
+.dashboard-shell .algo-lifecycle {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-shell .algo-lifecycle span {
+  border-radius: 10px;
+  background: #eef4fb;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 850;
+  color: #687895;
+}
+
+.dashboard-shell .algo-lifecycle span.active {
+  background: #e4efff;
+  color: #1767e8;
+}
+
+.dashboard-shell .algo-table {
+  margin-top: 14px;
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dashboard-shell .algo-table th,
+.dashboard-shell .algo-table td {
+  border-bottom: 1px solid #edf1f7;
+  padding: 13px 12px;
+  text-align: left;
+}
+
+.dashboard-shell .algo-table th {
+  background: #f6f9fd;
+  color: #8b9ab1;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dashboard-shell .algo-feedback-box {
+  margin-top: 14px;
+  align-items: flex-start;
+  flex-direction: column;
+  border: 1px solid #d4f0e6;
+  background: #edf9f4;
+}
+
+.dashboard-shell .algo-feedback-box.muted {
+  border-color: #f4e5c9;
+  background: #fff6e6;
+}
+
+.dashboard-shell .algo-feedback-box b {
+  color: #132342;
+}
+
+.dashboard-shell .algo-feedback-box span {
+  font-size: 12px;
+  color: #687895;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-shell .algo-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell .algo-hero {
+    flex-direction: column;
+  }
+
+  .dashboard-shell .algo-metrics-grid,
+  .dashboard-shell .algo-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
