@@ -56,6 +56,38 @@ type DhanTestResult = {
   error?: string;
 };
 
+type DhanOrderTicket = {
+  exchangeSegment: string;
+  productType: string;
+  orderType: string;
+  transactionType: string;
+  validity: string;
+  securityId: string;
+  quantity: string;
+  price: string;
+  triggerPrice: string;
+  disclosedQuantity: string;
+  afterMarketOrder: boolean;
+};
+
+type DhanOrderPreview = {
+  ok: boolean;
+  correlationId: string;
+  warnings: string[];
+  checks: { label: string; ok: boolean; message: string }[];
+  estimatedValue: number;
+  payload: Record<string, unknown>;
+  error?: string;
+};
+
+type DhanOrderPlacement = {
+  ok: boolean;
+  dryRun?: boolean;
+  response?: { orderId?: string; orderStatus?: string; [key: string]: unknown };
+  request?: Record<string, unknown>;
+  error?: string;
+};
+
 type NavGroup = {
   label: string;
   items: { label: string; id: AlgoSection }[];
@@ -153,6 +185,20 @@ const strategyJson = `{
   "exit": { "stopLoss": "20%", "target": "40%", "trailAfter": "30%" }
 }`;
 
+const initialDhanOrderTicket: DhanOrderTicket = {
+  exchangeSegment: "NSE_EQ",
+  productType: "INTRADAY",
+  orderType: "MARKET",
+  transactionType: "BUY",
+  validity: "DAY",
+  securityId: "",
+  quantity: "1",
+  price: "0",
+  triggerPrice: "0",
+  disclosedQuantity: "0",
+  afterMarketOrder: false
+};
+
 export default function AlgoTradingPanel() {
   const [activeSection, setActiveSection] = useState<AlgoSection>("dashboard");
   const [status, setStatus] = useState("TradingOS ready. Connect Dhan before live deployment.");
@@ -167,6 +213,12 @@ export default function AlgoTradingPanel() {
   const [dhanAccessToken, setDhanAccessToken] = useState("");
   const [dhanTesting, setDhanTesting] = useState(false);
   const [dhanTestResult, setDhanTestResult] = useState<DhanTestResult | null>(null);
+  const [dhanOrderTicket, setDhanOrderTicket] = useState<DhanOrderTicket>(initialDhanOrderTicket);
+  const [dhanOrderPreview, setDhanOrderPreview] = useState<DhanOrderPreview | null>(null);
+  const [dhanOrderPlacement, setDhanOrderPlacement] = useState<DhanOrderPlacement | null>(null);
+  const [dhanOrderTesting, setDhanOrderTesting] = useState(false);
+  const [dhanOrderPlacing, setDhanOrderPlacing] = useState(false);
+  const [dhanLiveConfirm, setDhanLiveConfirm] = useState("");
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
@@ -238,6 +290,83 @@ export default function AlgoTradingPanel() {
     }
   }
 
+  function updateDhanOrderTicket(field: keyof DhanOrderTicket, value: string | boolean) {
+    setDhanOrderTicket((prev) => ({ ...prev, [field]: value }));
+    setDhanOrderPreview(null);
+    setDhanOrderPlacement(null);
+    setDhanLiveConfirm("");
+  }
+
+  async function previewDhanOrder() {
+    const clientId = dhanClientId.trim();
+    const accessToken = dhanAccessToken.trim();
+
+    if (!clientId || !accessToken) {
+      setStatus("Connect Dhan first, then run the order dry-run preview.");
+      setBrokerOpen(true);
+      return;
+    }
+
+    setDhanOrderTesting(true);
+    setDhanOrderPlacement(null);
+    setStatus("Running Dhan order dry-run preview...");
+
+    try {
+      const response = await fetch("/api/brokers/dhan/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, accessToken, ticket: dhanOrderTicket, dryRun: true })
+      });
+      const result = (await response.json()) as DhanOrderPreview;
+      setDhanOrderPreview(result);
+      setStatus(result.ok ? "Dry-run passed. Review the payload before any live order." : result.error || "Dry-run failed. Fix the order ticket first.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown order preview error";
+      setDhanOrderPreview({ ok: false, correlationId: "", warnings: [], checks: [], estimatedValue: 0, payload: {}, error: message });
+      setStatus(`Dhan order preview failed: ${message}`);
+    } finally {
+      setDhanOrderTesting(false);
+    }
+  }
+
+  async function placeDhanOrder() {
+    const clientId = dhanClientId.trim();
+    const accessToken = dhanAccessToken.trim();
+
+    if (!dhanOrderPreview?.ok) {
+      setStatus("Run a successful dry-run preview before placing a live order.");
+      return;
+    }
+    if (dhanLiveConfirm !== "PLACE LIVE ORDER") {
+      setStatus("Type PLACE LIVE ORDER to unlock live placement.");
+      return;
+    }
+    if (!clientId || !accessToken) {
+      setStatus("Connect Dhan again before placing a live order.");
+      return;
+    }
+
+    setDhanOrderPlacing(true);
+    setStatus("Sending live order to Dhan...");
+
+    try {
+      const response = await fetch("/api/brokers/dhan/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, accessToken, ticket: dhanOrderTicket, dryRun: false, liveConfirm: dhanLiveConfirm })
+      });
+      const result = (await response.json()) as DhanOrderPlacement;
+      setDhanOrderPlacement(result);
+      setStatus(result.ok ? `Dhan live order submitted: ${result.response?.orderId ?? "order id pending"}.` : result.error || "Dhan live order failed.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown live order error";
+      setDhanOrderPlacement({ ok: false, error: message });
+      setStatus(`Dhan live order failed: ${message}`);
+    } finally {
+      setDhanOrderPlacing(false);
+    }
+  }
+
   const metricCards = (
     <div className="algo-os-grid five">
       {[
@@ -297,8 +426,37 @@ export default function AlgoTradingPanel() {
   function renderDhan() {
     const checkMap = new Map((dhanTestResult?.checks ?? []).map((check) => [check.name, check]));
     const balance = dhanTestResult?.funds?.availableBalance ?? dhanTestResult?.funds?.availabelBalance ?? "--";
+    const liveUnlocked = Boolean(dhanOrderPreview?.ok && dhanLiveConfirm === "PLACE LIVE ORDER" && !dhanOrderPlacing);
 
-    return <div className="space-y-4"><div className="algo-warning-card"><b>Safe Dhan test mode</b><span>This panel only checks profile, funds, positions and order book. It will not place, modify, cancel or exit trades without a separate explicit live-trade confirmation.</span></div><div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Connection</h3><p>Generate an access token from Dhan Web, then run a read-only health check here.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">{dhanTestResult?.connected ? "Retest Dhan" : "Connect Dhan"}</button></div><div className="algo-os-grid two compact-cards">{["Profile", "Funds", "Positions", "Orders"].map((name) => { const check = checkMap.get(name); return <div key={name} className="algo-os-card metric compact"><span>{name}</span><strong>{check ? (check.ok ? "OK" : "Failed") : "Pending"}</strong><p>{check?.message ?? "Not tested yet"}</p></div>; })}</div></div><div className="algo-os-card"><h3>Account Snapshot</h3><div className="algo-rule-list"><div><span>Client ID</span><b>{dhanTestResult?.profile?.dhanClientId ?? "Not connected"}</b></div><div><span>Token validity</span><b>{dhanTestResult?.profile?.tokenValidity ?? "--"}</b></div><div><span>Active segments</span><b>{dhanTestResult?.profile?.activeSegment ?? "--"}</b></div><div><span>Data plan</span><b>{dhanTestResult?.profile?.dataPlan ?? "--"}</b></div><div><span>Available balance</span><b>{typeof balance === "number" ? `₹${balance.toLocaleString("en-IN")}` : String(balance)}</b></div><div><span>Positions / Orders</span><b>{dhanTestResult ? `${dhanTestResult.positionsCount ?? 0} / ${dhanTestResult.ordersCount ?? 0}` : "--"}</b></div></div></div></div><div className="algo-os-card"><h3>How to test now</h3><div className="algo-rule-list"><div><span>1. Dhan Web</span><b>Profile → DhanHQ Trading APIs → generate token</b></div><div><span>2. Paste here</span><b>Client ID + access token</b></div><div><span>3. Verify read access</span><b>Profile, funds, positions, orders</b></div><div><span>4. Next step</span><b>Dry-run order preview, then tiny live order only after approval</b></div></div></div></div>;
+    return <div className="space-y-4"><div className="algo-warning-card"><b>Safe Dhan execution flow</b><span>First verify read access, then dry-run the exact order payload. Live placement stays locked until you type the confirmation phrase.</span></div><div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Connection</h3><p>Generate an access token from Dhan Web, then run a read-only health check here.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">{dhanTestResult?.connected ? "Retest Dhan" : "Connect Dhan"}</button></div><div className="algo-os-grid two compact-cards">{["Profile", "Funds", "Positions", "Orders"].map((name) => { const check = checkMap.get(name); return <div key={name} className="algo-os-card metric compact"><span>{name}</span><strong>{check ? (check.ok ? "OK" : "Failed") : "Pending"}</strong><p>{check?.message ?? "Not tested yet"}</p></div>; })}</div></div><div className="algo-os-card"><h3>Account Snapshot</h3><div className="algo-rule-list"><div><span>Client ID</span><b>{dhanTestResult?.profile?.dhanClientId ?? "Not connected"}</b></div><div><span>Token validity</span><b>{dhanTestResult?.profile?.tokenValidity ?? "--"}</b></div><div><span>Active segments</span><b>{dhanTestResult?.profile?.activeSegment ?? "--"}</b></div><div><span>Data plan</span><b>{dhanTestResult?.profile?.dataPlan ?? "--"}</b></div><div><span>Available balance</span><b>{typeof balance === "number" ? `₹${balance.toLocaleString("en-IN")}` : String(balance)}</b></div><div><span>Positions / Orders</span><b>{dhanTestResult ? `${dhanTestResult.positionsCount ?? 0} / ${dhanTestResult.ordersCount ?? 0}` : "--"}</b></div></div></div></div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(440px,0.8fr)]">
+        <div className="algo-os-card">
+          <div className="algo-card-head"><div><h3>Manual Test Order</h3><p>Use a small quantity first. Security ID must be the Dhan exchange security id for the exact instrument.</p></div><span className={`algo-pill ${dhanOrderPreview?.ok ? "good" : "pending"}`}>{dhanOrderPreview?.ok ? "Dry-run passed" : "Dry-run required"}</span></div>
+          <div className="algo-form-grid">
+            <label>Exchange segment<select value={dhanOrderTicket.exchangeSegment} onChange={(event) => updateDhanOrderTicket("exchangeSegment", event.target.value)}><option>NSE_EQ</option><option>NSE_FNO</option><option>BSE_EQ</option><option>BSE_FNO</option><option>MCX_COMM</option></select></label>
+            <label>Product type<select value={dhanOrderTicket.productType} onChange={(event) => updateDhanOrderTicket("productType", event.target.value)}><option>INTRADAY</option><option>CNC</option><option>MARGIN</option><option>MTF</option><option>CO</option><option>BO</option></select></label>
+            <label>Side<select value={dhanOrderTicket.transactionType} onChange={(event) => updateDhanOrderTicket("transactionType", event.target.value)}><option>BUY</option><option>SELL</option></select></label>
+            <label>Order type<select value={dhanOrderTicket.orderType} onChange={(event) => updateDhanOrderTicket("orderType", event.target.value)}><option>MARKET</option><option>LIMIT</option><option>STOP_LOSS</option><option>STOP_LOSS_MARKET</option></select></label>
+            <label>Validity<select value={dhanOrderTicket.validity} onChange={(event) => updateDhanOrderTicket("validity", event.target.value)}><option>DAY</option><option>IOC</option></select></label>
+            <label>Security ID<input value={dhanOrderTicket.securityId} onChange={(event) => updateDhanOrderTicket("securityId", event.target.value)} placeholder="e.g. 11536" /></label>
+            <label>Quantity<input value={dhanOrderTicket.quantity} onChange={(event) => updateDhanOrderTicket("quantity", event.target.value)} inputMode="numeric" placeholder="1" /></label>
+            <label>Price<input value={dhanOrderTicket.price} onChange={(event) => updateDhanOrderTicket("price", event.target.value)} inputMode="decimal" placeholder="0 for market" /></label>
+            <label>Trigger price<input value={dhanOrderTicket.triggerPrice} onChange={(event) => updateDhanOrderTicket("triggerPrice", event.target.value)} inputMode="decimal" placeholder="Only SL orders" /></label>
+            <label>Disclosed qty<input value={dhanOrderTicket.disclosedQuantity} onChange={(event) => updateDhanOrderTicket("disclosedQuantity", event.target.value)} inputMode="numeric" placeholder="0" /></label>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-xs font-black text-slate-600"><input type="checkbox" checked={dhanOrderTicket.afterMarketOrder} onChange={(event) => updateDhanOrderTicket("afterMarketOrder", event.target.checked)} /> After market order</label>
+          <div className="algo-modal-actions"><button type="button" onClick={previewDhanOrder} className="algo-action secondary" disabled={dhanOrderTesting}>{dhanOrderTesting ? "Checking..." : "Dry-run preview"}</button></div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="algo-os-card"><h3>Dry-run Result</h3>{dhanOrderPreview ? <div className="algo-rule-list">{dhanOrderPreview.checks.map((check) => <div key={check.label}><span>{check.label}</span><b>{check.ok ? "OK" : check.message}</b></div>)}<div><span>Estimated value</span><b>{dhanOrderPreview.estimatedValue ? `₹${dhanOrderPreview.estimatedValue.toLocaleString("en-IN")}` : "Market order"}</b></div><div><span>Correlation ID</span><b>{dhanOrderPreview.correlationId || "--"}</b></div></div> : <div className="algo-empty-state">Run dry-run preview to validate the ticket and generate the exact Dhan payload.</div>}{dhanOrderPreview?.warnings?.length ? <div className="algo-alert-box"><b>Warnings</b><span>{dhanOrderPreview.warnings.join(" ")}</span></div> : null}</div>
+          <div className="algo-os-card"><h3>Live Placement Lock</h3><p>Type <b>PLACE LIVE ORDER</b> exactly after the dry-run passes.</p><input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold" value={dhanLiveConfirm} onChange={(event) => setDhanLiveConfirm(event.target.value)} placeholder="PLACE LIVE ORDER" /><button type="button" onClick={placeDhanOrder} className="algo-action danger wide mt-3" disabled={!liveUnlocked}>{dhanOrderPlacing ? "Sending..." : "PLACE LIVE ORDER"}</button>{dhanOrderPlacement ? <div className="algo-alert-box"><b>{dhanOrderPlacement.ok ? "Order submitted" : "Order failed"}</b><span>{dhanOrderPlacement.ok ? `${dhanOrderPlacement.response?.orderId ?? "Order id pending"} · ${dhanOrderPlacement.response?.orderStatus ?? "Status pending"}` : dhanOrderPlacement.error}</span></div> : null}</div>
+        </div>
+      </div>
+
+      <div className="algo-os-card"><h3>Dhan Payload Preview</h3><pre className="algo-code-block">{JSON.stringify(dhanOrderPreview?.payload ?? { note: "Run dry-run preview first" }, null, 2)}</pre></div>
+    </div>;
   }
   function renderTradingView() {
     const webhookUrl = "/api/v1/webhooks/tradingview";
