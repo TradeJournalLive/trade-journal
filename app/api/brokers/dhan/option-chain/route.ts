@@ -29,10 +29,10 @@ type ChainStrike = {
 };
 
 const underlyings: Record<string, { scrip: number; segment: string; orderSegment: string; step: number; lotSize: number }> = {
-  NIFTY: { scrip: 13, segment: "IDX_I", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
-  BANKNIFTY: { scrip: 25, segment: "IDX_I", orderSegment: "NSE_FNO", step: 100, lotSize: 35 },
-  FINNIFTY: { scrip: 27, segment: "IDX_I", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
-  SENSEX: { scrip: 51, segment: "IDX_I", orderSegment: "BSE_FNO", step: 100, lotSize: 20 }
+  NIFTY: { scrip: 13, segment: "NSE", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
+  BANKNIFTY: { scrip: 25, segment: "NSE", orderSegment: "NSE_FNO", step: 100, lotSize: 35 },
+  FINNIFTY: { scrip: 27, segment: "NSE", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
+  SENSEX: { scrip: 51, segment: "BSE", orderSegment: "BSE_FNO", step: 100, lotSize: 20 }
 };
 
 async function postDhan(path: string, headers: HeadersInit, body: Record<string, unknown>) {
@@ -123,7 +123,9 @@ export async function POST(request: Request) {
   const upper = Math.min(atmIndex + strikesEachSide, strikes.length - 1);
 
   const matches = strikes.slice(lower, upper + 1).map((strike) => {
-    const leg = chain[String(strike.toFixed(6))]?.[requestedType] || chain[String(strike)]?.[requestedType];
+    const chainKey = Object.keys(chain).find((key) => Number(key) === strike) || String(strike);
+    const strikeData = chain[chainKey];
+    const leg = strikeData?.[requestedType] || strikeData?.[requestedType.toUpperCase() as keyof ChainStrike];
     const distance = Math.round((strike - atmStrike) / config.step);
     const moneyness = distance === 0 ? "ATM" : requestedType === "ce"
       ? distance < 0 ? `${Math.abs(distance)} ITM` : `${distance} OTM`
@@ -146,6 +148,10 @@ export async function POST(request: Request) {
       moneyness
     };
   }).filter((item) => item.securityId);
+
+  if (!strikes.length) {
+    return NextResponse.json({ error: "Dhan returned an empty option chain. Check expiry, Data API access, and underlying segment.", response: chainResult.data }, { status: 502 });
+  }
 
   return NextResponse.json({
     matches,
