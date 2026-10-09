@@ -118,6 +118,12 @@ type InstrumentMatch = {
   strike: string;
   optionType: string;
   lotSize: number;
+  lastPrice?: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  oi?: number | null;
+  volume?: number | null;
+  moneyness?: string;
 };
 
 type NavGroup = {
@@ -261,6 +267,7 @@ export default function AlgoTradingPanel() {
   const [instrumentExpiry, setInstrumentExpiry] = useState("");
   const [instrumentMatches, setInstrumentMatches] = useState<InstrumentMatch[]>([]);
   const [instrumentLoading, setInstrumentLoading] = useState(false);
+  const [instrumentChainMeta, setInstrumentChainMeta] = useState<{ underlyingLastPrice?: number; atmStrike?: number; expiry?: string; source?: string }>({});
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
@@ -411,48 +418,78 @@ export default function AlgoTradingPanel() {
 
   async function searchDhanInstruments() {
     setInstrumentLoading(true);
-    setStatus("Searching Dhan instrument master...");
+    setStatus("Searching Dhan option chain...");
 
     try {
-      const params = new URLSearchParams({
-        underlying: instrumentUnderlying,
-        optionType: instrumentOptionType,
-        limit: "80"
-      });
-      if (instrumentStrike.trim()) params.set("strike", instrumentStrike.trim());
-      if (instrumentExpiry.trim()) params.set("expiry", instrumentExpiry.trim());
+      const clientId = dhanClientId.trim();
+      const accessToken = dhanAccessToken.trim();
+      let response: Response;
+      let result: { matches?: InstrumentMatch[]; error?: string; underlyingLastPrice?: number; atmStrike?: number; expiry?: string; source?: string };
 
-      const response = await fetch(`/api/brokers/dhan/instruments?${params.toString()}`);
-      const result = (await response.json()) as { matches?: InstrumentMatch[]; error?: string };
+      if (clientId && accessToken) {
+        response = await fetch("/api/brokers/dhan/option-chain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId,
+            accessToken,
+            underlying: instrumentUnderlying,
+            optionType: instrumentOptionType,
+            expiry: instrumentExpiry.trim() || undefined,
+            strikesEachSide: 10
+          })
+        });
+        result = (await response.json()) as typeof result;
+      } else {
+        const params = new URLSearchParams({
+          underlying: instrumentUnderlying,
+          optionType: instrumentOptionType,
+          limit: "80"
+        });
+        if (instrumentStrike.trim()) params.set("strike", instrumentStrike.trim());
+        if (instrumentExpiry.trim()) params.set("expiry", instrumentExpiry.trim());
+        response = await fetch(`/api/brokers/dhan/instruments?${params.toString()}`);
+        result = (await response.json()) as typeof result;
+      }
 
       if (!response.ok) {
         setInstrumentMatches([]);
-        setStatus(result.error || "Dhan instrument search failed.");
+        setInstrumentChainMeta({});
+        setStatus(result.error || "Dhan option search failed. If prices are needed, reconnect Dhan and ensure Data API access is enabled.");
         return;
       }
 
       setInstrumentMatches(result.matches ?? []);
-      setStatus(`${result.matches?.length ?? 0} Dhan instruments found. Pick a contract to fill security ID and lot size.`);
+      setInstrumentChainMeta({
+        underlyingLastPrice: result.underlyingLastPrice,
+        atmStrike: result.atmStrike,
+        expiry: result.expiry,
+        source: result.source
+      });
+      setStatus(`${result.matches?.length ?? 0} contracts found${result.atmStrike ? ` around ATM ${result.atmStrike}` : ""}. Pick a contract to fill security ID, lot size and price.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown instrument search error";
+      const message = error instanceof Error ? error.message : "Unknown option search error";
       setInstrumentMatches([]);
-      setStatus(`Dhan instrument search failed: ${message}`);
+      setInstrumentChainMeta({});
+      setStatus(`Dhan option search failed: ${message}`);
     } finally {
       setInstrumentLoading(false);
     }
   }
 
   function selectDhanInstrument(instrument: InstrumentMatch) {
+    const price = Number(instrument.lastPrice || instrument.ask || instrument.bid || 0);
     setDhanOrderTicket((prev) => ({
       ...prev,
       exchangeSegment: instrument.exchangeSegment,
       securityId: instrument.securityId,
-      quantity: String(instrument.lotSize || 1)
+      quantity: String(instrument.lotSize || 1),
+      price: price > 0 ? String(price) : prev.price
     }));
     setDhanOrderPreview(null);
     setDhanOrderPlacement(null);
-    setPaperFillPrice("");
-    setStatus(`${instrument.displayName} selected. Security ID and lot size are filled into the ticket.`);
+    setPaperFillPrice(price > 0 ? String(price) : "");
+    setStatus(`${instrument.displayName} selected. Security ID, lot size${price > 0 ? " and price" : ""} are filled into the ticket.`);
   }
 
   function resetPaperAccount() {
@@ -606,7 +643,7 @@ export default function AlgoTradingPanel() {
 
     return <div className="space-y-4"><div className="algo-warning-card"><b>Safe Dhan execution flow</b><span>First verify read access, then dry-run the exact order payload. Live placement stays locked until you type the confirmation phrase.</span></div><div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Connection</h3><p>Generate an access token from Dhan Web, then run a read-only health check here.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">{dhanTestResult?.connected ? "Retest Dhan" : "Connect Dhan"}</button></div><div className="algo-os-grid two compact-cards">{["Profile", "Funds", "Positions", "Orders"].map((name) => { const check = checkMap.get(name); return <div key={name} className="algo-os-card metric compact"><span>{name}</span><strong>{check ? (check.ok ? "OK" : "Failed") : "Pending"}</strong><p>{check?.message ?? "Not tested yet"}</p></div>; })}</div></div><div className="algo-os-card"><h3>Account Snapshot</h3><div className="algo-rule-list"><div><span>Client ID</span><b>{dhanTestResult?.profile?.dhanClientId ?? "Not connected"}</b></div><div><span>Token validity</span><b>{dhanTestResult?.profile?.tokenValidity ?? "--"}</b></div><div><span>Active segments</span><b>{dhanTestResult?.profile?.activeSegment ?? "--"}</b></div><div><span>Data plan</span><b>{dhanTestResult?.profile?.dataPlan ?? "--"}</b></div><div><span>Available balance</span><b>{typeof balance === "number" ? `₹${balance.toLocaleString("en-IN")}` : String(balance)}</b></div><div><span>Positions / Orders</span><b>{dhanTestResult ? `${dhanTestResult.positionsCount ?? 0} / ${dhanTestResult.ordersCount ?? 0}` : "--"}</b></div></div></div></div>
 
-      <div className="algo-os-card"><div className="algo-card-head"><div><h3>Option Finder</h3><p>Search Dhan&apos;s instrument master, then select a contract to fill Security ID and lot size automatically.</p></div><button type="button" onClick={searchDhanInstruments} className="algo-action secondary" disabled={instrumentLoading}>{instrumentLoading ? "Searching..." : "Search contracts"}</button></div><div className="algo-form-grid"><label>Underlying<select value={instrumentUnderlying} onChange={(event) => setInstrumentUnderlying(event.target.value)}><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option><option>SENSEX</option></select></label><label>Option type<select value={instrumentOptionType} onChange={(event) => setInstrumentOptionType(event.target.value)}><option>CE</option><option>PE</option></select></label><label>Strike<input value={instrumentStrike} onChange={(event) => setInstrumentStrike(event.target.value)} placeholder="e.g. 24500" /></label><label>Expiry contains<input value={instrumentExpiry} onChange={(event) => setInstrumentExpiry(event.target.value)} placeholder="optional, e.g. 30 OCT" /></label></div><div className="overflow-auto mt-4"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Security ID</th><th>Expiry</th><th>Strike</th><th>Lot</th><th></th></tr></thead><tbody>{instrumentMatches.length ? instrumentMatches.map((instrument) => <tr key={`${instrument.securityId}-${instrument.displayName}`}><td>{instrument.displayName || instrument.tradingSymbol}</td><td>{instrument.securityId}</td><td>{instrument.expiry || "--"}</td><td>{instrument.strike || "--"} {instrument.optionType}</td><td>{instrument.lotSize}</td><td><button type="button" onClick={() => selectDhanInstrument(instrument)} className="algo-mini-button">Use</button></td></tr>) : <tr><td colSpan={6}>Search for an option contract to fill the order ticket.</td></tr>}</tbody></table></div></div>
+      <div className="algo-os-card"><div className="algo-card-head"><div><h3>Option Chain Finder</h3><p>With Dhan connected, this shows ATM plus 10 ITM/10 OTM strikes with live LTP. Without token, it falls back to contract search.</p></div><button type="button" onClick={searchDhanInstruments} className="algo-action secondary" disabled={instrumentLoading}>{instrumentLoading ? "Searching..." : "Search contracts"}</button></div><div className="algo-form-grid"><label>Underlying<select value={instrumentUnderlying} onChange={(event) => setInstrumentUnderlying(event.target.value)}><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option><option>SENSEX</option></select></label><label>Option type<select value={instrumentOptionType} onChange={(event) => setInstrumentOptionType(event.target.value)}><option>CE</option><option>PE</option></select></label><label>Strike filter<input value={instrumentStrike} onChange={(event) => setInstrumentStrike(event.target.value)} placeholder="fallback search only" /></label><label>Expiry<input value={instrumentExpiry} onChange={(event) => setInstrumentExpiry(event.target.value)} placeholder="blank = nearest expiry" /></label></div><div className="algo-rule-list mt-4"><div><span>Underlying LTP</span><b>{instrumentChainMeta.underlyingLastPrice ? `₹${instrumentChainMeta.underlyingLastPrice.toLocaleString("en-IN")}` : "Connect Dhan and search"}</b></div><div><span>ATM strike</span><b>{instrumentChainMeta.atmStrike ?? "--"}</b></div><div><span>Expiry</span><b>{instrumentChainMeta.expiry ?? "--"}</b></div></div><div className="overflow-auto mt-4"><table className="algo-os-table"><thead><tr><th>Strike</th><th>Type</th><th>Moneyness</th><th>LTP</th><th>Bid / Ask</th><th>OI</th><th>Security ID</th><th>Lot</th><th></th></tr></thead><tbody>{instrumentMatches.length ? instrumentMatches.map((instrument) => <tr key={`${instrument.securityId}-${instrument.displayName}`}><td>{instrument.strike || "--"}</td><td>{instrument.optionType}</td><td>{instrument.moneyness ?? "--"}</td><td>{instrument.lastPrice ? `₹${instrument.lastPrice}` : "--"}</td><td>{instrument.bid || instrument.ask ? `${instrument.bid ?? "--"} / ${instrument.ask ?? "--"}` : "--"}</td><td>{instrument.oi ?? "--"}</td><td>{instrument.securityId}</td><td>{instrument.lotSize}</td><td><button type="button" onClick={() => selectDhanInstrument(instrument)} className="algo-mini-button">Use</button></td></tr>) : <tr><td colSpan={9}>Search for option chain to see ATM ±10 strikes and prices.</td></tr>}</tbody></table></div></div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(440px,0.8fr)]">
         <div className="algo-os-card">
