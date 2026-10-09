@@ -25,6 +25,37 @@ type AlgoSection =
   | "admin";
 
 
+type DhanCheck = {
+  name: string;
+  ok: boolean;
+  status?: number;
+  message: string;
+  count?: number;
+};
+
+type DhanTestResult = {
+  connected: boolean;
+  testedAt: string;
+  checks: DhanCheck[];
+  profile?: {
+    dhanClientId?: string;
+    tokenValidity?: string;
+    activeSegment?: string;
+    dataPlan?: string;
+    dataValidity?: string;
+  };
+  funds?: {
+    availabelBalance?: string | number;
+    availableBalance?: string | number;
+    sodLimit?: string | number;
+    collateralAmount?: string | number;
+    utilizedAmount?: string | number;
+  };
+  positionsCount?: number;
+  ordersCount?: number;
+  error?: string;
+};
+
 type NavGroup = {
   label: string;
   items: { label: string; id: AlgoSection }[];
@@ -132,6 +163,10 @@ export default function AlgoTradingPanel() {
   const [paperModeActive, setPaperModeActive] = useState(false);
   const [savedStrategyName, setSavedStrategyName] = useState("NIFTY EMA Protection");
   const [webhookSecretVisible, setWebhookSecretVisible] = useState(false);
+  const [dhanClientId, setDhanClientId] = useState("");
+  const [dhanAccessToken, setDhanAccessToken] = useState("");
+  const [dhanTesting, setDhanTesting] = useState(false);
+  const [dhanTestResult, setDhanTestResult] = useState<DhanTestResult | null>(null);
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
@@ -165,10 +200,42 @@ export default function AlgoTradingPanel() {
     setStatus(`${savedStrategyName || "New strategy"} saved as Draft. The same definition can run in Backtest, Paper and Live.`);
   }
 
-  function connectDhan() {
-    setBrokerOpen(false);
-    setActiveSection("dhan");
-    setStatus("Dhan connection form saved locally. Encrypted server-side storage and API validation are next.");
+  async function connectDhan() {
+    const clientId = dhanClientId.trim();
+    const accessToken = dhanAccessToken.trim();
+
+    if (!clientId || !accessToken) {
+      setStatus("Enter your Dhan client ID and access token first.");
+      return;
+    }
+
+    setDhanTesting(true);
+    setStatus("Testing Dhan connection with read-only checks...");
+
+    try {
+      const response = await fetch("/api/brokers/dhan/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, accessToken })
+      });
+      const result = (await response.json()) as DhanTestResult;
+      setDhanTestResult(result);
+      setActiveSection("dhan");
+
+      if (!response.ok || !result.connected) {
+        setStatus(result.error || "Dhan connection test failed. Check the token, expiry, and Dhan API access.");
+        return;
+      }
+
+      setBrokerOpen(false);
+      setStatus("Dhan connection test passed. Profile, funds, positions and orders were checked without placing any trade.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Dhan connection error";
+      setDhanTestResult({ connected: false, testedAt: new Date().toISOString(), checks: [], error: message });
+      setStatus(`Dhan connection test failed: ${message}`);
+    } finally {
+      setDhanTesting(false);
+    }
   }
 
   const metricCards = (
@@ -213,15 +280,26 @@ export default function AlgoTradingPanel() {
     return <div className="algo-os-grid three">{["EMA Crossover", "VWAP Pullback", "Opening Range", "Iron Condor", "Straddle Breakout", "Supertrend Trail"].map((name) => <div key={name} className="algo-os-card"><h3>{name}</h3><p>Start with a reusable template, then save as your own strategy version.</p><button type="button" onClick={() => { setSavedStrategyName(name); setBuilderOpen(true); }} className="algo-action secondary wide">Use template</button></div>)}</div>;
   }
 
-  function renderPositions() { return <div className="algo-os-card"><div className="algo-card-head"><h3>Positions</h3><span className="algo-pill pending">Broker not connected</span></div><div className="algo-empty-state">No live positions. Dhan connection is required to fetch positions.</div></div>; }
-  function renderOrders() { return <div className="algo-os-card"><div className="algo-card-head"><h3>Orders</h3><span className="algo-pill pending">Paper samples</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order ID</th><th>Strategy</th><th>Side</th><th>Qty</th><th>Status</th><th>Time</th></tr></thead><tbody>{orderRows.map((row) => <tr key={row.id}><td>{row.id}</td><td>{row.strategy}</td><td>{row.side}</td><td>{row.qty}</td><td>{row.status}</td><td>{row.time}</td></tr>)}</tbody></table></div></div>; }
+  function renderPositions() {
+    const positionsCheck = dhanTestResult?.checks.find((check) => check.name === "Positions");
+    return <div className="algo-os-card"><div className="algo-card-head"><h3>Positions</h3><span className={`algo-pill ${positionsCheck?.ok ? "good" : "pending"}`}>{positionsCheck?.ok ? "Dhan checked" : "Connect Dhan first"}</span></div><div className="algo-empty-state">{positionsCheck?.ok ? `${dhanTestResult?.positionsCount ?? 0} open positions returned by Dhan.` : "No live positions loaded yet. Run the Dhan connection test to fetch positions."}</div></div>;
+  }
+  function renderOrders() {
+    const ordersCheck = dhanTestResult?.checks.find((check) => check.name === "Orders");
+    return <div className="algo-os-card"><div className="algo-card-head"><h3>Orders</h3><span className={`algo-pill ${ordersCheck?.ok ? "good" : "pending"}`}>{ordersCheck?.ok ? "Dhan checked" : "Paper samples"}</span></div>{ordersCheck?.ok ? <div className="algo-empty-state">{dhanTestResult?.ordersCount ?? 0} orders returned for today. Live order placement is still blocked until you approve a trade test.</div> : <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order ID</th><th>Strategy</th><th>Side</th><th>Qty</th><th>Status</th><th>Time</th></tr></thead><tbody>{orderRows.map((row) => <tr key={row.id}><td>{row.id}</td><td>{row.strategy}</td><td>{row.side}</td><td>{row.qty}</td><td>{row.status}</td><td>{row.time}</td></tr>)}</tbody></table></div>}</div>;
+  }
   function renderTrades() { return <div className="algo-os-card"><h3>Trades</h3><p>Automated paper/live fills will land here before syncing to journal analytics.</p><div className="algo-empty-state">No algo trades yet.</div></div>; }
   function renderRiskProfiles() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Intraday Protected</h3><div className="algo-rule-list">{riskRows.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}</b></div>)}</div></div><div className="algo-os-card"><h3>Conservative Options</h3><div className="algo-rule-list"><div><span>Max lots</span><b>1</b></div><div><span>Max loss</span><b>₹2,500</b></div><div><span>Allowed instruments</span><b>NIFTY / BANKNIFTY</b></div></div></div></div>; }
   function renderKillSwitch() { return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><h3>Kill Switch</h3><p>Visible emergency action for exit all, cancel orders, pause strategies and block new entries.</p><button type="button" onClick={activateKillSwitch} className="algo-action danger wide">Activate kill switch</button></div><div className="algo-os-card"><h3>Protection State</h3><div className="algo-alert-box"><b>{killSwitchActive ? "Blocked" : "Ready"}</b><span>{killSwitchActive ? "New orders are stopped." : "Risk checks are armed."}</span></div><button type="button" onClick={() => { setKillSwitchActive(false); setStatus("Kill switch reset. Risk checks remain armed."); }} className="algo-action secondary wide">Reset kill switch</button></div></div>; }
   function renderRiskEvents() { return <div className="algo-os-card"><h3>Risk Events</h3><div className="algo-alert-box"><b>{killSwitchActive ? "Kill switch active" : "No critical risk events"}</b><span>{killSwitchActive ? "Live deployment is blocked until reset." : "No rejected orders yet."}</span></div><div className="algo-alert-box"><b>Order rejected sample</b><span>BANKNIFTY ORB blocked because broker connection is pending.</span></div></div>; }
   function renderJournal() { return <div className="algo-os-card"><h3>Automated Journal</h3><p>Paper and live fills will create journal entries with strategy, version, signal ID, execution mode and risk decisions.</p><div className="algo-rule-list"><div><span>Execution mode</span><b>BACKTEST / PAPER / LIVE</b></div><div><span>Signal lineage</span><b>strategyId + version + signalId</b></div><div><span>Review loop</span><b>Feeds Analytics</b></div></div></div>; }
   function renderAnalytics() { return <div className="algo-os-grid three"><div className="algo-os-card metric"><span>Profit Factor</span><strong>--</strong><p>Requires completed algo trades.</p></div><div className="algo-os-card metric"><span>Expectancy</span><strong>--</strong><p>By strategy version.</p></div><div className="algo-os-card metric"><span>Max Drawdown</span><strong>--</strong><p>Backtest/paper/live separated.</p></div></div>; }
-  function renderDhan() { return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Integration</h3><p>All Dhan access must go through DhanBrokerAdapter.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">Connect Dhan</button></div><div className="algo-rule-list compact"><div><span>Profile</span><b>Pending</b></div><div><span>Funds</span><b>Pending</b></div><div><span>Orders</span><b>Adapter planned</b></div><div><span>WebSocket</span><b>Planned</b></div></div></div><div className="algo-os-card"><h3>Adapter Contract</h3><p>connect, funds, positions, orders, place/modify/cancel, exitAll, killSwitch, order updates.</p></div></div>; }
+  function renderDhan() {
+    const checkMap = new Map((dhanTestResult?.checks ?? []).map((check) => [check.name, check]));
+    const balance = dhanTestResult?.funds?.availableBalance ?? dhanTestResult?.funds?.availabelBalance ?? "--";
+
+    return <div className="space-y-4"><div className="algo-warning-card"><b>Safe Dhan test mode</b><span>This panel only checks profile, funds, positions and order book. It will not place, modify, cancel or exit trades without a separate explicit live-trade confirmation.</span></div><div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Dhan Connection</h3><p>Generate an access token from Dhan Web, then run a read-only health check here.</p></div><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action primary">{dhanTestResult?.connected ? "Retest Dhan" : "Connect Dhan"}</button></div><div className="algo-os-grid two compact-cards">{["Profile", "Funds", "Positions", "Orders"].map((name) => { const check = checkMap.get(name); return <div key={name} className="algo-os-card metric compact"><span>{name}</span><strong>{check ? (check.ok ? "OK" : "Failed") : "Pending"}</strong><p>{check?.message ?? "Not tested yet"}</p></div>; })}</div></div><div className="algo-os-card"><h3>Account Snapshot</h3><div className="algo-rule-list"><div><span>Client ID</span><b>{dhanTestResult?.profile?.dhanClientId ?? "Not connected"}</b></div><div><span>Token validity</span><b>{dhanTestResult?.profile?.tokenValidity ?? "--"}</b></div><div><span>Active segments</span><b>{dhanTestResult?.profile?.activeSegment ?? "--"}</b></div><div><span>Data plan</span><b>{dhanTestResult?.profile?.dataPlan ?? "--"}</b></div><div><span>Available balance</span><b>{typeof balance === "number" ? `₹${balance.toLocaleString("en-IN")}` : String(balance)}</b></div><div><span>Positions / Orders</span><b>{dhanTestResult ? `${dhanTestResult.positionsCount ?? 0} / ${dhanTestResult.ordersCount ?? 0}` : "--"}</b></div></div></div></div><div className="algo-os-card"><h3>How to test now</h3><div className="algo-rule-list"><div><span>1. Dhan Web</span><b>Profile → DhanHQ Trading APIs → generate token</b></div><div><span>2. Paste here</span><b>Client ID + access token</b></div><div><span>3. Verify read access</span><b>Profile, funds, positions, orders</b></div><div><span>4. Next step</span><b>Dry-run order preview, then tiny live order only after approval</b></div></div></div></div>;
+  }
   function renderTradingView() {
     const webhookUrl = "/api/v1/webhooks/tradingview";
     return (
@@ -359,7 +437,7 @@ export default function AlgoTradingPanel() {
         <div className="min-w-0 flex-1"><header className="sticky top-0 z-20 border-b border-[#dce5f2] bg-white/95 backdrop-blur"><div className="flex min-h-[68px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7"><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-black shadow-sm"><Link href="/dashboard" className="rounded-lg px-3 py-2 text-slate-600 hover:bg-white">Journal</Link><Link href="/dashboard/algo" className="rounded-lg bg-[#091629] px-3 py-2 text-white shadow-sm">Algo Trading</Link></div><div className="flex flex-wrap items-center gap-2"><span className={`rounded-lg px-3 py-2 text-xs font-black ${killSwitchActive ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{killSwitchActive ? "Kill switch active" : "Risk armed"}</span><button type="button" onClick={() => setBuilderOpen(true)} className="algo-action primary">+ Strategy</button><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action secondary">Connect Dhan</button><button type="button" onClick={() => setExitConfirmOpen(true)} className="algo-action danger">EXIT ALL</button></div></div></header><section className="space-y-5 px-4 py-6 lg:px-7"><div className="algo-os-hero"><div><div className="algo-os-eyebrow">{sectionTitle}</div><h1>{sectionTitle}</h1><p>Broker-independent TradingOS workspace for native strategies, TradingView webhooks, Dhan execution, options-aware backtesting, risk protection, automated journal and analytics.</p></div><div className="algo-os-status"><span>System note</span><b>{status}</b></div></div>{renderSection()}</section></div>
       </div>
       {builderOpen ? <div className="algo-modal-backdrop"><div className="algo-modal"><div className="algo-card-head"><div><h3>Create strategy</h3><p>Saved as draft first. Backtest before deployment.</p></div><button type="button" onClick={() => setBuilderOpen(false)}>×</button></div><div className="algo-form-grid"><label>Strategy name<input value={savedStrategyName} onChange={(event) => setSavedStrategyName(event.target.value)} /></label><label>Instrument<select><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option></select></label><label>Timeframe<select><option>5 Minutes</option><option>15 Minutes</option><option>1 Hour</option></select></label><label>Entry action<select><option>Buy ATM CE</option><option>Buy ATM PE</option><option>Sell option spread</option></select></label></div><label className="algo-textarea-label">Rules<textarea defaultValue="EMA(9) crosses above EMA(21) AND RSI(14) > 55 AND Close > VWAP" /></label><div className="algo-modal-actions"><button type="button" onClick={() => setBuilderOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={saveStrategy} className="algo-action primary">Save draft</button></div></div></div> : null}
-      {brokerOpen ? <div className="algo-modal-backdrop"><div className="algo-modal small"><div className="algo-card-head"><div><h3>Connect Dhan</h3><p>Token storage and validation must be implemented server-side before live trading.</p></div><button type="button" onClick={() => setBrokerOpen(false)}>×</button></div><div className="algo-form-grid single"><label>Client ID<input placeholder="Dhan client ID" /></label><label>Access token<input placeholder="Stored securely on backend" type="password" /></label></div><div className="algo-modal-actions"><button type="button" onClick={() => setBrokerOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={connectDhan} className="algo-action primary">Save connection</button></div></div></div> : null}
+      {brokerOpen ? <div className="algo-modal-backdrop"><div className="algo-modal small"><div className="algo-card-head"><div><h3>Connect Dhan</h3><p>Runs a read-only test against Dhan profile, funds, positions and orders. No trade is placed.</p></div><button type="button" onClick={() => setBrokerOpen(false)}>×</button></div><div className="algo-form-grid single"><label>Client ID<input value={dhanClientId} onChange={(event) => setDhanClientId(event.target.value)} placeholder="Dhan client ID" /></label><label>Access token<input value={dhanAccessToken} onChange={(event) => setDhanAccessToken(event.target.value)} placeholder="Paste current Dhan access token" type="password" /></label></div>{dhanTestResult?.error ? <div className="algo-alert-box"><b>Last test failed</b><span>{dhanTestResult.error}</span></div> : null}<div className="algo-modal-actions"><button type="button" onClick={() => setBrokerOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={connectDhan} className="algo-action primary" disabled={dhanTesting}>{dhanTesting ? "Testing..." : "Test connection"}</button></div></div></div> : null}
       {exitConfirmOpen ? <div className="algo-modal-backdrop"><div className="algo-modal small danger-modal"><h3>EXIT ALL POSITIONS?</h3><p>This will exit open positions, cancel pending orders, pause strategies and activate the kill switch when broker execution is connected.</p><div className="algo-modal-actions"><button type="button" onClick={() => setExitConfirmOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={confirmExitAll} className="algo-action danger">EXIT EVERYTHING</button></div></div></div> : null}
     </main>
   );
