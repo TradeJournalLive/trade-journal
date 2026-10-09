@@ -88,6 +88,26 @@ type DhanOrderPlacement = {
   error?: string;
 };
 
+type PaperOrder = {
+  id: string;
+  time: string;
+  securityId: string;
+  exchangeSegment: string;
+  side: string;
+  quantity: number;
+  fillPrice: number;
+  value: number;
+  status: string;
+};
+
+type PaperPosition = {
+  securityId: string;
+  exchangeSegment: string;
+  netQuantity: number;
+  avgPrice: number;
+  investedValue: number;
+};
+
 type NavGroup = {
   label: string;
   items: { label: string; id: AlgoSection }[];
@@ -207,6 +227,10 @@ export default function AlgoTradingPanel() {
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [killSwitchActive, setKillSwitchActive] = useState(false);
   const [paperModeActive, setPaperModeActive] = useState(false);
+  const [paperCash, setPaperCash] = useState(100000);
+  const [paperFillPrice, setPaperFillPrice] = useState("");
+  const [paperOrders, setPaperOrders] = useState<PaperOrder[]>([]);
+  const [paperPositions, setPaperPositions] = useState<PaperPosition[]>([]);
   const [savedStrategyName, setSavedStrategyName] = useState("NIFTY EMA Protection");
   const [webhookSecretVisible, setWebhookSecretVisible] = useState(false);
   const [dhanClientId, setDhanClientId] = useState("");
@@ -367,13 +391,93 @@ export default function AlgoTradingPanel() {
     }
   }
 
+  function resetPaperAccount() {
+    setPaperModeActive(false);
+    setPaperCash(100000);
+    setPaperFillPrice("");
+    setPaperOrders([]);
+    setPaperPositions([]);
+    setStatus("Paper account reset to ₹1,00,000 virtual cash.");
+  }
+
+  function placePaperOrder() {
+    const quantity = Number(dhanOrderTicket.quantity);
+    const ticketPrice = Number(dhanOrderTicket.price);
+    const fillPrice = Number(paperFillPrice || (ticketPrice > 0 ? ticketPrice : 0));
+    const securityId = dhanOrderTicket.securityId.trim();
+
+    if (!paperModeActive) {
+      setStatus("Start paper mode before placing a virtual order.");
+      return;
+    }
+    if (!securityId) {
+      setStatus("Security ID is required for a paper order.");
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setStatus("Paper order quantity must be a positive whole number.");
+      return;
+    }
+    if (!Number.isFinite(fillPrice) || fillPrice <= 0) {
+      setStatus("Enter a simulated fill price for the paper order.");
+      return;
+    }
+
+    const value = quantity * fillPrice;
+    const sideMultiplier = dhanOrderTicket.transactionType === "BUY" ? 1 : -1;
+    const cashChange = dhanOrderTicket.transactionType === "BUY" ? -value : value;
+
+    if (dhanOrderTicket.transactionType === "BUY" && value > paperCash) {
+      setStatus("Paper order blocked: virtual cash is not enough for this buy order.");
+      return;
+    }
+
+    const order: PaperOrder = {
+      id: `PAPER-${Date.now().toString(36).toUpperCase()}`,
+      time: new Date().toLocaleString("en-IN", { hour12: false }),
+      securityId,
+      exchangeSegment: dhanOrderTicket.exchangeSegment,
+      side: dhanOrderTicket.transactionType,
+      quantity,
+      fillPrice,
+      value,
+      status: "Filled"
+    };
+
+    setPaperOrders((prev) => [order, ...prev]);
+    setPaperCash((prev) => prev + cashChange);
+    setPaperPositions((prev) => {
+      const existing = prev.find((position) => position.securityId === securityId && position.exchangeSegment === dhanOrderTicket.exchangeSegment);
+      const signedQuantity = sideMultiplier * quantity;
+
+      if (!existing) {
+        return [{ securityId, exchangeSegment: dhanOrderTicket.exchangeSegment, netQuantity: signedQuantity, avgPrice: fillPrice, investedValue: Math.abs(value) }, ...prev];
+      }
+
+      const nextQuantity = existing.netQuantity + signedQuantity;
+      if (nextQuantity === 0) {
+        return prev.filter((position) => position !== existing);
+      }
+
+      const sameDirection = Math.sign(existing.netQuantity) === Math.sign(signedQuantity);
+      const nextAvgPrice = sameDirection
+        ? ((Math.abs(existing.netQuantity) * existing.avgPrice) + value) / Math.abs(nextQuantity)
+        : existing.avgPrice;
+
+      return prev.map((position) => position === existing
+        ? { ...position, netQuantity: nextQuantity, avgPrice: nextAvgPrice, investedValue: Math.abs(nextQuantity) * nextAvgPrice }
+        : position);
+    });
+    setStatus(`${order.id} filled in paper mode. No Dhan order was sent.`);
+  }
+
   const metricCards = (
     <div className="algo-os-grid five">
       {[
-        ["P&L today", "₹0", "No broker feed connected"],
+        ["Paper cash", `₹${paperCash.toLocaleString("en-IN")}`, paperModeActive ? "Virtual broker active" : "Start paper mode first"],
         ["Running strategies", "0", paperModeActive ? "Paper mode active" : "Start paper mode first"],
-        ["Capital deployed", "₹0", "Dhan funds pending"],
-        ["Open positions", "0", "No live exposure"],
+        ["Paper deployed", `₹${paperPositions.reduce((sum, item) => sum + item.investedValue, 0).toLocaleString("en-IN")}`, "Virtual exposure only"],
+        ["Paper positions", String(paperPositions.length), "No live exposure"],
         ["Risk state", killSwitchActive ? "Blocked" : "Ready", killSwitchActive ? "Orders stopped" : "Pre-trade checks armed"]
       ].map(([label, value, helper]) => (
         <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>
@@ -398,7 +502,15 @@ export default function AlgoTradingPanel() {
   }
 
   function renderPaper() {
-    return <div className="grid gap-4 xl:grid-cols-3"><div className="algo-os-card metric"><span>Paper Mode</span><strong>{paperModeActive ? "On" : "Off"}</strong><p>Simulated broker, live market data later.</p><button type="button" onClick={() => { setPaperModeActive((prev) => !prev); setStatus(!paperModeActive ? "Paper trading started. No live orders will be sent." : "Paper trading stopped."); }} className="algo-action primary wide">{paperModeActive ? "Stop paper" : "Start paper"}</button></div><div className="algo-os-card metric"><span>Paper Capital</span><strong>₹1,00,000</strong><p>Sandbox allocation for strategy validation.</p></div><div className="algo-os-card metric"><span>Paper Trades</span><strong>0</strong><p>Paper fills store as executionMode = PAPER.</p></div></div>;
+    const quantity = Number(dhanOrderTicket.quantity);
+    const previewPrice = Number(paperFillPrice || dhanOrderTicket.price || 0);
+    const previewValue = Number.isFinite(quantity * previewPrice) ? quantity * previewPrice : 0;
+
+    return <div className="space-y-4"><div className="algo-os-grid three"><div className="algo-os-card metric"><span>Paper Mode</span><strong>{paperModeActive ? "On" : "Off"}</strong><p>Virtual broker. No Dhan order is sent.</p><button type="button" onClick={() => { setPaperModeActive((prev) => !prev); setStatus(!paperModeActive ? "Paper trading started with virtual money." : "Paper trading stopped."); }} className="algo-action primary wide">{paperModeActive ? "Stop paper" : "Start paper"}</button></div><div className="algo-os-card metric"><span>Virtual Cash</span><strong>₹{paperCash.toLocaleString("en-IN")}</strong><p>Starting balance ₹1,00,000.</p></div><div className="algo-os-card metric"><span>Paper Trades</span><strong>{paperOrders.length}</strong><p>Filled locally in the panel.</p></div></div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]"><div className="algo-os-card"><div className="algo-card-head"><div><h3>Paper Order Ticket</h3><p>Uses the same manual order ticket fields as Dhan, but fills against virtual cash only.</p></div><span className="algo-pill good">No live broker</span></div><div className="algo-form-grid"><label>Exchange segment<select value={dhanOrderTicket.exchangeSegment} onChange={(event) => updateDhanOrderTicket("exchangeSegment", event.target.value)}><option>NSE_EQ</option><option>NSE_FNO</option><option>BSE_EQ</option><option>BSE_FNO</option><option>MCX_COMM</option></select></label><label>Product type<select value={dhanOrderTicket.productType} onChange={(event) => updateDhanOrderTicket("productType", event.target.value)}><option>INTRADAY</option><option>CNC</option><option>MARGIN</option><option>MTF</option><option>CO</option><option>BO</option></select></label><label>Side<select value={dhanOrderTicket.transactionType} onChange={(event) => updateDhanOrderTicket("transactionType", event.target.value)}><option>BUY</option><option>SELL</option></select></label><label>Order type<select value={dhanOrderTicket.orderType} onChange={(event) => updateDhanOrderTicket("orderType", event.target.value)}><option>MARKET</option><option>LIMIT</option><option>STOP_LOSS</option><option>STOP_LOSS_MARKET</option></select></label><label>Security ID<input value={dhanOrderTicket.securityId} onChange={(event) => updateDhanOrderTicket("securityId", event.target.value)} placeholder="Dhan security ID" /></label><label>Quantity<input value={dhanOrderTicket.quantity} onChange={(event) => updateDhanOrderTicket("quantity", event.target.value)} inputMode="numeric" /></label><label>Simulated fill price<input value={paperFillPrice} onChange={(event) => setPaperFillPrice(event.target.value)} inputMode="decimal" placeholder="Required for paper" /></label><label>Ticket price<input value={dhanOrderTicket.price} onChange={(event) => updateDhanOrderTicket("price", event.target.value)} inputMode="decimal" placeholder="Optional" /></label></div><div className="algo-modal-actions"><button type="button" onClick={placePaperOrder} className="algo-action primary" disabled={!paperModeActive}>Place paper order</button><button type="button" onClick={resetPaperAccount} className="algo-action secondary">Reset paper account</button></div></div><div className="algo-os-card"><h3>Virtual Risk Check</h3><div className="algo-rule-list"><div><span>Estimated value</span><b>{previewValue > 0 ? `₹${previewValue.toLocaleString("en-IN")}` : "Enter fill price"}</b></div><div><span>Cash after buy</span><b>{previewValue > 0 ? `₹${(paperCash - previewValue).toLocaleString("en-IN")}` : "--"}</b></div><div><span>Mode</span><b>{paperModeActive ? "Paper enabled" : "Paper stopped"}</b></div><div><span>Live broker</span><b>Not used</b></div></div></div></div>
+
+      <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><div className="algo-card-head"><h3>Paper Positions</h3><span className="algo-pill pending">{paperPositions.length} open</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Security ID</th><th>Segment</th><th>Net Qty</th><th>Avg Price</th><th>Value</th></tr></thead><tbody>{paperPositions.length ? paperPositions.map((position) => <tr key={`${position.exchangeSegment}-${position.securityId}`}><td>{position.securityId}</td><td>{position.exchangeSegment}</td><td>{position.netQuantity}</td><td>₹{position.avgPrice.toFixed(2)}</td><td>₹{position.investedValue.toLocaleString("en-IN")}</td></tr>) : <tr><td colSpan={5}>No paper positions yet.</td></tr>}</tbody></table></div></div><div className="algo-os-card"><div className="algo-card-head"><h3>Paper Orders</h3><span className="algo-pill pending">{paperOrders.length} filled</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order</th><th>Side</th><th>Security</th><th>Qty</th><th>Fill</th><th>Value</th></tr></thead><tbody>{paperOrders.length ? paperOrders.map((order) => <tr key={order.id}><td>{order.id}</td><td>{order.side}</td><td>{order.securityId}</td><td>{order.quantity}</td><td>₹{order.fillPrice.toFixed(2)}</td><td>₹{order.value.toLocaleString("en-IN")}</td></tr>) : <tr><td colSpan={6}>No paper orders yet.</td></tr>}</tbody></table></div></div></div></div>;
   }
 
   function renderLive() {
@@ -411,11 +523,11 @@ export default function AlgoTradingPanel() {
 
   function renderPositions() {
     const positionsCheck = dhanTestResult?.checks.find((check) => check.name === "Positions");
-    return <div className="algo-os-card"><div className="algo-card-head"><h3>Positions</h3><span className={`algo-pill ${positionsCheck?.ok ? "good" : "pending"}`}>{positionsCheck?.ok ? "Dhan checked" : "Connect Dhan first"}</span></div><div className="algo-empty-state">{positionsCheck?.ok ? `${dhanTestResult?.positionsCount ?? 0} open positions returned by Dhan.` : "No live positions loaded yet. Run the Dhan connection test to fetch positions."}</div></div>;
+    return <div className="algo-os-card"><div className="algo-card-head"><h3>Positions</h3><span className={`algo-pill ${positionsCheck?.ok || paperPositions.length ? "good" : "pending"}`}>{paperPositions.length ? "Paper positions" : positionsCheck?.ok ? "Dhan checked" : "Connect Dhan first"}</span></div>{paperPositions.length ? <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Security ID</th><th>Segment</th><th>Net Qty</th><th>Avg Price</th><th>Value</th></tr></thead><tbody>{paperPositions.map((position) => <tr key={`${position.exchangeSegment}-${position.securityId}`}><td>{position.securityId}</td><td>{position.exchangeSegment}</td><td>{position.netQuantity}</td><td>₹{position.avgPrice.toFixed(2)}</td><td>₹{position.investedValue.toLocaleString("en-IN")}</td></tr>)}</tbody></table></div> : <div className="algo-empty-state">{positionsCheck?.ok ? `${dhanTestResult?.positionsCount ?? 0} open positions returned by Dhan.` : "No live or paper positions loaded yet."}</div>}</div>;
   }
   function renderOrders() {
     const ordersCheck = dhanTestResult?.checks.find((check) => check.name === "Orders");
-    return <div className="algo-os-card"><div className="algo-card-head"><h3>Orders</h3><span className={`algo-pill ${ordersCheck?.ok ? "good" : "pending"}`}>{ordersCheck?.ok ? "Dhan checked" : "Paper samples"}</span></div>{ordersCheck?.ok ? <div className="algo-empty-state">{dhanTestResult?.ordersCount ?? 0} orders returned for today. Live order placement is still blocked until you approve a trade test.</div> : <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order ID</th><th>Strategy</th><th>Side</th><th>Qty</th><th>Status</th><th>Time</th></tr></thead><tbody>{orderRows.map((row) => <tr key={row.id}><td>{row.id}</td><td>{row.strategy}</td><td>{row.side}</td><td>{row.qty}</td><td>{row.status}</td><td>{row.time}</td></tr>)}</tbody></table></div>}</div>;
+    return <div className="algo-os-card"><div className="algo-card-head"><h3>Orders</h3><span className={`algo-pill ${ordersCheck?.ok || paperOrders.length ? "good" : "pending"}`}>{paperOrders.length ? "Paper orders" : ordersCheck?.ok ? "Dhan checked" : "Paper samples"}</span></div>{paperOrders.length ? <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order</th><th>Time</th><th>Side</th><th>Security</th><th>Qty</th><th>Fill</th><th>Status</th></tr></thead><tbody>{paperOrders.map((order) => <tr key={order.id}><td>{order.id}</td><td>{order.time}</td><td>{order.side}</td><td>{order.securityId}</td><td>{order.quantity}</td><td>₹{order.fillPrice.toFixed(2)}</td><td>{order.status}</td></tr>)}</tbody></table></div> : ordersCheck?.ok ? <div className="algo-empty-state">{dhanTestResult?.ordersCount ?? 0} orders returned for today. Live order placement is still blocked until you approve a trade test.</div> : <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order ID</th><th>Strategy</th><th>Side</th><th>Qty</th><th>Status</th><th>Time</th></tr></thead><tbody>{orderRows.map((row) => <tr key={row.id}><td>{row.id}</td><td>{row.strategy}</td><td>{row.side}</td><td>{row.qty}</td><td>{row.status}</td><td>{row.time}</td></tr>)}</tbody></table></div>}</div>;
   }
   function renderTrades() { return <div className="algo-os-card"><h3>Trades</h3><p>Automated paper/live fills will land here before syncing to journal analytics.</p><div className="algo-empty-state">No algo trades yet.</div></div>; }
   function renderRiskProfiles() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Intraday Protected</h3><div className="algo-rule-list">{riskRows.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}</b></div>)}</div></div><div className="algo-os-card"><h3>Conservative Options</h3><div className="algo-rule-list"><div><span>Max lots</span><b>1</b></div><div><span>Max loss</span><b>₹2,500</b></div><div><span>Allowed instruments</span><b>NIFTY / BANKNIFTY</b></div></div></div></div>; }
