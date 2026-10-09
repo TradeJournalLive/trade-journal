@@ -29,10 +29,10 @@ type ChainStrike = {
 };
 
 const underlyings: Record<string, { scrip: number; segment: string; orderSegment: string; step: number; lotSize: number }> = {
-  NIFTY: { scrip: 13, segment: "NSE", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
-  BANKNIFTY: { scrip: 25, segment: "NSE", orderSegment: "NSE_FNO", step: 100, lotSize: 35 },
-  FINNIFTY: { scrip: 27, segment: "NSE", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
-  SENSEX: { scrip: 51, segment: "BSE", orderSegment: "BSE_FNO", step: 100, lotSize: 20 }
+  NIFTY: { scrip: 13, segment: "IDX_I", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
+  BANKNIFTY: { scrip: 25, segment: "IDX_I", orderSegment: "NSE_FNO", step: 100, lotSize: 35 },
+  FINNIFTY: { scrip: 27, segment: "IDX_I", orderSegment: "NSE_FNO", step: 50, lotSize: 65 },
+  SENSEX: { scrip: 51, segment: "IDX_I", orderSegment: "BSE_FNO", step: 100, lotSize: 20 }
 };
 
 async function postDhan(path: string, headers: HeadersInit, body: Record<string, unknown>) {
