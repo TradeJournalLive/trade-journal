@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const DHAN_SCRIP_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv";
-const MAX_ROWS_TO_SCAN = 120000;
+const MAX_ROWS_TO_SCAN = 80000;
 
 type InstrumentMatch = {
   securityId: string;
@@ -97,8 +96,10 @@ export async function GET(request: Request) {
   const strike = (searchParams.get("strike") || "").trim();
   const query = (searchParams.get("q") || "").toUpperCase();
   const limit = Math.min(Number(searchParams.get("limit") || 60), 120);
+  const segment = underlying === "SENSEX" ? "BSE_FNO" : "NSE_FNO";
+  const sourceUrl = `https://api.dhan.co/v2/instrument/${segment}`;
 
-  const response = await fetch(DHAN_SCRIP_MASTER_URL, { cache: "no-store" });
+  const response = await fetch(sourceUrl, { cache: "no-store" });
   if (!response.ok) {
     return NextResponse.json({ error: "Could not fetch Dhan instrument master." }, { status: 502 });
   }
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
     header.forEach((key, index) => { record[key] = values[index]?.trim() ?? ""; });
 
     const exchange = getValue(record, ["EXCH_ID", "SEM_EXM_EXCH_ID"]);
-    const segment = getValue(record, ["SEGMENT", "SEM_SEGMENT"]);
+    const recordSegment = getValue(record, ["SEGMENT", "SEM_SEGMENT"]);
     const instrument = getValue(record, ["INSTRUMENT", "SEM_INSTRUMENT_NAME", "INSTRUMENT_TYPE", "SEM_EXCH_INSTRUMENT_TYPE"]);
     const recordUnderlying = normalizeUnderlying(getValue(record, ["UNDERLYING_SYMBOL", "SM_SYMBOL_NAME", "SYMBOL_NAME"]));
     const displayName = getValue(record, ["DISPLAY_NAME", "SEM_CUSTOM_SYMBOL", "SM_SYMBOL_NAME", "SYMBOL_NAME", "SEM_TRADING_SYMBOL"]);
@@ -127,9 +128,10 @@ export async function GET(request: Request) {
 
     if (!securityId || !displayName) continue;
     if (exchange && !["NSE", "BSE"].includes(exchange.toUpperCase())) continue;
-    if (segment && !["D", "E"].includes(segment.toUpperCase())) continue;
+    if (recordSegment && !["D", "E"].includes(recordSegment.toUpperCase())) continue;
     if (instrument && !instrument.toUpperCase().includes("OPT") && !searchText.includes(" CE") && !searchText.includes(" PE")) continue;
-    if (underlying && !searchText.includes(underlying)) continue;
+    if (underlying && recordUnderlying && recordUnderlying !== underlying) continue;
+    if (underlying && !recordUnderlying && !searchText.includes(underlying)) continue;
     if (optionType && rawOptionType.toUpperCase() !== optionType) continue;
     if (expiry && !rawExpiry.toUpperCase().includes(expiry)) continue;
     if (strike && rawStrike.replace(/\.0+$/, "") !== strike) continue;
@@ -150,5 +152,5 @@ export async function GET(request: Request) {
     if (matches.length >= limit) break;
   }
 
-  return NextResponse.json({ matches, source: "Dhan instrument master", count: matches.length });
+  return NextResponse.json({ matches, source: `Dhan ${segment} instrument master`, count: matches.length });
 }
