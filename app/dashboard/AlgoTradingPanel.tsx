@@ -742,6 +742,15 @@ export default function AlgoTradingPanel() {
   "action": "BUY",
   "timestamp": "2026-10-08T09:30:00+05:30",
   "price": 25250,
+  "automation": {
+    "enabled": true,
+    "mode": "PAPER",
+    "underlying": "NIFTY",
+    "optionDepth": 1,
+    "stopLoss": 25,
+    "target": 50,
+    "cutoffTime": "15:00"
+  },
   "metadata": { "indicator": "My Indicator", "signal": "BUY" }
 }`}</pre>
           </div>

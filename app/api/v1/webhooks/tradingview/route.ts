@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
+import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload } from "../../../../lib/algo/automation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ type TradingViewWebhookPayload = {
   confidence?: number;
   indicatorValue?: number;
   alertName?: string;
+  automation?: AlgoAutomationPayload;
   metadata?: Record<string, unknown>;
 };
 
@@ -197,17 +199,20 @@ export async function POST(request: Request) {
     seenSignals.set(dedupeKey, receivedAt);
 
     const signal = normalizeSignal(payload);
+    const decision = evaluateAlgoSignal(signal, payload.automation ?? {});
+    recordAlgoEvent({ receivedAt: new Date(receivedAt).toISOString(), signal, decision });
 
-    // Production next step: persist WebhookEvent + Signal, enqueue risk/execution processing,
-    // and return quickly so TradingView does not timeout.
     return NextResponse.json(
       {
-        status: "ACCEPTED",
+        status: decision.accepted ? "ACCEPTED" : "REJECTED",
         signal,
-        queued: false,
-        nextStep: "Persist event and enqueue Signal -> Risk Engine -> Execution Engine."
+        decision,
+        queued: decision.accepted,
+        nextStep: decision.accepted
+          ? "Resolve option chain contract -> run broker dry-run -> execute PAPER/LIVE according to strategy mode."
+          : "Signal rejected by automation checks."
       },
-      { status: 202 }
+      { status: decision.accepted ? 202 : 422 }
     );
   } catch (error) {
     return NextResponse.json(
