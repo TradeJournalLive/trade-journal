@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload } from "../../../../lib/algo/automation";
+import { persistAlgoSignalEvent } from "../../../../lib/algo/signalStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -200,7 +201,13 @@ export async function POST(request: Request) {
 
     const signal = normalizeSignal(payload);
     const decision = evaluateAlgoSignal(signal, payload.automation ?? {});
-    recordAlgoEvent({ receivedAt: new Date(receivedAt).toISOString(), signal, decision });
+    const event = { receivedAt: new Date(receivedAt).toISOString(), signal, decision };
+    recordAlgoEvent(event);
+    const persistence = await persistAlgoSignalEvent({
+      event,
+      secret: String(payload.secret ?? ""),
+      rawPayload: payload as Record<string, unknown>
+    });
 
     return NextResponse.json(
       {
@@ -208,6 +215,7 @@ export async function POST(request: Request) {
         signal,
         decision,
         queued: decision.accepted,
+        persistence,
         nextStep: decision.accepted
           ? "Resolve option chain contract -> run broker dry-run -> execute PAPER/LIVE according to strategy mode."
           : "Signal rejected by automation checks."

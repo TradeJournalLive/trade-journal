@@ -19,7 +19,7 @@ export type AlgoSignal = {
 export type AlgoAutomationPayload = {
   enabled?: boolean;
   mode?: "PAPER" | "LIVE";
-  underlying?: "NIFTY" | "BANKNIFTY" | "FINNIFTY" | "SENSEX";
+  underlying?: "NIFTY" | "BANKNIFTY" | "FINNIFTY" | "SENSEX" | "BTC" | "GOLD";
   optionDepth?: 1 | 2;
   maxTradesPerDay?: number;
   cutoffTime?: string;
@@ -87,9 +87,13 @@ function normalizeUnderlying(signal: AlgoSignal, automation: AlgoAutomationPaylo
   if (fromMetadata.includes("BANK")) return "BANKNIFTY";
   if (fromMetadata.includes("FIN")) return "FINNIFTY";
   if (fromMetadata.includes("SENSEX")) return "SENSEX";
+  if (fromMetadata.includes("BTC") || fromMetadata.includes("BITCOIN")) return "BTC";
+  if (fromMetadata.includes("GOLD") || fromMetadata.includes("XAU")) return "GOLD";
   if (fromSymbol.includes("BANK")) return "BANKNIFTY";
   if (fromSymbol.includes("FIN")) return "FINNIFTY";
   if (fromSymbol.includes("SENSEX")) return "SENSEX";
+  if (fromSymbol.includes("BTC") || fromSymbol.includes("BITCOIN")) return "BTC";
+  if (fromSymbol.includes("GOLD") || fromSymbol.includes("XAU")) return "GOLD";
   return "NIFTY";
 }
 
@@ -138,14 +142,17 @@ export function evaluateAlgoSignal(signal: AlgoSignal, automation: AlgoAutomatio
   const optionSide = getOptionSide(signal.action);
   const underlying = normalizeUnderlying(signal, automation);
   const optionDepth = automation.optionDepth === 2 ? 2 : 1;
+  const isOptionUnderlying = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"].includes(underlying);
 
   return {
     accepted: true,
     executionMode: mode,
     stage: mode === "LIVE" ? "READY_FOR_LIVE" : "READY_FOR_PAPER",
-    reasons: ["Signal passed automation checks. Option chain selector must resolve the exact 1-2 ITM contract before execution."],
+    reasons: [isOptionUnderlying
+      ? "Signal passed automation checks. Option chain selector must resolve the exact 1-2 ITM contract before execution."
+      : "Signal passed connection checks. This symbol is logged for webhook testing and is not mapped to Dhan options execution yet."],
     checks,
-    optionIntent: optionSide ? {
+    optionIntent: optionSide && isOptionUnderlying ? {
       underlying,
       side: optionSide,
       depth: optionDepth,

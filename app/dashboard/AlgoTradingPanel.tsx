@@ -326,16 +326,26 @@ export default function AlgoTradingPanel() {
     }
 
     try {
-      const response = await fetch("/api/algo/signals", { cache: "no-store" });
-      const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string };
+      const secret = tvTestSecret.trim();
+      const response = await fetch("/api/algo/signals", secret ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret }),
+        cache: "no-store"
+      } : { cache: "no-store" });
+      const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string; warning?: string; source?: string };
       if (!response.ok) {
         throw new Error(data.error || "Signal log failed to load.");
       }
       const events = Array.isArray(data.events) ? data.events : [];
       setSignalEvents(events);
       setSignalLogLastChecked(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      if (data.warning && !silent) {
+        setSignalLogError(data.warning);
+      }
       if (!silent) {
-        setStatus(events.length ? `Loaded ${events.length} TradingView signal${events.length === 1 ? "" : "s"}.` : "Signal log checked. No TradingView alerts received yet.");
+        const source = data.source === "supabase" ? "saved" : "temporary";
+        setStatus(events.length ? `Loaded ${events.length} ${source} TradingView signal${events.length === 1 ? "" : "s"}.` : "Signal log checked. No TradingView alerts received yet.");
       }
     } catch (error) {
       setSignalLogError(error instanceof Error ? error.message : "Signal log failed to load.");
