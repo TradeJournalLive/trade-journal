@@ -5520,6 +5520,15 @@ export default function ClientDashboard({
                   </button>
                 </div>
                 {session && (
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm hover:border-red-200 hover:text-red-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-red-400/30 dark:hover:text-red-300"
+                  >
+                    Sign out
+                  </button>
+                )}
+                {session && (
                   <div className="relative" ref={profileMenuRef}>
                     <button
                       type="button"
