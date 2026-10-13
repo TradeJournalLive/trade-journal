@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type AlgoSection =
@@ -124,6 +124,44 @@ type InstrumentMatch = {
   oi?: number | null;
   volume?: number | null;
   moneyness?: string;
+};
+
+type AlgoSignalEvent = {
+  receivedAt: string;
+  signal: {
+    id: string;
+    strategyId: string;
+    source: string;
+    symbol: string;
+    action: string;
+    timestamp: string;
+    price?: number;
+    timeframe?: string;
+    quantity?: number;
+    metadata?: Record<string, unknown>;
+    status: string;
+    createdAt: string;
+  };
+  decision: {
+    accepted: boolean;
+    executionMode: "PAPER" | "LIVE" | "BLOCKED";
+    stage: string;
+    reasons: string[];
+    optionIntent?: {
+      underlying: string;
+      side: "CE" | "PE";
+      depth: 1 | 2;
+      selection: "ITM";
+      source: string;
+    };
+    orderPlan?: {
+      action: "ENTER" | "EXIT";
+      quantityLots: number;
+      stopLoss?: number;
+      target?: number;
+      cutoffTime: string;
+    };
+  };
 };
 
 type NavGroup = {
@@ -269,11 +307,50 @@ export default function AlgoTradingPanel() {
   const [instrumentLoading, setInstrumentLoading] = useState(false);
   const [instrumentError, setInstrumentError] = useState("");
   const [instrumentChainMeta, setInstrumentChainMeta] = useState<{ underlyingLastPrice?: number; atmStrike?: number; expiry?: string; source?: string }>({});
+  const [signalEvents, setSignalEvents] = useState<AlgoSignalEvent[]>([]);
+  const [signalLogLoading, setSignalLogLoading] = useState(false);
+  const [signalLogError, setSignalLogError] = useState("");
+  const [signalLogLastChecked, setSignalLogLastChecked] = useState("");
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
     [activeSection]
   );
+
+
+  async function refreshSignalLog(silent = false) {
+    if (!silent) {
+      setSignalLogLoading(true);
+      setSignalLogError("");
+    }
+
+    try {
+      const response = await fetch("/api/algo/signals", { cache: "no-store" });
+      const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || "Signal log failed to load.");
+      }
+      const events = Array.isArray(data.events) ? data.events : [];
+      setSignalEvents(events);
+      setSignalLogLastChecked(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      if (!silent) {
+        setStatus(events.length ? `Loaded ${events.length} TradingView signal${events.length === 1 ? "" : "s"}.` : "Signal log checked. No TradingView alerts received yet.");
+      }
+    } catch (error) {
+      setSignalLogError(error instanceof Error ? error.message : "Signal log failed to load.");
+    } finally {
+      if (!silent) setSignalLogLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeSection !== "tradingview") return;
+    void refreshSignalLog(true);
+    const timer = window.setInterval(() => {
+      void refreshSignalLog(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeSection]);
 
   function selectSection(id: AlgoSection) {
     setActiveSection(id);
@@ -757,7 +834,7 @@ export default function AlgoTradingPanel() {
         </div>
 
         <div className="algo-os-grid five">
-          {[["Net P&L", "--", "Waiting for signals"], ["Today's P&L", "--", "No realtime fills yet"], ["Total Trades", "0", "No TradingView trades"], ["Win Rate", "--", "Needs closed trades"], ["Webhook Health", "Not connected", "No webhook received"]].map(([label, value, helper]) => <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>)}
+          {[["Net P&L", "--", "Waiting for fills"], ["Today's P&L", "--", "No realtime fills yet"], ["Signals", String(signalEvents.length), "TradingView webhook events"], ["Accepted", String(signalEvents.filter((event) => event.decision.accepted).length), "Passed automation checks"], ["Webhook Health", signalEvents.length ? "Connected" : "Not connected", signalEvents[0] ? `Last: ${new Date(signalEvents[0].receivedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "No webhook received"]].map(([label, value, helper]) => <div key={label} className="algo-os-card metric"><span>{label}</span><strong>{value}</strong><p>{helper}</p></div>)}
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
@@ -776,13 +853,23 @@ export default function AlgoTradingPanel() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
           <div className="algo-os-card">
-            <div className="algo-card-head"><h3>Realtime Signal Feed</h3><span className="algo-pill good">Receiving Signals</span></div>
-            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Time</th><th>Action</th><th>Symbol</th><th>Price</th><th>Source</th><th>Status</th><th>Execution</th></tr></thead><tbody><tr><td colSpan={7}>No TradingView signals received yet. Create an alert in TradingView and point it to this webhook URL.</td></tr></tbody></table></div>
+            <div className="algo-card-head">
+              <div><h3>Realtime Signal Feed</h3><p>Auto-refreshes every 5 seconds while this tab is open.</p></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`algo-pill ${signalEvents.length ? "good" : "pending"}`}>{signalEvents.length ? "Connected" : "Waiting"}</span>
+                <button type="button" onClick={() => refreshSignalLog()} className="algo-action secondary" disabled={signalLogLoading}>{signalLogLoading ? "Refreshing..." : "Refresh"}</button>
+              </div>
+            </div>
+            {signalLogError ? <div className="algo-alert-box"><b>Signal log error</b><span>{signalLogError}</span></div> : null}
+            <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received</th><th>Action</th><th>Symbol</th><th>Price</th><th>Status</th><th>Stage</th><th>Execution</th><th>Plan</th><th>Reason</th></tr></thead><tbody>{signalEvents.length ? signalEvents.slice(0, 25).map((event) => {
+              const plan = event.decision.optionIntent ? `${event.decision.optionIntent.underlying} ${event.decision.optionIntent.depth} ITM ${event.decision.optionIntent.side}` : event.decision.orderPlan?.action ?? "--";
+              return <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{new Date(event.receivedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td><td><span className={event.signal.action === "SELL" ? "algo-pill danger" : "algo-pill good"}>{event.signal.action}</span></td><td>{event.signal.symbol}</td><td>{typeof event.signal.price === "number" ? event.signal.price.toLocaleString("en-IN") : "--"}</td><td><span className={`algo-pill ${event.decision.accepted ? "good" : "danger"}`}>{event.decision.accepted ? "Accepted" : "Rejected"}</span></td><td>{event.decision.stage}</td><td>{event.decision.executionMode}</td><td>{plan}</td><td>{event.decision.reasons[0] ?? "--"}</td></tr>;
+            }) : <tr><td colSpan={9}>No TradingView signals received yet. Fire your TradingView alert, then click Refresh if it does not appear within a few seconds.</td></tr>}</tbody></table></div>
           </div>
 
           <div className="algo-os-card">
             <h3>Webhook Health</h3>
-            <div className="algo-rule-list"><div><span>Status</span><b>No recent signals</b></div><div><span>Last signal</span><b>Never</b></div><div><span>Signals today</span><b>0</b></div><div><span>Failed webhooks</span><b>0</b></div><div><span>Duplicate signals</span><b>0</b></div><div><span>Processing latency</span><b>Waiting for first webhook</b></div></div>
+            <div className="algo-rule-list"><div><span>Status</span><b>{signalEvents.length ? "Webhook received" : "No recent signals"}</b></div><div><span>Last signal</span><b>{signalEvents[0] ? new Date(signalEvents[0].receivedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Never"}</b></div><div><span>Signals loaded</span><b>{signalEvents.length}</b></div><div><span>Rejected signals</span><b>{signalEvents.filter((event) => !event.decision.accepted).length}</b></div><div><span>Last checked</span><b>{signalLogLastChecked || "Not checked"}</b></div><div><span>Storage</span><b>Temporary server log</b></div></div>
           </div>
         </div>
 
