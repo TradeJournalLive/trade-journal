@@ -311,6 +311,7 @@ export default function AlgoTradingPanel() {
   const [signalLogLoading, setSignalLogLoading] = useState(false);
   const [signalLogError, setSignalLogError] = useState("");
   const [signalLogLastChecked, setSignalLogLastChecked] = useState("");
+  const [tvTestSecret, setTvTestSecret] = useState("");
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
@@ -340,6 +341,61 @@ export default function AlgoTradingPanel() {
       setSignalLogError(error instanceof Error ? error.message : "Signal log failed to load.");
     } finally {
       if (!silent) setSignalLogLoading(false);
+    }
+  }
+
+  async function sendTradingViewTestSignal(action: "BUY" | "SELL" = "BUY") {
+    const secret = tvTestSecret.trim();
+    if (!secret) {
+      setSignalLogError("Enter your webhook secret first, then send a test signal.");
+      setStatus("Webhook test needs the same secret you used in TradingView JSON.");
+      return;
+    }
+
+    setSignalLogLoading(true);
+    setSignalLogError("");
+    setStatus(`Sending ${action} test signal to the TradingView webhook...`);
+
+    try {
+      const response = await fetch("/api/v1/webhooks/tradingview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret,
+          strategyId: "nifty_indicator_v1",
+          signalId: `panel-test-${Date.now()}-${action}`,
+          symbol: "NIFTY",
+          action,
+          timestamp: new Date().toISOString(),
+          price: 25000,
+          quantity: 1,
+          automation: {
+            enabled: true,
+            mode: "PAPER",
+            underlying: "NIFTY",
+            optionDepth: 1,
+            stopLoss: 25,
+            target: 50,
+            cutoffTime: "23:59"
+          },
+          metadata: {
+            source: "Algo panel test",
+            indicator: "Rahul Indicator",
+            signal: action
+          }
+        })
+      });
+      const data = (await response.json()) as { status?: string; nextStep?: string; decision?: { stage?: string }; error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || data.nextStep || "Test signal failed.");
+      }
+      await refreshSignalLog(true);
+      setStatus(`Test signal ${data.status ?? "sent"}: ${data.decision?.stage ?? data.nextStep ?? "check the realtime feed"}.`);
+    } catch (error) {
+      setSignalLogError(error instanceof Error ? error.message : "Test signal failed.");
+      setStatus("Test signal failed. Check the error shown in Realtime Signal Feed.");
+    } finally {
+      setSignalLogLoading(false);
     }
   }
 
@@ -804,8 +860,8 @@ export default function AlgoTradingPanel() {
           <div className="algo-os-card">
             <h3>TradingView Webhook</h3>
             <p>TradingView signals normalize to Signal, then pass validation, idempotency, risk and execution checks.</p>
-            <div className="algo-rule-list"><div><span>Webhook URL</span><b>{webhookUrl}</b></div><div><span>Secret</span><b>{webhookSecretVisible ? "tv_demo_secret_123" : "********"}</b></div><div><span>Actions</span><b>BUY / SELL / EXIT / CLOSE_LONG / CLOSE_SHORT</b></div><div><span>Security</span><b>Secret, timestamp, duplicate and optional HMAC checks</b></div></div>
-            <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy URL</button><button type="button" onClick={() => setWebhookSecretVisible((prev) => !prev)} className="algo-action secondary">{webhookSecretVisible ? "Hide" : "Show"} Secret</button><button type="button" onClick={() => setStatus("Webhook secret regenerated locally. Backend persistence is next.")} className="algo-action primary">Regenerate Secret</button></div>
+            <div className="algo-rule-list"><div><span>Webhook URL</span><b>{typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl}</b></div><div><span>Secret</span><b>{webhookSecretVisible ? "Use your private TradingView JSON secret" : "********"}</b></div><div><span>Actions</span><b>BUY / SELL / EXIT / CLOSE_LONG / CLOSE_SHORT</b></div><div><span>Security</span><b>Secret, timestamp, duplicate and optional HMAC checks</b></div></div>
+            <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><label className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Test secret</label><input type={webhookSecretVisible ? "text" : "password"} value={tvTestSecret} onChange={(event) => setTvTestSecret(event.target.value)} placeholder="Paste the secret from your TradingView JSON" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-400" /><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy URL</button><button type="button" onClick={() => setWebhookSecretVisible((prev) => !prev)} className="algo-action secondary">{webhookSecretVisible ? "Hide" : "Show"} Secret</button><button type="button" onClick={() => sendTradingViewTestSignal("BUY")} className="algo-action primary" disabled={signalLogLoading}>Send BUY test</button><button type="button" onClick={() => sendTradingViewTestSignal("SELL")} className="algo-action secondary" disabled={signalLogLoading}>Send SELL test</button></div></div>
           </div>
 
           <div className="algo-os-card">
