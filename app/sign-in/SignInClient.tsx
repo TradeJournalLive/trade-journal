@@ -47,6 +47,7 @@ export default function SignInClient() {
   }
 
   async function handleGoogleSignIn() {
+    setError("");
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
@@ -56,7 +57,10 @@ export default function SignInClient() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: getAuthRedirectUrl()
+        redirectTo: getAuthRedirectUrl(),
+        queryParams: {
+          prompt: "select_account"
+        }
       }
     });
     if (oauthError) {

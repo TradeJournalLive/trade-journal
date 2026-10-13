@@ -65,22 +65,20 @@ export default function SignUpPage() {
   }
 
   async function handleGoogleSignUp() {
+    setError("");
+    setSuccess("");
     if (!isSupabaseConfigured || !supabase) {
       setError("Supabase is not configured.");
       return;
     }
-    const normalizedAccountName = initialAccountName.trim();
-    if (!normalizedAccountName) {
-      setError("First trading account name is required.");
-      return;
-    }
+    const normalizedAccountName = initialAccountName.trim() || "Primary Account";
     const normalizedBaseCapital = Math.max(0, Number(baseCapital || 0));
     setOauthLoading(true);
     localStorage.setItem("signup_provider", "google");
     localStorage.setItem(
       PENDING_ACCOUNT_SETUP_KEY,
       JSON.stringify({
-        email,
+        email: email.trim(),
         accountName: normalizedAccountName,
         baseCapital: normalizedBaseCapital
       })
@@ -88,7 +86,10 @@ export default function SignUpPage() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: getAuthRedirectUrl()
+        redirectTo: getAuthRedirectUrl(),
+        queryParams: {
+          prompt: "select_account"
+        }
       }
     });
     if (oauthError) {

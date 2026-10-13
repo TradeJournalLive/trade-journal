@@ -56,11 +56,8 @@ export default function AuthCallbackPage() {
           }
         }
         localStorage.removeItem("signup_provider");
-        setStatus(
-          `Sign up successful with ${signupProvider}. Redirecting to sign in...`
-        );
-        await supabase.auth.signOut();
-        router.replace(`/sign-in?signup=${signupProvider}`);
+        setStatus(`Signed up with ${signupProvider}. Redirecting...`);
+        router.replace("/dashboard");
         return;
       }
       setStatus("Signed in. Redirecting...");
