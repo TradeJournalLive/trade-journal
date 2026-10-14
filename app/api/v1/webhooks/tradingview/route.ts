@@ -17,8 +17,8 @@ type TradingViewWebhookPayload = {
   timeframe?: string;
   action?: TradingViewAction;
   timestamp?: string;
-  price?: number;
-  quantity?: number;
+  price?: number | string;
+  quantity?: number | string;
   strike?: number;
   optionType?: "CE" | "PE";
   expiry?: string;
@@ -114,10 +114,12 @@ function validatePayload(payload: TradingViewWebhookPayload) {
     errors.push("timestamp must be an ISO date string");
   }
 
-  if (typeof payload.price !== "undefined" && (!Number.isFinite(payload.price) || payload.price <= 0)) {
+  const price = typeof payload.price === "string" ? Number(payload.price) : payload.price;
+  const quantity = typeof payload.quantity === "string" ? Number(payload.quantity) : payload.quantity;
+  if (typeof payload.price !== "undefined" && (!Number.isFinite(price) || Number(price) <= 0)) {
     errors.push("price must be a positive number");
   }
-  if (typeof payload.quantity !== "undefined" && (!Number.isFinite(payload.quantity) || payload.quantity <= 0)) {
+  if (typeof payload.quantity !== "undefined" && (!Number.isFinite(quantity) || Number(quantity) <= 0)) {
     errors.push("quantity must be a positive number");
   }
 
@@ -133,9 +135,9 @@ function normalizeSignal(payload: TradingViewWebhookPayload): NormalizedSignal {
     symbol: payload.symbol ?? "",
     action: payload.action as TradingViewAction,
     timestamp: new Date(payload.timestamp ?? Date.now()).toISOString(),
-    price: payload.price,
+    price: typeof payload.price === "string" ? Number(payload.price) : payload.price,
     timeframe: payload.timeframe,
-    quantity: payload.quantity,
+    quantity: typeof payload.quantity === "string" ? Number(payload.quantity) : payload.quantity,
     metadata: {
       ...(payload.metadata ?? {}),
       strike: payload.strike,
