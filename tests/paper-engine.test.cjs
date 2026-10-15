@@ -8,6 +8,20 @@ const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compile
 const moduleCopy = new Module(filename, module);
 moduleCopy._compile(compiled.outputText, filename);
 const { buildPaperBooks } = moduleCopy.exports;
+test("next candle fills use exact matching open, never the signal close or a different feed", () => {
+  const enabled = control(true); enabled.raw.paperControl.nextCandle = true;
+  const buy = signal("b", "BUY", 100, 1); buy.signal.timeframe = "1"; buy.signal.metadata.signalBarTime = "2026-10-15T10:00:00Z";
+  assert.equal(buildPaperBooks([enabled, buy]).BTC.position, null);
+  assert.equal(buildPaperBooks([enabled, buy]).BTC.pending.signalPrice, 100);
+  const candle = signal("open1", "EXIT", 102, 1); candle.signal.timeframe = "1"; candle.signal.metadata.paperBarOpen = true;
+  const sell = signal("s", "SELL", 110, 2); sell.signal.timeframe = "1"; sell.signal.metadata.signalBarTime = "2026-10-15T10:01:00Z";
+  const candle2 = signal("open2", "EXIT", 108, 2); candle2.signal.timeframe = "1"; candle2.signal.metadata.paperBarOpen = true;
+  const book = buildPaperBooks([enabled, buy, candle, sell, candle2]).BTC;
+  assert.equal(book.trades[0].entry, 102); assert.equal(book.trades[0].exit, 108); assert.equal(book.trades[0].points, 6);
+  assert.equal(book.position.side, "SHORT"); assert.equal(book.position.entry, 108);
+  candle.signal.symbol = "OANDA:BTCUSD";
+  assert.equal(buildPaperBooks([enabled, buy, candle]).BTC.position, null);
+});
 function signal(id, action, price, minute = 1, symbol = "BTCUSDT") {
   const time = `2026-10-15T10:${String(minute).padStart(2, "0")}:00Z`;
   return { receivedAt: time, signal: { id, strategyId: "test", action, price, symbol, timestamp: time, metadata: {} }, raw: { automation: { mode: "PAPER", enabled: true } } };

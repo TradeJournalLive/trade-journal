@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   if (!secret) return NextResponse.json({ error: "Connect TradingView first." }, { status: 401 });
   try {
     const body = await request.json();
+    if (body.nextCandle !== undefined && typeof body.nextCandle !== "boolean") return NextResponse.json({ error: "Invalid execution rule." }, { status: 400 });
     if (!markets.includes(body.market) || typeof body.enabled !== "boolean") return NextResponse.json({ error: "Invalid market or switch." }, { status: 400 });
     if (body.symbol !== undefined && (typeof body.symbol !== "string" || !/^[A-Z0-9_]+:[A-Z0-9_.!]+$/.test(body.symbol))) return NextResponse.json({ error: "Invalid price feed." }, { status: 400 });
     if (body.slippage !== undefined && (typeof body.slippage !== "number" || !Number.isFinite(body.slippage) || body.slippage < 0 || body.slippage > 100000)) return NextResponse.json({ error: "Invalid slippage assumption." }, { status: 400 });
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
       action: "EXIT", received_at: now, signal_timestamp: now, status: "VALIDATED", accepted: false,
       execution_mode: "PAPER", stage: "SIGNAL_RECEIVED", reason: body.enabled ? "Paper enabled" : "Paper paused",
       signal: { id, strategyId: "__paper_control__", source: "TRADINGVIEW", symbol: body.market, action: "EXIT", timestamp: now, createdAt: now, metadata: {}, status: "VALIDATED" },
-      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
+      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
     return NextResponse.json({ books: await load(secret) });

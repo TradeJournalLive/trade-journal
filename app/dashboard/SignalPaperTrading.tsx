@@ -29,11 +29,11 @@ export default function SignalPaperTrading() {
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [refresh]);
 
-  async function toggle() {
+  async function toggle(nextCandle?: boolean) {
     if (!books || busy) return;
     setBusy(true);
     try {
-      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: !books[market].enabled }) });
+      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: nextCandle === undefined ? !books[market].enabled : books[market].enabled, ...(nextCandle !== undefined ? { nextCandle, slippage: 0 } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       setBooks(result.books);
@@ -68,6 +68,8 @@ export default function SignalPaperTrading() {
       <div className="flex items-center gap-3"><span className="text-sm font-bold">{market} paper trading</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    <div className="flex flex-wrap items-center gap-3"><label className="text-sm font-bold"><input type="checkbox" checked={book?.nextCandle ?? false} disabled={!books || busy} onChange={event => void toggle(event.target.checked)} className="mr-2" />Next-candle open execution</label><span className="text-xs text-slate-500">{book?.nextCandle ? "Verified candle-open feed required" : "Legacy signal-price execution"}</span></div>
+    {book?.pending && <div role="status" className="algo-alert-box"><b>Awaiting next candle open</b><span>{book.pending.action} · {book.pending.symbol} · Signal {number(book.pending.signalPrice)} · Expected candle {time(book.pending.openTime)}</span></div>}
     <form onSubmit={saveSlippage} className="flex flex-wrap items-end gap-3 border-b border-slate-200 pb-4">
       <div className="mr-auto text-sm"><b>{book?.symbol || "Signal price feed"}</b><p className="text-xs text-slate-500">Slippage is assumed per fill in price points, not measured broker slippage. Spread and fees are excluded.</p></div>
       <label className="text-xs font-bold">Slippage per fill<input key={`${market}-${book?.slippage}`} name="slippage" aria-label="Slippage per fill" type="number" min="0" max="100000" step="0.01" defaultValue={book?.slippage ?? 0} className="mt-1 block h-9 w-28 rounded-lg border border-slate-200 px-2" /></label>

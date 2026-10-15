@@ -1,0 +1,9 @@
+//@version=6
+indicator("1to2 Paper Candle Opens", overlay=true)
+secret = input.string("", "Webhook secret")
+// Apply on standard candles, with the same symbol and interval as the signal indicator.
+if barstate.isrealtime and barstate.isnew and str.length(secret) > 0
+    stamp = str.format_time(time, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+    sent = str.format_time(timenow, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+    message = '{"secret":"' + secret + '","strategyId":"paper_candle_open","signalId":"open-' + syminfo.tickerid + '-' + timeframe.period + '-' + stamp + '","symbol":"' + syminfo.tickerid + '","action":"EXIT","timestamp":"' + stamp + '","timeframe":"' + timeframe.period + '","price":' + str.tostring(open, format.mintick) + ',"automation":{"mode":"PAPER"},"metadata":{"paperBarOpen":true,"sentAt":"' + sent + '"}}'
+    alert(message, alert.freq_once_per_bar)
