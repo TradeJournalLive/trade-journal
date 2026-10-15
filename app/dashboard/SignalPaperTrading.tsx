@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { markets, type PaperBook, type PaperMarket } from "../lib/algo/paperEngine";
+import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
+
+type LivePaperBook = PaperBook & { valuation: ReturnType<typeof paperValuation> };
 
 const number = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 export default function SignalPaperTrading() {
   const [market, setMarket] = useState<PaperMarket>("BTC");
-  const [books, setBooks] = useState<Record<PaperMarket, PaperBook> | null>(null);
+  const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -62,12 +64,20 @@ export default function SignalPaperTrading() {
   const gross = trades.reduce((total, trade) => total + trade.grossPoints, 0);
   const slippageCost = trades.reduce((total, trade) => total + trade.slippagePoints, 0);
   const position = book?.position;
+  const valuation = book?.valuation;
+  const pnl = (value: number | null | undefined) => value == null ? "--" : `${value > 0 ? "+" : ""}${number(value)}`;
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
       <div role="tablist" aria-label="Paper markets" className="flex gap-2">{markets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "GOLD" ? "Gold" : item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
       <div className="flex items-center gap-3"><span className="text-sm font-bold">{market} paper trading</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    <div className="algo-os-grid three">
+      <div className="algo-os-card metric"><span>Open trade P&amp;L · points</span><strong className={(valuation?.unrealized ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}>{pnl(valuation?.unrealized)}</strong><p>{position ? `${position.symbol} · ${position.side} · Entry ${number(position.entry)}` : "No open trade"}</p></div>
+      <div className="algo-os-card metric"><span>Booked P&amp;L · points</span><strong>{pnl(valuation?.realized)}</strong><p>Completed paper trades</p></div>
+      <div className="algo-os-card metric"><span>Total P&amp;L · points</span><strong>{pnl(valuation?.total)}</strong><p>Booked + open mark-to-market · fees excluded</p></div>
+    </div>
+    {position && <div className="algo-alert-box"><b>{error ? "Price unavailable" : valuation?.stale ? "Stale price" : "Latest received price"}</b><span>{valuation?.mark ? `${valuation.mark.symbol} · ${number(valuation.mark.price)} · ${valuation.mark.source} · ${time(valuation.mark.timestamp)}` : "Waiting for a matching-feed price"}. Not a continuous live quote feed.</span></div>}
     <div className="flex flex-wrap items-center gap-3"><label className="text-sm font-bold"><input type="checkbox" checked={book?.nextCandle ?? false} disabled={!books || busy} onChange={event => void toggle(event.target.checked)} className="mr-2" />Next-candle open execution</label><span className="text-xs text-slate-500">{book?.nextCandle ? "Verified candle-open feed required" : "Legacy signal-price execution"}</span></div>
     {book?.pending && <div role="status" className="algo-alert-box"><b>Awaiting next candle open</b><span>{book.pending.action} · {book.pending.symbol} · Signal {number(book.pending.signalPrice)} · Expected candle {time(book.pending.openTime)}</span></div>}
     <form onSubmit={saveSlippage} className="flex flex-wrap items-end gap-3 border-b border-slate-200 pb-4">

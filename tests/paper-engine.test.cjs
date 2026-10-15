@@ -7,7 +7,17 @@ const filename = require("node:path").resolve(__dirname, "../app/lib/algo/paperE
 const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
 const moduleCopy = new Module(filename, module);
 moduleCopy._compile(compiled.outputText, filename);
-const { buildPaperBooks } = moduleCopy.exports;
+const { buildPaperBooks, paperValuation } = moduleCopy.exports;
+test("open P&L uses exact-feed marks, supports shorts and flags stale prices", () => {
+  const events = [control(true), signal("buy", "BUY", 100), signal("same", "BUY", 110, 2), signal("other", "BUY", 500, 3, "OANDA:BTCUSD")];
+  const book = buildPaperBooks(events).BTC;
+  const value = paperValuation(book, events, "2026-10-15T10:02:30Z");
+  assert.equal(value.unrealized, 10); assert.equal(value.total, 10); assert.equal(value.stale, false);
+  assert.equal(paperValuation(book, events, "2026-10-15T10:05:00Z").stale, true);
+  assert.equal(paperValuation(book, [], "2026-10-15T10:05:00Z").unrealized, null);
+  const shortEvents = [control(true), signal("sell", "SELL", 100), signal("mark", "SELL", 90, 2)];
+  assert.equal(paperValuation(buildPaperBooks(shortEvents).BTC, shortEvents, "2026-10-15T10:02:30Z").unrealized, 10);
+});
 test("next candle fills use exact matching open, never the signal close or a different feed", () => {
   const enabled = control(true); enabled.raw.paperControl.nextCandle = true;
   const buy = signal("b", "BUY", 100, 1); buy.signal.timeframe = "1"; buy.signal.metadata.signalBarTime = "2026-10-15T10:00:00Z";

@@ -103,3 +103,22 @@ export function buildPaperBooks(events: PaperEvent[], now = new Date().toISOStri
   if (nifty.position && (ist(nifty.position.openedAt).day < current.day || current.minutes >= 915)) nifty.pendingSessionClose = true;
   return books;
 }
+
+// Marks never execute trades and must use the exact feed of the open position.
+export function paperValuation(book: PaperBook, events: PaperEvent[], now = new Date().toISOString()) {
+  const realized = book.trades.filter(trade => !book.symbol || trade.symbol === book.symbol).reduce((sum, trade) => sum + trade.points, 0);
+  const position = book.position;
+  if (!position) return { realized, unrealized: 0, total: realized, mark: null, stale: false };
+  const candidates = events.filter(event => event.signal.symbol === position.symbol
+    && event.raw.automation?.mode === "PAPER" && !event.signal.metadata?.diagnostic
+    && !event.signal.id.startsWith("panel-test-") && event.signal.metadata?.source !== "Manual curl test"
+    && typeof event.signal.price === "number" && Number.isFinite(event.signal.price) && event.signal.price > 0
+    && Date.parse(event.signal.timestamp) >= Date.parse(position.openedAt)
+    && Date.parse(event.signal.timestamp) <= Date.parse(now));
+  candidates.sort((a, b) => Date.parse(b.signal.timestamp) - Date.parse(a.signal.timestamp));
+  const latest = candidates[0];
+  if (!latest) return { realized, unrealized: null, total: null, mark: null, stale: true };
+  const mark = { price: latest.signal.price!, timestamp: latest.signal.timestamp, symbol: latest.signal.symbol, source: latest.signal.metadata?.paperBarOpen === true ? "Candle open" : "Signal" };
+  const unrealized = (mark.price - position.entry) * (position.side === "LONG" ? 1 : -1);
+  return { realized, unrealized, total: realized + unrealized, mark, stale: Date.parse(now) - Date.parse(mark.timestamp) > 90000 };
+}

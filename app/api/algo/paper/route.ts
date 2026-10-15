@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { connectionSecret, sameOrigin } from "../../../lib/algo/connection";
 import { getServerSupabase, hashWebhookSecret } from "../../../lib/algo/signalStore";
-import { buildPaperBooks, markets, type PaperEvent } from "../../../lib/algo/paperEngine";
+import { buildPaperBooks, paperValuation, markets, type PaperEvent } from "../../../lib/algo/paperEngine";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +16,11 @@ async function load(secret: string) {
       .eq("secret_hash", hashWebhookSecret(secret)).order("received_at").order("id").range(offset, offset + 999);
     if (error) throw new Error(error.message);
     events.push(...(data ?? []).map(row => ({ receivedAt: row.received_at, signal: row.signal, raw: row.raw_payload || {} })));
-    if (!data || data.length < 1000) return buildPaperBooks(events);
+    if (!data || data.length < 1000) {
+      const now = new Date().toISOString();
+      const books = buildPaperBooks(events, now);
+      return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now) }]));
+    }
   }
   throw new Error("History exceeds the paper engine limit; archive is required before continuing.");
 }
