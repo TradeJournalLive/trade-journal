@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import SignalPaperTrading from "./SignalPaperTrading";
+import FyersConnection from "./FyersConnection";
 
 type AlgoSection =
   | "dashboard"
@@ -21,6 +22,7 @@ type AlgoSection =
   | "journal"
   | "analytics"
   | "dhan"
+  | "fyers"
   | "tradingview"
   | "settings"
   | "admin";
@@ -210,6 +212,7 @@ const navGroups: NavGroup[] = [
     label: "Integrations",
     items: [
       { label: "Dhan", id: "dhan" },
+      { label: "FYERS", id: "fyers" },
       { label: "TradingView", id: "tradingview" }
     ]
   },
@@ -278,6 +281,9 @@ const initialDhanOrderTicket: DhanOrderTicket = {
 
 export default function AlgoTradingPanel() {
   const [activeSection, setActiveSection] = useState<AlgoSection>("dashboard");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("section") === "fyers") setActiveSection("fyers");
+  }, []);
   const [status, setStatus] = useState("TradingOS ready. Connect Dhan before live deployment.");
   const [builderOpen, setBuilderOpen] = useState(false);
   const [brokerOpen, setBrokerOpen] = useState(false);
@@ -998,6 +1004,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "journal") return renderJournal();
     if (activeSection === "analytics") return renderAnalytics();
     if (activeSection === "dhan") return renderDhan();
+    if (activeSection === "fyers") return <FyersConnection />;
     if (activeSection === "tradingview") return renderTradingView();
     if (activeSection === "settings") return renderSettings();
     return renderAdmin();

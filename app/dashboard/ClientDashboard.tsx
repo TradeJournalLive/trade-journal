@@ -3920,6 +3920,7 @@ export default function ClientDashboard({
   }
 
   async function handleSignOut() {
+    await fetch("/api/brokers/fyers", { method: "DELETE" }).catch(() => undefined);
     await fetch("/api/algo/signals", { method: "DELETE" }).catch(() => undefined);
     if (!supabase) return;
     await supabase.auth.signOut();
