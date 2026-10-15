@@ -222,7 +222,8 @@ export async function POST(request: Request) {
           ? "Resolve option chain contract -> run broker dry-run -> execute PAPER/LIVE according to strategy mode."
           : "Signal rejected by automation checks."
       },
-      { status: decision.accepted ? 202 : 422 }
+      // A trading-rule rejection is still a successfully received webhook.
+      { status: 202 }
     );
   } catch (error) {
     return NextResponse.json(
