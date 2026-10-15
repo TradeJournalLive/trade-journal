@@ -28,8 +28,6 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    events: listAlgoEvents(),
-    source: "memory",
-    warning: persisted.reason
-  });
+    error: persisted.reason || "Saved signal history is temporarily unavailable."
+  }, { status: 503 });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 type AlgoSection =
@@ -312,6 +312,9 @@ export default function AlgoTradingPanel() {
   const [signalLogError, setSignalLogError] = useState("");
   const [signalLogLastChecked, setSignalLogLastChecked] = useState("");
   const [tvTestSecret, setTvTestSecret] = useState("");
+  const signalRequestVersion = useRef(0);
+  const currentSignalSecret = useRef(tvTestSecret);
+  currentSignalSecret.current = tvTestSecret;
 
   const sectionTitle = useMemo(
     () => navItems.find((item) => item.id === activeSection)?.label ?? "Dashboard",
@@ -319,40 +322,45 @@ export default function AlgoTradingPanel() {
   );
 
 
-  async function refreshSignalLog(silent = false) {
+  const refreshSignalLog = useCallback(async (silent = false) => {
+    const secret = tvTestSecret.trim();
+    if (!secret) return;
+    const version = ++signalRequestVersion.current;
     if (!silent) {
       setSignalLogLoading(true);
       setSignalLogError("");
     }
 
     try {
-      const secret = tvTestSecret.trim();
-      const response = await fetch("/api/algo/signals", secret ? {
+      const response = await fetch("/api/algo/signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
         cache: "no-store"
-      } : { cache: "no-store" });
+      });
       const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string; warning?: string; source?: string };
+      if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
       if (!response.ok) {
         throw new Error(data.error || "Signal log failed to load.");
+      }
+      if (data.source !== "supabase") {
+        throw new Error(data.warning || "Saved history is temporarily unavailable. Previous signals are retained.");
       }
       const events = Array.isArray(data.events) ? data.events : [];
       setSignalEvents(events);
       setSignalLogLastChecked(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-      if (data.warning && !silent) {
-        setSignalLogError(data.warning);
-      }
+      setSignalLogError("");
       if (!silent) {
         const source = data.source === "supabase" ? "saved" : "temporary";
         setStatus(events.length ? `Loaded ${events.length} ${source} TradingView signal${events.length === 1 ? "" : "s"}.` : "Signal log checked. No TradingView alerts received yet.");
       }
     } catch (error) {
+      if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
       setSignalLogError(error instanceof Error ? error.message : "Signal log failed to load.");
     } finally {
       if (!silent) setSignalLogLoading(false);
     }
-  }
+  }, [tvTestSecret]);
 
   async function sendTradingViewTestSignal(action: "BUY" | "SELL" = "BUY") {
     const secret = tvTestSecret.trim();
@@ -410,13 +418,13 @@ export default function AlgoTradingPanel() {
   }
 
   useEffect(() => {
-    if (activeSection !== "tradingview") return;
+    if (activeSection !== "tradingview" || !tvTestSecret.trim()) return;
     void refreshSignalLog(true);
     const timer = window.setInterval(() => {
       void refreshSignalLog(true);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [activeSection]);
+  }, [activeSection, tvTestSecret, refreshSignalLog]);
 
   function selectSection(id: AlgoSection) {
     setActiveSection(id);
@@ -922,7 +930,7 @@ export default function AlgoTradingPanel() {
             <div className="algo-card-head">
               <div><h3>Realtime Signal Feed</h3><p>Auto-refreshes every 5 seconds while this tab is open.</p></div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`algo-pill ${signalEvents.length ? "good" : "pending"}`}>{signalEvents.length ? "Connected" : "Waiting"}</span>
+                <span className={`algo-pill ${signalEvents.length ? "good" : "pending"}`}>{signalEvents.length ? "Signals received" : tvTestSecret.trim() ? "Awaiting first signal" : "Enter webhook secret"}</span>
                 <button type="button" onClick={() => refreshSignalLog()} className="algo-action secondary" disabled={signalLogLoading}>{signalLogLoading ? "Refreshing..." : "Refresh"}</button>
               </div>
             </div>
@@ -935,7 +943,7 @@ export default function AlgoTradingPanel() {
 
           <div className="algo-os-card">
             <h3>Webhook Health</h3>
-            <div className="algo-rule-list"><div><span>Status</span><b>{signalEvents.length ? "Webhook received" : "No recent signals"}</b></div><div><span>Last signal</span><b>{signalEvents[0] ? new Date(signalEvents[0].receivedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Never"}</b></div><div><span>Signals loaded</span><b>{signalEvents.length}</b></div><div><span>Rejected signals</span><b>{signalEvents.filter((event) => !event.decision.accepted).length}</b></div><div><span>Last checked</span><b>{signalLogLastChecked || "Not checked"}</b></div><div><span>Storage</span><b>Temporary server log</b></div></div>
+            <div className="algo-rule-list"><div><span>Status</span><b>{signalEvents.length ? "Webhook received" : tvTestSecret.trim() ? "Awaiting first signal" : "Enter webhook secret"}</b></div><div><span>Last signal</span><b>{signalEvents[0] ? new Date(signalEvents[0].receivedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}</b></div><div><span>Signals loaded</span><b>{signalEvents.length}</b></div><div><span>Rejected signals</span><b>{signalEvents.filter((event) => !event.decision.accepted).length}</b></div><div><span>Last checked</span><b>{signalLogLastChecked || "Not checked"}</b></div><div><span>Storage</span><b>Supabase saved history</b></div></div>
           </div>
         </div>
 
