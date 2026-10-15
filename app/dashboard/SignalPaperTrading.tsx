@@ -41,10 +41,26 @@ export default function SignalPaperTrading() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to change switch."); }
     finally { setBusy(false); }
   }
+  async function saveSlippage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!books || busy) return;
+    const slippage = Number(new FormData(event.currentTarget).get("slippage"));
+    if (!Number.isFinite(slippage) || slippage < 0) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: books[market].enabled, slippage }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setBooks(result.books); setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save slippage."); }
+    finally { setBusy(false); }
+  }
   const book = books?.[market];
-  const trades = book?.trades ?? [];
+  const trades = (book?.trades ?? []).filter(trade => !book?.symbol || trade.symbol === book.symbol);
   const wins = trades.filter(trade => trade.points > 0).length;
   const points = trades.reduce((total, trade) => total + trade.points, 0);
+  const gross = trades.reduce((total, trade) => total + trade.grossPoints, 0);
+  const slippageCost = trades.reduce((total, trade) => total + trade.slippagePoints, 0);
   const position = book?.position;
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -52,11 +68,17 @@ export default function SignalPaperTrading() {
       <div className="flex items-center gap-3"><span className="text-sm font-bold">{market} paper trading</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    <form onSubmit={saveSlippage} className="flex flex-wrap items-end gap-3 border-b border-slate-200 pb-4">
+      <div className="mr-auto text-sm"><b>{book?.symbol || "Signal price feed"}</b><p className="text-xs text-slate-500">Slippage is assumed per fill in price points, not measured broker slippage. Spread and fees are excluded.</p></div>
+      <label className="text-xs font-bold">Slippage per fill<input key={`${market}-${book?.slippage}`} name="slippage" aria-label="Slippage per fill" type="number" min="0" max="100000" step="0.01" defaultValue={book?.slippage ?? 0} className="mt-1 block h-9 w-28 rounded-lg border border-slate-200 px-2" /></label>
+      <button type="submit" disabled={!books || busy} className="algo-action secondary">Save assumption</button>
+    </form>
     <div className="algo-os-grid three">
       <div className="algo-os-card metric"><span>Closed trades</span><strong>{trades.length}</strong><p>{wins} wins · {trades.length - wins} other results</p></div>
-      <div className="algo-os-card metric"><span>Realized points</span><strong className={points < 0 ? "text-red-600" : "text-emerald-600"}>{number(points)}</strong><p>One unit · gross · costs excluded</p></div>
+      <div className="algo-os-card metric"><span>Net points after slippage</span><strong className={points < 0 ? "text-red-600" : "text-emerald-600"}>{number(points)}</strong><p>Gross {number(gross)} · modeled slippage {number(slippageCost)}</p></div>
       <div className="algo-os-card metric"><span>Win rate</span><strong>{trades.length ? `${number(wins / trades.length * 100)}%` : "--"}</strong><p>{market === "BTC" ? "24-hour session" : market === "NIFTY" ? "Session ends 15:15 IST" : "Signal-based session"}</p></div>
     </div>
+    {Boolean(book?.unresolvedPositions?.length) && <div className="algo-alert-box"><b>Earlier feed positions retained</b><span>{book?.unresolvedPositions.map(item => `${item.symbol} ${item.side} at ${number(item.entry)}`).join("; ")}. These remain unresolved and are excluded from results for this feed.</span></div>}
     <div className="algo-os-card"><div className="algo-card-head"><h3>Open position</h3><span className="algo-pill pending">PAPER</span></div>{position ? <div className="algo-rule-list"><div><span>{position.symbol}</span><b>{position.side}</b></div><div><span>Entry</span><b>{number(position.entry)}</b></div><div><span>Opened</span><b>{time(position.openedAt)}</b></div><div><span>Last signal price</span><b>{book?.lastPrice == null ? "--" : number(book.lastPrice)}</b></div></div> : <div className="algo-empty-state">{book?.enabled ? "Waiting for the next signal." : "Paper trading is off."}</div>}{book?.pendingSessionClose && <div role="alert" className="algo-alert-box"><b>Session exit pending</b><span>No closing price was received at 15:15 IST. This position is excluded from closed-trade results until a verified exit price is available.</span></div>}</div>
     <div className="algo-os-card"><div className="algo-card-head"><h3>Trade results</h3><span className="text-xs text-slate-500">{book?.lastSignalAt ? `Last signal ${time(book.lastSignalAt)}` : "No signal yet"}</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Symbol</th><th>Side</th><th>Entry time</th><th>Entry</th><th>Exit time</th><th>Exit</th><th>Points</th><th>Exit reason</th></tr></thead><tbody>{trades.length ? [...trades].reverse().map(trade => <tr key={trade.id}><td>{trade.symbol}</td><td>{trade.side}</td><td>{time(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{time(trade.closedAt)}</td><td>{number(trade.exit)}</td><td className={trade.points < 0 ? "text-red-600" : "text-emerald-600"}>{number(trade.points)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={8}>No completed trades.</td></tr>}</tbody></table></div></div>
   </div>;

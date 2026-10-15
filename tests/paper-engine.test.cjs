@@ -52,3 +52,16 @@ test("NIFTY past cutoff is marked pending rather than fabricating a closing pric
   const active = buildPaperBooks([enabled, entry], "2026-10-15T10:00:00Z").NIFTY;
   assert.equal(active.pendingSessionClose, true); assert.equal(active.trades.length, 0);
 });
+test("slippage worsens both long and short fills and reconciles gross to net", () => {
+  const enabled = control(true); enabled.raw.paperControl.slippage = 2;
+  const book = buildPaperBooks([enabled, signal("b", "BUY", 100), signal("s", "SELL", 120, 2), signal("b2", "BUY", 110, 3)]).BTC;
+  assert.equal(book.trades[0].grossPoints, 20); assert.equal(book.trades[0].points, 16);
+  assert.equal(book.trades[1].grossPoints, 10); assert.equal(book.trades[1].points, 6);
+  for (const trade of book.trades) assert.equal(trade.points, trade.grossPoints - trade.slippagePoints);
+});
+test("changing feeds preserves unresolved positions and ignores later events from the old feed", () => {
+  const change = control(true, "BTC", 2); change.raw.paperControl.symbol = "OANDA:BTCUSD";
+  const book = buildPaperBooks([control(true), signal("b", "BUY", 100), change, signal("o", "SELL", 110, 3, "OANDA:BTCUSD"), signal("old", "SELL", 120, 4)]).BTC;
+  assert.equal(book.unresolvedPositions.length, 1); assert.equal(book.unresolvedPositions[0].symbol, "BTCUSDT");
+  assert.equal(book.position.symbol, "OANDA:BTCUSD"); assert.equal(book.trades.length, 0);
+});
