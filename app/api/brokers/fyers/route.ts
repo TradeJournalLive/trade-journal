@@ -17,7 +17,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     let connection = await readFyers(fyersDevice());
     if (body.appId !== undefined || body.secret !== undefined) {
-      if (typeof body.appId !== "string" || !/^[A-Za-z0-9-]{5,80}$/.test(body.appId) || typeof body.secret !== "string" || !body.secret.trim() || body.secret.length > 512) return NextResponse.json({ error: "Valid App ID and Secret ID are required." }, { status: 400 });
+      if (connection && body.replaceCredentials !== true) return NextResponse.json({ error: "Saved credentials cannot be replaced during sign-in. Disconnect before configuring another app." }, { status: 400 });
+      if (typeof body.appId !== "string" || !/^[A-Za-z0-9]{5,76}-100$/.test(body.appId) || typeof body.secret !== "string" || !body.secret.trim() || body.secret.length > 512) return NextResponse.json({ error: "A FYERS App ID ending in -100 and its Secret ID are required." }, { status: 400 });
       connection = { appId: body.appId, secret: body.secret.trim() };
     }
     if (!connection) return NextResponse.json({ error: "Configure the non-trading app first." }, { status: 400 });

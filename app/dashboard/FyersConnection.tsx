@@ -24,7 +24,7 @@ export default function FyersConnection() {
     const appId = String(fields.get("appId") || "").trim();
     const secret = String(fields.get("secret") || "").trim();
     try {
-      const response = await fetch("/api/brokers/fyers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(appId || secret ? { appId, secret } : {}) });
+      const response = await fetch("/api/brokers/fyers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(status?.configured ? {} : { appId, secret }) });
       const data = await response.json();
       form.reset();
       if (!response.ok) throw new Error(data.error);
@@ -59,7 +59,7 @@ export default function FyersConnection() {
       <div className="algo-rule-list"><div><span>Session</span><b>{status ? status.authenticated ? "Saved · quote verification required" : status.configured ? "Awaiting FYERS login" : "Not configured" : "Loading"}</b></div><div><span>Order execution</span><b>Disabled</b></div><div><span>Streaming worker</span><b>Not connected</b></div></div>
       {error && <div role="alert" className="algo-alert-box"><b>FYERS connection</b><span>{error}</span></div>}
       <form onSubmit={connect} className="mt-4 space-y-4">
-        <div className="algo-form-grid"><label>App ID<input name="appId" autoComplete="off" spellCheck={false} required={!status?.configured} placeholder="Paper_new App ID" /></label><label>Secret ID<input name="secret" type="password" autoComplete="off" required={!status?.configured} placeholder={status?.configured ? "Saved securely" : "App secret"} /></label></div>
+        {!status?.configured && <div className="algo-form-grid"><label>App ID<input name="appId" autoComplete="off" spellCheck={false} pattern="[A-Za-z0-9]{5,76}-100" required placeholder="Paper_new App ID" /></label><label>Secret ID<input name="secret" type="password" autoComplete="new-password" required placeholder="App secret" /></label></div>}
         <label className="block text-sm">Registered redirect URL<input aria-label="Registered redirect URL" readOnly value={status?.callback || ""} className="mt-2 block w-full min-w-0 rounded-lg border border-slate-200 p-3 text-xs" /></label>
         <div className="flex flex-wrap gap-2"><button className="algo-action primary" disabled={busy || !status} type="submit">{status?.configured ? "Sign in to FYERS" : "Save and sign in"}</button>{status?.configured && <button className="algo-action secondary" disabled={busy} type="button" onClick={() => void disconnect()}>Disconnect</button>}</div>
       </form>
