@@ -112,7 +112,8 @@ export function evaluateAlgoSignal(signal: AlgoSignal, automation: AlgoAutomatio
   const isExit = signal.action === "EXIT" || signal.action === "CLOSE_LONG" || signal.action === "CLOSE_SHORT";
 
   checks.push({ label: "Automation enabled", ok: enabled, message: enabled ? "Enabled" : "Disabled" });
-  checks.push({ label: "Before cutoff", ok: isBeforeCutoff(signal.timestamp, cutoffTime) || isExit, message: `Cutoff ${cutoffTime} IST` });
+  const continuousMarket = normalizeUnderlying(signal, automation) === "BTC";
+  checks.push({ label: "Before cutoff", ok: continuousMarket || isBeforeCutoff(signal.timestamp, cutoffTime) || isExit, message: continuousMarket ? "BTC runs 24 hours" : `Cutoff ${cutoffTime} IST` });
   checks.push({ label: "Unique signal", ok: Boolean(signal.id), message: signal.id ? signal.id : "Missing signal ID" });
   checks.push({ label: "Action supported", ok: Boolean(getOptionSide(signal.action) || isExit), message: signal.action });
 

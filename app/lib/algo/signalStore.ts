@@ -14,7 +14,7 @@ export function hashWebhookSecret(secret: string) {
   return createHash("sha256").update(secret).digest("hex");
 }
 
-function getServerSupabase() {
+export function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -71,6 +71,7 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100)
     .from(TABLE_NAME)
     .select("received_at,signal,decision")
     .eq("secret_hash", hashWebhookSecret(secret.trim()))
+    .neq("strategy_id", "__paper_control__")
     .order("received_at", { ascending: false })
     .limit(limit);
 

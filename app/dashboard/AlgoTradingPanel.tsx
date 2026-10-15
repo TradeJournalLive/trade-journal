@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import SignalPaperTrading from "./SignalPaperTrading";
 
 type AlgoSection =
   | "dashboard"
@@ -312,6 +313,7 @@ export default function AlgoTradingPanel() {
   const [signalLogError, setSignalLogError] = useState("");
   const [signalLogLastChecked, setSignalLogLastChecked] = useState("");
   const [tvTestSecret, setTvTestSecret] = useState("");
+  const [webhookConnected, setWebhookConnected] = useState(false);
   const signalRequestVersion = useRef(0);
   const currentSignalSecret = useRef(tvTestSecret);
   currentSignalSecret.current = tvTestSecret;
@@ -324,7 +326,6 @@ export default function AlgoTradingPanel() {
 
   const refreshSignalLog = useCallback(async (silent = false) => {
     const secret = tvTestSecret.trim();
-    if (!secret) return;
     const version = ++signalRequestVersion.current;
     if (!silent) {
       setSignalLogLoading(true);
@@ -332,15 +333,16 @@ export default function AlgoTradingPanel() {
     }
 
     try {
-      const response = await fetch("/api/algo/signals", {
+      const response = await fetch("/api/algo/signals", secret ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
         cache: "no-store"
-      });
+      } : { cache: "no-store" });
       const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string; warning?: string; source?: string };
       if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
       if (!response.ok) {
+        if (response.status === 401) setWebhookConnected(false);
         throw new Error(data.error || "Signal log failed to load.");
       }
       if (data.source !== "supabase") {
@@ -348,6 +350,7 @@ export default function AlgoTradingPanel() {
       }
       const events = Array.isArray(data.events) ? data.events : [];
       setSignalEvents(events);
+      setWebhookConnected(true);
       setSignalLogLastChecked(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       setSignalLogError("");
       if (!silent) {
@@ -418,7 +421,7 @@ export default function AlgoTradingPanel() {
   }
 
   useEffect(() => {
-    if (activeSection !== "tradingview" || !tvTestSecret.trim()) return;
+    if (activeSection !== "tradingview") return;
     void refreshSignalLog(true);
     const timer = window.setInterval(() => {
       void refreshSignalLog(true);
@@ -877,6 +880,14 @@ export default function AlgoTradingPanel() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
           <div className="algo-os-card">
             <h3>TradingView Webhook</h3>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className={`algo-pill ${webhookConnected ? "good" : "pending"}`}>{webhookConnected ? "Connection saved on this browser" : "Connect once with your webhook secret"}</span>
+              <button type="button" className="algo-action secondary" onClick={() => refreshSignalLog()} disabled={signalLogLoading}>{webhookConnected ? "Check connection" : "Save connection"}</button>
+              {webhookConnected && <button type="button" className="algo-action secondary" onClick={async () => {
+                const response = await fetch("/api/algo/signals", { method: "DELETE" });
+                if (response.ok) { setWebhookConnected(false); setTvTestSecret(""); setSignalEvents([]); }
+              }}>Disconnect</button>}
+            </div>
             <p>TradingView signals normalize to Signal, then pass validation, idempotency, risk and execution checks.</p>
             <div className="algo-rule-list"><div><span>Webhook URL</span><b>{typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl}</b></div><div><span>Secret</span><b>{webhookSecretVisible ? "Use your private TradingView JSON secret" : "********"}</b></div><div><span>Actions</span><b>BUY / SELL / EXIT / CLOSE_LONG / CLOSE_SHORT</b></div><div><span>Security</span><b>Secret, timestamp, duplicate and optional HMAC checks</b></div></div>
             <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><label className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Test secret</label><input type={webhookSecretVisible ? "text" : "password"} value={tvTestSecret} onChange={(event) => setTvTestSecret(event.target.value)} placeholder="Paste the secret from your TradingView JSON" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-400" /><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy URL</button><button type="button" onClick={() => setWebhookSecretVisible((prev) => !prev)} className="algo-action secondary">{webhookSecretVisible ? "Hide" : "Show"} Secret</button><button type="button" onClick={() => sendTradingViewTestSignal("BUY")} className="algo-action primary" disabled={signalLogLoading}>Send BUY test</button><button type="button" onClick={() => sendTradingViewTestSignal("SELL")} className="algo-action secondary" disabled={signalLogLoading}>Send SELL test</button></div></div>
@@ -975,7 +986,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "create") return renderCreate();
     if (activeSection === "strategies") return renderStrategies();
     if (activeSection === "backtests") return renderBacktests();
-    if (activeSection === "paper") return renderPaper();
+    if (activeSection === "paper") return <SignalPaperTrading />;
     if (activeSection === "live") return renderLive();
     if (activeSection === "templates") return renderTemplates();
     if (activeSection === "positions") return renderPositions();
