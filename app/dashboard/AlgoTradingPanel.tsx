@@ -1005,6 +1005,11 @@ export default function AlgoTradingPanel() {
 
   return (
     <main className="algo-shell min-h-screen bg-[#f3f6fb] text-[#10203f]">
+      <nav aria-label="Algo navigation" className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+        <select aria-label="Algo section" value={activeSection} onChange={(event) => selectSection(event.target.value as AlgoSection)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
+          {navGroups.map(group => <optgroup key={group.label} label={group.label}>{group.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}
+        </select>
+      </nav>
       <div className="flex min-h-screen">
         <aside className="hidden w-[282px] shrink-0 border-r border-[#dce5f2] bg-[#091629] text-white lg:flex lg:flex-col">
           <div className="border-b border-white/10 p-5"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500 text-xs font-black">OS</span><div><b className="block text-sm">TradingOS</b><span className="text-[11px] text-slate-400">Build. Test. Trade. Protect.</span></div></div></div>
