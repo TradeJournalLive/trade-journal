@@ -10,6 +10,18 @@ export default function FyersConnection() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [symbols, setSymbols] = useState("NSE:NIFTY50-INDEX");
   const [checkedAt, setCheckedAt] = useState("");
+  const [chain, setChain] = useState<Array<{ symbol: string; side: string; strike: number; ltp: number | null; bid: number | null; ask: number | null }>>([]);
+  async function testChain() {
+    setBusy(true); setError(""); setChain([]);
+    try {
+      const response = await fetch("/api/brokers/fyers/chain", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setChain(data.contracts);
+      if (!data.contracts.length) setError("FYERS returned no option contracts.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Option-chain test failed."); }
+    finally { setBusy(false); }
+  }
   async function refresh() {
     const response = await fetch("/api/brokers/fyers", { cache: "no-store" });
     const data = await response.json();
@@ -65,6 +77,8 @@ export default function FyersConnection() {
       </form>
     </div>
     <div className="algo-os-card"><div className="algo-card-head"><h3>Read-only quote test</h3><span className="algo-pill pending">Snapshot</span></div>
+      <button type="button" className="algo-action secondary mb-3" disabled={busy || !status?.authenticated} onClick={() => void testChain()}>Test NIFTY option chain</button>
+      {chain.length > 0 && <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Side</th><th>Strike</th><th>LTP</th><th>Bid</th><th>Ask</th></tr></thead><tbody>{chain.map(item => <tr key={item.symbol}><td>{item.symbol}</td><td>{item.side}</td><td>{item.strike}</td><td>{value(item.ltp)}</td><td>{value(item.bid)}</td><td>{value(item.ask)}</td></tr>)}</tbody></table></div>}
       <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">NSE symbols<input aria-label="NSE quote symbols" value={symbols} onChange={event => setSymbols(event.target.value)} className="mt-2 block w-full rounded-lg border border-slate-200 p-3" /></label><button className="algo-action secondary" disabled={busy || !status?.authenticated} type="button" onClick={() => void test()}>Test quotes</button></div>
       {checkedAt && <p className="mt-3 text-xs text-slate-500">Checked {new Date(checkedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} · not a streaming connection</p>}
       <div className="mt-3 overflow-auto"><table className="algo-os-table"><thead><tr><th>Symbol</th><th>Status</th><th>LTP</th><th>Bid</th><th>Ask</th><th>Feed timestamp</th></tr></thead><tbody>{quotes.map(quote => <tr key={quote.symbol}><td>{quote.symbol}</td><td>{quote.status}</td><td>{value(quote.ltp)}</td><td>{value(quote.bid)}</td><td>{value(quote.ask)}</td><td>{quote.timestamp ?? "--"}</td></tr>)}</tbody></table></div>
