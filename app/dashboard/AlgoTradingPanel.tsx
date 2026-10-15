@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import SignalPaperTrading from "./SignalPaperTrading";
 import FyersConnection from "./FyersConnection";
+import OptionsChain from "./OptionsChain";
 
 type AlgoSection =
   | "dashboard"
@@ -23,6 +24,7 @@ type AlgoSection =
   | "analytics"
   | "dhan"
   | "fyers"
+  | "optionchain"
   | "tradingview"
   | "settings"
   | "admin";
@@ -213,6 +215,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Dhan", id: "dhan" },
       { label: "FYERS", id: "fyers" },
+      { label: "Options Chain", id: "optionchain" },
       { label: "TradingView", id: "tradingview" }
     ]
   },
@@ -283,6 +286,7 @@ export default function AlgoTradingPanel() {
   const [activeSection, setActiveSection] = useState<AlgoSection>("dashboard");
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("section") === "fyers") setActiveSection("fyers");
+    if (new URLSearchParams(window.location.search).get("section") === "optionchain") setActiveSection("optionchain");
   }, []);
   const [status, setStatus] = useState("TradingOS ready. Connect Dhan before live deployment.");
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -1005,6 +1009,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "analytics") return renderAnalytics();
     if (activeSection === "dhan") return renderDhan();
     if (activeSection === "fyers") return <FyersConnection />;
+    if (activeSection === "optionchain") return <OptionsChain />;
     if (activeSection === "tradingview") return renderTradingView();
     if (activeSection === "settings") return renderSettings();
     return renderAdmin();
