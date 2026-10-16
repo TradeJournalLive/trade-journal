@@ -68,7 +68,7 @@ export default function FyersConnection() {
   const value = (number: number | null) => number == null ? "--" : number.toLocaleString("en-IN", { maximumFractionDigits: 2 });
   return <div className="space-y-4">
     <div className="algo-os-card"><div className="algo-card-head"><h3>FYERS market data</h3><span className="algo-pill pending">Non-trading only</span></div>
-      <div className="algo-rule-list"><div><span>Session</span><b>{status ? status.authenticated ? "Saved · quote verification required" : status.configured ? "Awaiting FYERS login" : "Not configured" : "Loading"}</b></div><div><span>Order execution</span><b>Disabled</b></div><div><span>Streaming worker</span><b>Not connected</b></div></div>
+      <div className="algo-rule-list"><div><span>Session</span><b>{status ? status.authenticated ? "Saved · quote verification required" : status.configured ? "Awaiting FYERS login" : "Not configured" : "Loading"}</b></div><div><span>Order execution</span><b>Disabled</b></div><div><span>Streaming worker</span><a href="/dashboard/algo?section=paper">View paper worker status</a></div></div>
       {error && <div role="alert" className="algo-alert-box"><b>FYERS connection</b><span>{error}</span></div>}
       <form onSubmit={connect} className="mt-4 space-y-4">
         {!status?.configured && <div className="algo-form-grid"><label>App ID<input name="appId" autoComplete="off" spellCheck={false} pattern="[A-Za-z0-9]{5,76}-100" required placeholder="Paper_new App ID" /></label><label>Secret ID<input name="secret" type="password" autoComplete="new-password" required placeholder="App secret" /></label></div>}

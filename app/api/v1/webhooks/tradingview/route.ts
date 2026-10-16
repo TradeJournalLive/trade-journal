@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload } from "../../../../lib/algo/automation";
 import { persistAlgoSignalEvent } from "../../../../lib/algo/signalStore";
+import { hashWebhookSecret } from "../../../../lib/algo/signalStore";
+import { niftySignalCandle } from "../../../../lib/algo/niftySignal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -140,6 +142,7 @@ function normalizeSignal(payload: TradingViewWebhookPayload): NormalizedSignal {
     quantity: typeof payload.quantity === "string" ? Number(payload.quantity) : payload.quantity,
     metadata: {
       ...(payload.metadata ?? {}),
+      ...(payload.metadata?.niftyPaper ? { niftyPaper: niftySignalCandle(payload.metadata.niftyPaper, payload.timeframe) } : {}),
       strike: payload.strike,
       optionType: payload.optionType,
       expiry: payload.expiry,
@@ -181,6 +184,8 @@ export async function POST(request: Request) {
 
     const { errors, timestampMs } = validatePayload(payload);
     if (errors.length) return jsonError("Webhook validation failed.", 422, errors);
+    if (payload.strategyId?.startsWith("__")) return jsonError("Reserved strategy ID.", 422);
+    if (payload.metadata?.niftyPaper && !niftySignalCandle(payload.metadata.niftyPaper, payload.timeframe)) return jsonError("Invalid NIFTY signal candle. Market ticks cannot be submitted by webhook.", 422);
 
     const skewMs = Math.abs(receivedAt - timestampMs);
     if (skewMs > MAX_SIGNAL_AGE_MS) {
@@ -188,7 +193,7 @@ export async function POST(request: Request) {
     }
 
     cleanupSeenSignals(receivedAt);
-    const dedupeKey = `${payload.strategyId}:${payload.signalId}`;
+    const dedupeKey = `${hashWebhookSecret(String(payload.secret))}:${payload.strategyId}:${payload.signalId}`;
     if (seenSignals.has(dedupeKey)) {
       return NextResponse.json(
         {
@@ -199,7 +204,6 @@ export async function POST(request: Request) {
         { status: 202 }
       );
     }
-    seenSignals.set(dedupeKey, receivedAt);
 
     const signal = normalizeSignal(payload);
     const decision = evaluateAlgoSignal(signal, payload.automation ?? {});
@@ -210,6 +214,8 @@ export async function POST(request: Request) {
       secret: String(payload.secret ?? ""),
       rawPayload: payload as Record<string, unknown>
     });
+    if (!persistence.ok) return jsonError("Signal was not durably saved. Retry delivery.", 503);
+    seenSignals.set(dedupeKey, receivedAt);
 
     return NextResponse.json(
       {

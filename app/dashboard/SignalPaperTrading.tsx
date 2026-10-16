@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
+import { niftyRules } from "../lib/algo/niftyRules";
+import type { buildNiftyOptionsPaper } from "../lib/algo/niftyPaperEngine";
 
-type LivePaperBook = PaperBook & { valuation: ReturnType<typeof paperValuation> };
+type LivePaperBook = PaperBook & { valuation: ReturnType<typeof paperValuation>; options?: Omit<ReturnType<typeof buildNiftyOptionsPaper>, "checkpoint"> & { workerOnline: boolean; trial?: { startedAt: string; endsAt: string; timeframe: string; workerStatus: string; heartbeatAt: string } } };
 
 const number = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 export default function SignalPaperTrading() {
-  const [market, setMarket] = useState<PaperMarket>("BTC");
+  const [market, setMarket] = useState<PaperMarket>("NIFTY");
   const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +59,17 @@ export default function SignalPaperTrading() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save slippage."); }
     finally { setBusy(false); }
   }
+  async function toggleOptions() {
+    if (!books || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "NIFTY", enabled: books.NIFTY.enabled, niftyOptionsEnabled: !books.NIFTY.options?.enabled }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setBooks(result.books); setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to change options switch."); }
+    finally { setBusy(false); }
+  }
   const book = books?.[market];
   const trades = (book?.trades ?? []).filter(trade => !book?.symbol || trade.symbol === book.symbol);
   const wins = trades.filter(trade => trade.points > 0).length;
@@ -72,6 +85,26 @@ export default function SignalPaperTrading() {
       <div className="flex items-center gap-3"><span className="text-sm font-bold">{market} paper trading</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    {market === "NIFTY" && <section className="algo-os-card">
+      <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
+      <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
+      <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
+      <div className="algo-rule-list"><div><span>Engine status</span><b>{book?.options?.status ?? "Loading"}</b></div><div><span>Market feed</span><b>{book?.options?.stale ? "Missing or stale" : "Receiving"}</b></div><div><span>Next size</span><b>{book?.options?.size.lots ?? 1} lots</b></div><div><span>Options booked P&amp;L · INR</span><b>{pnl(book?.options?.realized)}</b></div><div><span>Options open P&amp;L · INR</span><b>{pnl(book?.options?.unrealized)}</b></div></div>
+      <dl className="algo-rule-list">
+        <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
+        <div><dt>Contract</dt><dd>{niftyRules.selection} · nearest expiry</dd></div>
+        <div><dt>Validity</dt><dd>Next 10 candles · signal range ≤35 points</dd></div>
+        <div><dt>Premium stop</dt><dd>min(20 points, 20% of entry premium)</dd></div>
+        <div><dt>Index trail</dt><dd>CE: previous completed 15m low · PE: previous completed 15m high</dd></div>
+        <div><dt>Exit</dt><dd>Opposite signal or 14:55 IST</dd></div>
+        <div><dt>Size</dt><dd>Start 1 lot · +1 after SL or two consecutive other losses · no size reset or cap</dd></div>
+        <div><dt>Target</dt><dd>Full position at 1.5R · all lot sizes</dd></div>
+      </dl>
+      {book?.options?.position && <div className="algo-rule-list"><div><span>Open contract</span><b>{book.options.position.contract.id}</b></div><div><span>Lots / quantity</span><b>{book.options.position.lots} / {book.options.position.quantity}</b></div><div><span>Entry ask / current bid</span><b>{number(book.options.position.entry)} / {book.options.mark == null ? "--" : number(book.options.mark)}</b></div><div><span>Premium stop / target</span><b>{number(book.options.position.entry - (book.options.stopDistance ?? 0))} / {number(book.options.position.entry + 1.5 * (book.options.stopDistance ?? 0))}</b></div></div>}
+      {book?.options?.pendingExit && <div role="alert" className="algo-alert-box"><b>Exit awaiting verified quote</b><span>{book.options.pendingExit}</span></div>}
+      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Lots</th><th>Entry time</th><th>Entry ask</th><th>Exit time</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{book?.options?.trades.length ? [...book.options.trades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{time(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{time(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={8}>No completed options paper trades.</td></tr>}</tbody></table></div>
+    </section>}
+    {market === "NIFTY" && <h3 className="border-t border-slate-200 pt-4 font-bold">Separate legacy index-point test</h3>}
     <div className="algo-os-grid three">
       <div className="algo-os-card metric"><span>Open trade P&amp;L · points</span><strong className={(valuation?.unrealized ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}>{pnl(valuation?.unrealized)}</strong><p>{position ? `${position.symbol} · ${position.side} · Entry ${number(position.entry)}` : "No open trade"}</p></div>
       <div className="algo-os-card metric"><span>Booked P&amp;L · points</span><strong>{pnl(valuation?.realized)}</strong><p>Completed paper trades</p></div>

@@ -5,7 +5,7 @@ export type PaperMarket = typeof markets[number];
 export type PaperEvent = {
   receivedAt: string;
   signal: AlgoSignal;
-  raw: { automation?: { mode?: string; enabled?: boolean; underlying?: string }; paperControl?: { market: PaperMarket; enabled: boolean; symbol?: string; slippage?: number; nextCandle?: boolean } };
+  raw: { automation?: { mode?: string; enabled?: boolean; underlying?: string }; paperControl?: { market: PaperMarket; enabled: boolean; symbol?: string; slippage?: number; nextCandle?: boolean; niftyOptionsEnabled?: boolean } };
 };
 export type IndexPosition = { id: string; symbol: string; side: "LONG" | "SHORT"; entry: number; referenceEntry: number; entrySlippage: number; openedAt: string; signalId: string };
 export type IndexTrade = IndexPosition & { exit: number; referenceExit: number; closedAt: string; exitSignalId: string; points: number; grossPoints: number; slippagePoints: number; reason: string };
@@ -47,6 +47,7 @@ export function buildPaperBooks(events: PaperEvent[], now = new Date().toISOStri
       continue;
     }
     const market = marketOf(event);
+    if (event.signal.metadata?.niftyPaper) continue;
     if (event.signal.metadata?.paperBarOpen === true) continue;
     if (!market || event.signal.metadata?.diagnostic || event.signal.id.startsWith("panel-test-") || event.signal.metadata?.source === "Manual curl test") continue;
     if (event.raw.automation?.mode === "LIVE" || event.raw.automation?.enabled === false) continue;

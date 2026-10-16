@@ -287,6 +287,7 @@ export default function AlgoTradingPanel() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("section") === "fyers") setActiveSection("fyers");
     if (new URLSearchParams(window.location.search).get("section") === "optionchain") setActiveSection("optionchain");
+    if (new URLSearchParams(window.location.search).get("section") === "paper") setActiveSection("paper");
   }, []);
   const [status, setStatus] = useState("TradingOS ready. Connect Dhan before live deployment.");
   const [builderOpen, setBuilderOpen] = useState(false);
