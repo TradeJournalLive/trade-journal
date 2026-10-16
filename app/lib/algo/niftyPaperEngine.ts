@@ -124,7 +124,13 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
     }
     previousTick = tick;
   }
-  const stale = !lastTickAt || Date.parse(now) - Date.parse(lastTickAt) > 5000;
+  const lastTrailClose = previousTick?.previous15m?.closedAt;
+  if (status === "WAITING_FOR_COMPLETED_15M_CANDLE" && lastTrailClose && Date.parse(now) >= Date.parse(lastTrailClose) && Date.parse(now) - Date.parse(lastTrailClose) < 15 * 60000) {
+    status = setup ? "WAITING_FOR_INDEX_BREAK" : enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
+  }
+  // Display checkpoints refresh every five seconds; execution still uses fresh()'s five-second limit.
+  const age = lastTickAt ? Date.parse(now) - Date.parse(lastTickAt) : NaN;
+  const stale = !Number.isFinite(age) || age < 0 || age > 15000;
   if (position && (dayIST(now) > dayIST(position.openedAt) || minutesIST(now) >= 895)) pendingExit = pendingExit || "TIME_EXIT_AWAITING_VERIFIED_QUOTE";
   const realizedBase = saved?.realizedBase ?? 0, tradeCountBase = saved?.tradeCountBase ?? 0;
   const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0);

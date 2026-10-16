@@ -62,6 +62,14 @@ test("compacted checkpoint retains lifetime P&L without replaying the trade ledg
   assert.equal(restored.tradeCount, 1);
   assert.equal(restored.trades.length, 0);
 });
+test("display health tolerates checkpoint polling without relaxing execution quotes", () => {
+  const valid = buildNiftyOptionsPaper([enabled, tick(2, 25009)], time(3));
+  const saved = { ...valid.checkpoint, status: 'WAITING_FOR_COMPLETED_15M_CANDLE' };
+  const refreshed = buildNiftyOptionsPaper([], time(12), saved);
+  assert.equal(refreshed.status, 'WAITING_FOR_SIGNAL');
+  assert.equal(refreshed.stale, false);
+  assert.equal(buildNiftyOptionsPaper([], time(20), saved).stale, true);
+});
 test("premium stop is not blocked by missing completed 15m history", () => {
   const stop = tick(4, 25012, 79);
   delete stop.signal.metadata.niftyPaper.previous15m;
