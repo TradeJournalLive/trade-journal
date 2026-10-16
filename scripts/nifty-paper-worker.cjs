@@ -39,6 +39,7 @@ const secretHash = hash(env.PAPER_WEBHOOK_SECRET), workerId = crypto.randomUUID(
 let state, book, lease, connection, socket, master = [], quotes = new Map(), index, trail, lastMasterDay;
 let status = 'STARTING', processed = new Set(), pollAfter, lastPublish = 0, failed = false;
 let queue = Promise.resolve();
+const persistedTrades = new Set();
 function audit(type, data) {
   fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, data }) + '\n', { mode: 0o600 });
 }
@@ -136,13 +137,27 @@ async function subscriptions() {
   if (book?.position) symbols.push(book.position.contract.id);
   if (symbols.length && socket?.isConnected()) socket.subscribe([...new Set(symbols)]);
 }
-function summary() {
-  const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), state.checkpoint);
-  return { ...result, trial: { startedAt: state.startedAt, endsAt: state.endsAt, timeframe: '1', workerStatus: status, heartbeatAt: now() }, feesIncluded: false };
+function summary(value = state) {
+  const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), value.checkpoint);
+  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', workerStatus: status, heartbeatAt: now() }, feesIncluded: false };
 }
 async function publish() {
   const at = now();
-  const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state, book: summary() } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
+  const snapshot = structuredClone(state);
+  const result = buildNiftyOptionsPaper([], at, snapshot.checkpoint);
+  const unpersisted = result.trades.filter(trade => !persistedTrades.has(`${trade.signalId}:${trade.openedAt}`));
+  if (unpersisted.length) {
+    const rows = unpersisted.map(trade => {
+      const id = hash(`${trade.signalId}:${trade.openedAt}`);
+      return { secret_hash: secretHash, strategy_id: '__nifty_paper_trade__', signal_id: id, symbol: 'NIFTY', action: 'EXIT', received_at: trade.closedAt, signal_timestamp: trade.closedAt, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: { ...event(id, { kind: 'PAPER_TRADE' }).signal, strategyId: '__nifty_paper_trade__' }, decision: {}, raw_payload: { trade } };
+    });
+    const saved = await db.from(TABLE).upsert(rows, { onConflict: 'secret_hash,strategy_id,signal_id' });
+    if (saved.error) throw new Error('TRADE_LEDGER_STORAGE_LOST');
+    unpersisted.forEach(trade => persistedTrades.add(`${trade.signalId}:${trade.openedAt}`));
+  }
+  // Historical fills live in their own immutable-key ledger, not every heartbeat.
+  snapshot.checkpoint = { ...result.checkpoint, trades: [], realizedBase: result.realized, tradeCountBase: result.tradeCount };
+  const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (error || data?.length !== 1) throw new Error('WORKER_LEASE_OR_STORAGE_LOST');
   lease = at; lastPublish = Date.now(); saveLocal();
 }
@@ -180,7 +195,12 @@ async function main() {
   const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: lease, signal_timestamp: lease, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary() } };
   const claim = old ? await db.from(TABLE).update(row).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', old.received_at).select('id') : await db.from(TABLE).insert(row).select('id');
   if (claim.error || claim.data?.length !== 1) throw new Error('WORKER_LEASE_UNAVAILABLE');
-  saveLocal(); await connect();
+  saveLocal();
+  if (Date.now() >= Date.parse(state.endsAt) && !book.position) {
+    advance([{ ...event('trial-end', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: false } } }]);
+    status = 'TRIAL_COMPLETE'; await publish(); process.exit(0);
+  }
+  await connect();
   let lastHistory = 0, lastCredentials = Date.now();
   console.log('NIFTY paper worker started; broker order calls are disabled.');
   while (!failed) {
@@ -199,7 +219,7 @@ async function main() {
       lastCredentials = Date.now();
     }
     if (lastMasterDay !== day(now())) throw new Error('DAILY_RESTART_REQUIRED');
-    if (Date.now() - lastPublish >= 2000) await publish();
+    if (Date.now() - lastPublish >= 5000) await publish();
     if (Date.now() >= Date.parse(state.endsAt) && !book.position) break;
   }
   if (failed) throw new Error('PAPER_WORKER_STOPPED');

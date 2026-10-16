@@ -14,9 +14,11 @@ async function load(secret: string) {
   const events: PaperEvent[] = [];
   const { data: worker, error: workerError } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_worker__").eq("signal_id", "state").maybeSingle();
   if (workerError) throw new Error("Unable to verify options worker status.");
+  const { data: ledger, error: ledgerError } = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_trade__").order("received_at", { ascending: false }).limit(1000);
+  if (ledgerError) throw new Error("Unable to load options trade ledger.");
   for (let offset = 0; offset < 100000; offset += 1000) {
     const { data, error } = await db.from("tradingview_signal_events").select("received_at,signal,raw_payload,id")
-      .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").order("received_at").order("id").range(offset, offset + 999);
+      .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").order("received_at").order("id").range(offset, offset + 999);
     if (error) throw new Error(error.message);
     events.push(...(data ?? []).map(row => ({ receivedAt: row.received_at, signal: row.signal, raw: row.raw_payload || {} })));
     if (!data || data.length < 1000) {
@@ -25,7 +27,8 @@ async function load(secret: string) {
       const options = worker?.raw_payload?.state?.checkpoint ? buildNiftyOptionsPaper([], now, worker.raw_payload.state.checkpoint) : buildNiftyOptionsPaper(events, now);
       const { checkpoint: _checkpoint, ...publicOptions } = options;
       const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000 && !String(worker.raw_payload?.book?.trial?.workerStatus || "").startsWith("STOPPED_"));
-      return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now), ...(market === "NIFTY" ? { options: { ...publicOptions, workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
+      const ledgerTrades = (ledger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse();
+      return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now), ...(market === "NIFTY" ? { options: { ...publicOptions, ...(ledgerTrades.length ? { trades: ledgerTrades } : {}), workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
     }
   }
   throw new Error("History exceeds the paper engine limit; archive is required before continuing.");

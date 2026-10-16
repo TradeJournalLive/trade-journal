@@ -6,7 +6,7 @@ type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: numbe
 type Position = { contract: Contract; lots: number; quantity: number; entry: number; openedAt: string; signalId: string; indexSymbol: string };
 type Trade = Position & { exit: number; closedAt: string; reason: string; pnl: number };
 type Tick = { indexSymbol: string; timestamp: string; price: number; nearestExpiry: string; chainComplete: boolean; previous15m?: { high: number; low: number; closedAt: string }; contracts: Contract[] };
-export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[] };
+export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number };
 
 function minutesIST(timestamp: string) {
   const date = new Date(Date.parse(timestamp) + 330 * 60000);
@@ -126,9 +126,11 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   }
   const stale = !lastTickAt || Date.parse(now) - Date.parse(lastTickAt) > 5000;
   if (position && (dayIST(now) > dayIST(position.openedAt) || minutesIST(now) >= 895)) pendingExit = pendingExit || "TIME_EXIT_AWAITING_VERIFIED_QUOTE";
-  const realized = trades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const realizedBase = saved?.realizedBase ?? 0, tradeCountBase = saved?.tradeCountBase ?? 0;
+  const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0);
   return { enabled, status, position, setup, size, trades, mark, lastTickAt, stale, pendingExit, realized,
-    checkpoint: { enabled, setup, position, previousTick, size, pendingExit, status, lastTickAt, mark, trades, seen: [...seen] } satisfies NiftyPaperCheckpoint,
+    tradeCount: tradeCountBase + trades.length,
+    checkpoint: { enabled, setup, position, previousTick, size, pendingExit, status, lastTickAt, mark, trades, seen: [...seen], realizedBase, tradeCountBase } satisfies NiftyPaperCheckpoint,
     unrealized: position && mark !== null ? (mark - position.entry) * position.quantity : null,
     stopDistance: position ? premiumStopDistance(position.entry) : null };
 }

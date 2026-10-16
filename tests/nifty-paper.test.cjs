@@ -54,6 +54,14 @@ test("checkpoint restart matches full replay without duplicating a trade", () =>
   assert.deepEqual(restarted, buildNiftyOptionsPaper(events, time(5)));
   assert.equal(buildNiftyOptionsPaper([events[4]], time(5), restarted.checkpoint).trades.length, 1);
 });
+test("compacted checkpoint retains lifetime P&L without replaying the trade ledger", () => {
+  const closed = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 130)], time(5));
+  const compact = { ...closed.checkpoint, trades: [], realizedBase: closed.realized, tradeCountBase: closed.tradeCount };
+  const restored = buildNiftyOptionsPaper([], time(6), compact);
+  assert.equal(restored.realized, closed.realized);
+  assert.equal(restored.tradeCount, 1);
+  assert.equal(restored.trades.length, 0);
+});
 test("premium stop is not blocked by missing completed 15m history", () => {
   const stop = tick(4, 25012, 79);
   delete stop.signal.metadata.niftyPaper.previous15m;

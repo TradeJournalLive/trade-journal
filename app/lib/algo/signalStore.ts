@@ -73,6 +73,7 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100)
     .eq("secret_hash", hashWebhookSecret(secret.trim()))
     .neq("strategy_id", "__paper_control__")
     .neq("strategy_id", "__nifty_paper_worker__")
+    .neq("strategy_id", "__nifty_paper_trade__")
     .order("received_at", { ascending: false })
     .limit(limit);
 
