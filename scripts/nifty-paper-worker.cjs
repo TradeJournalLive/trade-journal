@@ -210,7 +210,7 @@ async function main() {
     if (Date.now() >= Date.parse(state.endsAt)) advance([{ ...event('trial-end', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: false } } }]);
     if (Date.now() - lastHistory > 30000) {
       lastHistory = Date.now();
-      try { await history(); } catch { trail = undefined; status = 'HISTORY_UNAVAILABLE'; }
+      try { await history(); } catch { status = 'HISTORY_UNAVAILABLE'; }
       try { await subscriptions(); } catch { status = 'SUBSCRIPTION_REFRESH_FAILED'; }
     }
     if (Date.now() - lastCredentials > 60000) {
@@ -230,6 +230,11 @@ process.on('SIGTERM', () => { saveLocal(); process.exit(0); });
 main().catch(async error => {
   const reason = /^[A-Z_]+$/.test(error.message) ? error.message : 'UNEXPECTED_ERROR';
   console.error('Paper worker stopped:', reason);
+  if (reason === 'UNEXPECTED_ERROR') {
+    const frame = String(error.stack || '').split('\n').find(line => line.includes('nifty-paper-worker.cjs:'))?.trim();
+    const code = String(error.code || error.cause?.code || '');
+    console.error('Paper worker diagnostic:', error.name, /^[A-Z0-9_]+$/.test(code) ? code : '', frame || 'No local stack frame');
+  }
   status = `STOPPED_${reason}`;
   if (state && lease) { try { await publish(); } catch {} }
   process.exit(1);
