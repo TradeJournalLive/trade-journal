@@ -48,6 +48,7 @@ export function buildPaperBooks(events: PaperEvent[], now = new Date().toISOStri
     }
     const market = marketOf(event);
     if (event.signal.metadata?.niftyPaper) continue;
+    if (event.signal.metadata?.btcPaper) continue;
     if (event.signal.metadata?.paperBarOpen === true) continue;
     if (!market || event.signal.metadata?.diagnostic || event.signal.id.startsWith("panel-test-") || event.signal.metadata?.source === "Manual curl test") continue;
     if (event.raw.automation?.mode === "LIVE" || event.raw.automation?.enabled === false) continue;

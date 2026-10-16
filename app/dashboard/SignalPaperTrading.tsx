@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
 import { niftyRules } from "../lib/algo/niftyRules";
 import type { buildNiftyOptionsPaper } from "../lib/algo/niftyPaperEngine";
+import BtcDeltaPaper, { type BtcDeltaBook } from "./BtcDeltaPaper";
 
-type LivePaperBook = PaperBook & { valuation: ReturnType<typeof paperValuation>; options?: Omit<ReturnType<typeof buildNiftyOptionsPaper>, "checkpoint"> & { workerOnline: boolean; trial?: { startedAt: string; endsAt: string; timeframe: string; workerStatus: string; heartbeatAt: string } } };
+type LivePaperBook = PaperBook & { delta?: BtcDeltaBook | null; valuation: ReturnType<typeof paperValuation>; options?: Omit<ReturnType<typeof buildNiftyOptionsPaper>, "checkpoint"> & { workerOnline: boolean; trial?: { startedAt: string; endsAt: string; timeframe: string; workerStatus: string; heartbeatAt: string } } };
 
 const number = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -82,9 +83,10 @@ export default function SignalPaperTrading() {
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
       <div role="tablist" aria-label="Paper markets" className="flex gap-2">{markets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "GOLD" ? "Gold" : item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
-      <div className="flex items-center gap-3"><span className="text-sm font-bold">{market === "NIFTY" ? "Legacy index-point test" : `${market} paper trading`}</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
+      <div className="flex items-center gap-3"><span className="text-sm font-bold">{market === "NIFTY" ? "Legacy index-point test" : market === "BTC" ? "Legacy BTC signal-price test" : `${market} paper trading`}</span><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} className="h-5 w-5 accent-emerald-600" /><span className="text-sm font-bold">{book?.enabled ? "On" : "Off"}</span></div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    {market === "BTC" && <BtcDeltaPaper book={book?.delta} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
@@ -106,6 +108,7 @@ export default function SignalPaperTrading() {
       <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Lots</th><th>Entry time</th><th>Entry ask</th><th>Exit time</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{book?.options?.trades.length ? [...book.options.trades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{time(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{time(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={8}>No completed options paper trades.</td></tr>}</tbody></table></div>
     </section>}
     {market === "NIFTY" && <h3 className="border-t border-slate-200 pt-4 font-bold">Separate legacy index-point test</h3>}
+    {market === "BTC" && <h3 className="border-t border-slate-200 pt-4 font-bold">Legacy BTC signal-price test · separate feed and rules</h3>}
     <div className="algo-os-grid three">
       <div className="algo-os-card metric"><span>Open trade P&amp;L · points</span><strong className={(valuation?.unrealized ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}>{pnl(valuation?.unrealized)}</strong><p>{position ? `${position.symbol} · ${position.side} · Entry ${number(position.entry)}` : "No open trade"}</p></div>
       <div className="algo-os-card metric"><span>Booked P&amp;L · points</span><strong>{pnl(valuation?.realized)}</strong><p>Completed paper trades</p></div>

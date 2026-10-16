@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "paper:nifty": "node scripts/nifty-paper-worker.cjs",
+    "paper:btc": "node scripts/btc-delta-paper-worker.cjs",
     "test:paper": "node --test tests/*.test.cjs"
   },
   "dependencies": {
@@ -17,7 +18,8 @@
     "lz-string": "^1.5.0",
     "next": "14.2.5",
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@types/node": "25.2.1",

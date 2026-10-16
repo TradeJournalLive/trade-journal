@@ -143,6 +143,7 @@ function normalizeSignal(payload: TradingViewWebhookPayload): NormalizedSignal {
     metadata: {
       ...(payload.metadata ?? {}),
       ...(payload.metadata?.niftyPaper ? { niftyPaper: niftySignalCandle(payload.metadata.niftyPaper, payload.timeframe) } : {}),
+      ...(payload.metadata?.btcPaper ? { btcPaper: niftySignalCandle(payload.metadata.btcPaper, payload.timeframe) } : {}),
       strike: payload.strike,
       optionType: payload.optionType,
       expiry: payload.expiry,
@@ -186,6 +187,7 @@ export async function POST(request: Request) {
     if (errors.length) return jsonError("Webhook validation failed.", 422, errors);
     if (payload.strategyId?.startsWith("__")) return jsonError("Reserved strategy ID.", 422);
     if (payload.metadata?.niftyPaper && !niftySignalCandle(payload.metadata.niftyPaper, payload.timeframe)) return jsonError("Invalid NIFTY signal candle. Market ticks cannot be submitted by webhook.", 422);
+    if (payload.metadata?.btcPaper && (!niftySignalCandle(payload.metadata.btcPaper, payload.timeframe) || payload.timeframe !== "1")) return jsonError("Invalid BTC candle; confirmed 1-minute signal candles only.", 422);
 
     const skewMs = Math.abs(receivedAt - timestampMs);
     if (skewMs > MAX_SIGNAL_AGE_MS) {

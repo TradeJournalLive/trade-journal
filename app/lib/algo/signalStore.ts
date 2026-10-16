@@ -74,6 +74,8 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100)
     .neq("strategy_id", "__paper_control__")
     .neq("strategy_id", "__nifty_paper_worker__")
     .neq("strategy_id", "__nifty_paper_trade__")
+    .neq("strategy_id", "__btc_delta_worker__")
+    .neq("strategy_id", "__btc_delta_trade__")
     .order("received_at", { ascending: false })
     .limit(limit);
 

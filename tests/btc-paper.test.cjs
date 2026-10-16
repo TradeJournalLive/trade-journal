@@ -1,0 +1,61 @@
+const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), ts = require('typescript'), Module = require('node:module');
+const file = require('node:path').resolve(__dirname, '../app/lib/algo/btcPaperEngine.ts'), copy = new Module(file, module);
+copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, file);
+const { emptyBtcState, btcSignal, btcTick, btcView } = copy.exports;
+const time = n => new Date(Date.UTC(2026, 9, 16, 22, 0, n)).toISOString();
+const signal = (action = 'BUY', id = 'buy') => ({ id, action, symbol: 'DELTAIN:BTCUSD.P', receivedAt: time(1), closedAt: time(0), high: 80100, low: 80000, signalPrice: 80080 });
+function tick(n, price, bid = price - 1, ask = price + 1) { return { timestamp: time(n), tradeAt: time(n), quoteAt: time(n), price, bid, ask, bidBtc: 2, askBtc: 2, mark: price, markAt: time(n), maintenanceRate: .0025, previous15m: { high: 81000, low: 79000, closedAt: time(0) } }; }
+function entry() { let s = { ...emptyBtcState(), enabled: true }; s = btcSignal(s, signal()); s = btcTick(s, tick(2, 80099)); return btcTick(s, tick(3, 80101)); }
+test('24/7 crossing enters at ask, stop is candle low and target is 1.5R', () => {
+  const s = entry(), p = s.position;
+  assert.equal(p.entry, 80102); assert.equal(p.trigger, 80100); assert.equal(p.stop, 80000); assert.equal(p.target, 80255);
+  assert.equal(p.initialMargin, 801.02); assert.equal(p.entryDifference, 2);
+  const closed = btcTick(s, tick(4, 80257, 80256, 80258));
+  assert.equal(closed.trades[0].reason, 'TARGET_1_5R'); assert.equal(closed.trades[0].pnl, 154);
+});
+test('short uses bid entry, ask exit and P&L is not multiplied by leverage', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal('SELL', 'sell'));
+  s = btcTick(s, tick(2, 80001)); s = btcTick(s, tick(3, 79999));
+  assert.equal(s.position.entry, 79998); assert.equal(s.position.stop, 80100);
+  s = btcTick(s, tick(4, 79843, 79842, 79844));
+  assert.equal(s.trades[0].pnl, 154); assert.equal(s.trades[0].quantityBtc, 1);
+});
+test('no NIFTY range cap, but stale quotes and insufficient depth never fill', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
+  assert.ok(s.setup); s = btcTick(s, tick(2, 80099));
+  const stale = tick(8, 80101); stale.quoteAt = time(1);
+  assert.equal(btcTick(s, stale).position, null);
+  const shallow = tick(3, 80101); shallow.askBtc = .9;
+  assert.equal(btcTick(s, shallow).position, null);
+});
+test('ten-candle expiry and Binance signals are rejected', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal()); s = btcTick(s, tick(2, 80099));
+  s = btcTick(s, tick(600, 80101)); assert.equal(s.setup, null); assert.equal(s.position, null);
+  const other = btcSignal({ ...emptyBtcState(), enabled: true }, { ...signal(), symbol: 'BINANCE:BTCUSDT' });
+  assert.equal(other.status, 'REJECTED_DIFFERENT_PRICE_FEED'); assert.equal(other.setup, null);
+});
+test('same-direction signals cannot queue re-entry while a position is open', () => {
+  const s = btcSignal(entry(), { ...signal('BUY', 'second'), closedAt: time(4), receivedAt: time(4) });
+  assert.equal(s.setup, null); assert.ok(s.position);
+});
+test('invalid mark price blocks entry', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
+  s = btcTick(s, tick(2, 80099));
+  assert.equal(btcTick(s, { ...tick(3, 80101), mark: 0 }).position, null);
+});
+test('opposite signal exits but does not reverse immediately; duplicate ignored', () => {
+  const sell = { ...signal('SELL', 'sell'), receivedAt: time(4), closedAt: time(4) };
+  let s = btcSignal(entry(), sell); assert.deepEqual(btcSignal(s, sell), s);
+  s = btcTick(s, tick(5, 80090)); assert.equal(s.trades[0].reason, 'OPPOSITE_SIGNAL'); assert.equal(s.position, null); assert.ok(s.setup);
+});
+test('15m trailing exit and candle stop do not depend on option premiums', () => {
+  const trail = tick(4, 80080); trail.previous15m.low = 80090;
+  assert.equal(btcTick(entry(), trail).trades[0].reason, 'COMPLETED_15M_TRAIL');
+  const stopped = tick(4, 79998); stopped.previous15m = undefined;
+  assert.equal(btcTick(entry(), stopped).trades[0].reason, 'SIGNAL_CANDLE_STOP');
+});
+test('restart checkpoints preserve gross P&L and never add leverage exposure', () => {
+  const s = btcTick(entry(), tick(4, 80257, 80256, 80258)), v = btcView(s, time(5));
+  const compact = { ...s, trades: [], realizedBase: v.realized, tradeCountBase: v.tradeCount };
+  assert.equal(btcView(compact, time(6)).realized, 154); assert.equal(btcView(compact).tradeCount, 1);
+});
