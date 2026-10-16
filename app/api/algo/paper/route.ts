@@ -24,7 +24,7 @@ async function load(secret: string) {
       const books = buildPaperBooks(events, now);
       const options = worker?.raw_payload?.state?.checkpoint ? buildNiftyOptionsPaper([], now, worker.raw_payload.state.checkpoint) : buildNiftyOptionsPaper(events, now);
       const { checkpoint: _checkpoint, ...publicOptions } = options;
-      const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000);
+      const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000 && !String(worker.raw_payload?.book?.trial?.workerStatus || "").startsWith("STOPPED_"));
       return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now), ...(market === "NIFTY" ? { options: { ...publicOptions, workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
     }
   }
