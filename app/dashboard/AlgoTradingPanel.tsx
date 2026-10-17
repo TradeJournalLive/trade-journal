@@ -174,7 +174,7 @@ type NavGroup = {
   items: { label: string; id: AlgoSection }[];
 };
 
-const navGroups: NavGroup[] = [
+const allNavGroups: NavGroup[] = [
   { label: "Main", items: [{ label: "Dashboard", id: "dashboard" }] },
   {
     label: "Strategy Lab",
@@ -228,7 +228,15 @@ const navGroups: NavGroup[] = [
   }
 ];
 
-const navItems = navGroups.flatMap((group) => group.items);
+const navGroups: NavGroup[] = [
+  { label: "Trading", items: [{ label: "Paper Trading", id: "paper" }] },
+  { label: "Connections & Data", items: [
+    { label: "Signals · TradingView", id: "tradingview" },
+    { label: "Market Data · FYERS", id: "fyers" },
+    { label: "Options Chain", id: "optionchain" }
+  ] }
+];
+const navItems = [...navGroups.flatMap(group => group.items), ...allNavGroups.flatMap(group => group.items)];
 
 const strategyRows = [
   { name: "NIFTY EMA 9/21", source: "NATIVE", version: "v1", stage: "DRAFT", instrument: "NIFTY ATM CE", risk: "Intraday Protected" },
@@ -283,13 +291,13 @@ const initialDhanOrderTicket: DhanOrderTicket = {
 };
 
 export default function AlgoTradingPanel() {
-  const [activeSection, setActiveSection] = useState<AlgoSection>("dashboard");
+  const [activeSection, setActiveSection] = useState<AlgoSection>("paper");
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("section") === "fyers") setActiveSection("fyers");
-    if (new URLSearchParams(window.location.search).get("section") === "optionchain") setActiveSection("optionchain");
-    if (new URLSearchParams(window.location.search).get("section") === "paper") setActiveSection("paper");
+    const requested = new URLSearchParams(window.location.search).get("section");
+    const item = navGroups.flatMap(group => group.items).find(item => item.id === requested);
+    if (item) setActiveSection(item.id);
   }, []);
-  const [status, setStatus] = useState("TradingOS ready. Connect Dhan before live deployment.");
+  const [status, setStatus] = useState("");
   const [builderOpen, setBuilderOpen] = useState(false);
   const [brokerOpen, setBrokerOpen] = useState(false);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -301,6 +309,7 @@ export default function AlgoTradingPanel() {
   const [paperPositions, setPaperPositions] = useState<PaperPosition[]>([]);
   const [savedStrategyName, setSavedStrategyName] = useState("NIFTY EMA Protection");
   const [webhookSecretVisible, setWebhookSecretVisible] = useState(false);
+  const [signalMarket, setSignalMarket] = useState("NIFTY");
   const [dhanClientId, setDhanClientId] = useState("");
   const [dhanAccessToken, setDhanAccessToken] = useState("");
   const [dhanTesting, setDhanTesting] = useState(false);
@@ -442,7 +451,8 @@ export default function AlgoTradingPanel() {
 
   function selectSection(id: AlgoSection) {
     setActiveSection(id);
-    setStatus(`${navItems.find((item) => item.id === id)?.label ?? "TradingOS"} opened.`);
+    window.history.replaceState(null, "", `/dashboard/algo?section=${id}`);
+    setStatus("");
   }
 
   function runBacktest() {
@@ -989,6 +999,24 @@ export default function AlgoTradingPanel() {
   }
 
   function renderSettings() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Platform Settings</h3><div className="algo-rule-list"><div><span>Default mode</span><b>Paper first</b></div><div><span>Market</span><b>India</b></div><div><span>Initial instruments</span><b>NIFTY, BANKNIFTY, FINNIFTY</b></div><div><span>Emergency control</span><b>Always visible</b></div></div></div><div className="algo-os-card"><h3>Security</h3><p>Live broker tokens must never be exposed in the frontend.</p><button type="button" onClick={() => setStatus("Security reminder: implement encrypted credential storage before live broker execution.")} className="algo-action secondary wide">Run security checklist</button></div></div>; }
+  function renderSignalWorkspace() {
+    const webhookUrl = "/api/v1/webhooks/tradingview";
+    const filtered = signalEvents.filter(event => signalMarket === "NIFTY" ? event.signal.symbol === "NSE:NIFTY" : signalMarket === "BTC" ? event.signal.symbol === "DELTAIN:BTCUSD.P" : /GOLD|XAU/i.test(event.signal.symbol));
+    return <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div role="tablist" aria-label="Signal instruments" className="flex gap-2">{[["NIFTY", "NIFTY"], ["BTC", "Delta BTC"], ["GOLD", "Gold"]].map(([id, label]) => <button type="button" key={id} role="tab" aria-selected={signalMarket === id} onClick={() => setSignalMarket(id)} className={`algo-action ${signalMarket === id ? "primary" : "secondary"}`}>{label}</button>)}</div>
+        <button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action secondary">{signalLogLoading ? "Refreshing..." : "Refresh"}</button>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span>{webhookConnected ? "Connection saved" : "Connection required"}</span><span>{filtered.length} loaded signals</span><span>Last checked: {signalLogLastChecked || "--"}</span></div>
+      {signalLogError && <p role="alert" className="text-sm text-red-600">{signalLogError}</p>}
+      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received · IST</th><th>Action</th><th>Instrument</th><th>Signal price</th><th>Delivery status</th><th>Reason</th></tr></thead><tbody>{filtered.length ? filtered.map(event => <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{new Date(event.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td><td>{event.signal.action}</td><td>{event.signal.symbol}</td><td>{event.signal.price?.toLocaleString("en-IN") ?? "--"}</td><td>{event.signal.status}</td><td>{event.decision.reasons[0] || "--"}</td></tr>) : <tr><td colSpan={6}>No signals loaded for this instrument.</td></tr>}</tbody></table></div>
+      <details open={!webhookConnected} className="border-t border-slate-200 py-4"><summary className="cursor-pointer text-sm font-semibold">TradingView connection</summary><div className="mt-4 space-y-3">
+        <label className="block text-sm">Webhook URL<input readOnly value={typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
+        <label className="block text-sm">Webhook secret<input type="password" value={tvTestSecret} onChange={event => setTvTestSecret(event.target.value)} placeholder={webhookConnected ? "Saved connection" : "Your existing webhook secret"} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action primary">{webhookConnected ? "Check connection" : "Save connection"}</button><button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy webhook URL</button></div>
+      </div></details>
+    </div>;
+  }
   function renderAdmin() { return <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><h3>Admin</h3><div className="algo-rule-list"><div><span>Users</span><b>Planned</b></div><div><span>Broker audit</span><b>Planned</b></div><div><span>Webhook audit</span><b>Planned</b></div></div></div><div className="algo-os-card"><h3>System Health</h3><div className="algo-rule-list"><div><span>Market data</span><b>Pending</b></div><div><span>Queue</span><b>Not configured</b></div><div><span>Execution service</span><b>Frontend scaffold</b></div></div></div></div>; }
 
   function renderDashboard() { return <>{metricCards}<div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.8fr)]">{renderCreate()}<div className="space-y-4">{renderKillSwitch()}</div></div></>; }
@@ -1011,7 +1039,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "dhan") return renderDhan();
     if (activeSection === "fyers") return <FyersConnection />;
     if (activeSection === "optionchain") return <OptionsChain />;
-    if (activeSection === "tradingview") return renderTradingView();
+    if (activeSection === "tradingview") return renderSignalWorkspace();
     if (activeSection === "settings") return renderSettings();
     return renderAdmin();
   }
@@ -1025,11 +1053,11 @@ export default function AlgoTradingPanel() {
       </nav>
       <div className="flex min-h-screen">
         <aside className="hidden w-[282px] shrink-0 border-r border-[#dce5f2] bg-[#091629] text-white lg:flex lg:flex-col">
-          <div className="border-b border-white/10 p-5"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500 text-xs font-black">OS</span><div><b className="block text-sm">TradingOS</b><span className="text-[11px] text-slate-400">Build. Test. Trade. Protect.</span></div></div></div>
+          <div className="border-b border-white/10 p-5"><b className="block text-sm">1to2 Algo Trading</b><span className="text-[11px] text-slate-400">Paper workspace</span></div>
           <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">{navGroups.map((group) => <div key={group.label} className="mb-4"><div className="algo-nav-label">{group.label}</div><div className="space-y-1">{group.items.map((item) => <button key={item.id} type="button" onClick={() => selectSection(item.id)} className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left font-bold transition ${activeSection === item.id ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-white/8 hover:text-white"}`}><span>{item.label}</span>{activeSection === item.id ? <span className="text-[10px]">●</span> : null}</button>)}</div></div>)}</nav>
-          <div className="border-t border-white/10 p-4 text-[11px] text-slate-400">Strategy definition runs in Backtest, Paper and Live.</div>
+          <div className="border-t border-white/10 p-4 text-[11px] text-slate-400">NIFTY · Delta BTC</div>
         </aside>
-        <div className="min-w-0 flex-1"><header className="sticky top-0 z-20 border-b border-[#dce5f2] bg-white/95 backdrop-blur"><div className="flex min-h-[68px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7"><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-black shadow-sm"><Link href="/dashboard" className="rounded-lg px-3 py-2 text-slate-600 hover:bg-white">Journal</Link><Link href="/dashboard/algo" className="rounded-lg bg-[#091629] px-3 py-2 text-white shadow-sm">Algo Trading</Link></div><div className="flex flex-wrap items-center gap-2"><span className={`rounded-lg px-3 py-2 text-xs font-black ${killSwitchActive ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{killSwitchActive ? "Kill switch active" : "Risk armed"}</span><button type="button" onClick={() => setBuilderOpen(true)} className="algo-action primary">+ Strategy</button><button type="button" onClick={() => setBrokerOpen(true)} className="algo-action secondary">Connect Dhan</button><button type="button" onClick={() => setExitConfirmOpen(true)} className="algo-action danger">EXIT ALL</button></div></div></header><section className="space-y-5 px-4 py-6 lg:px-7"><div className="algo-os-hero"><div><div className="algo-os-eyebrow">{sectionTitle}</div><h1>{sectionTitle}</h1><p>Broker-independent TradingOS workspace for native strategies, TradingView webhooks, Dhan execution, options-aware backtesting, risk protection, automated journal and analytics.</p></div><div className="algo-os-status"><span>System note</span><b>{status}</b></div></div>{renderSection()}</section></div>
+        <div className="min-w-0 flex-1"><header className="sticky top-0 z-20 border-b border-slate-200 bg-white"><div className="flex min-h-[60px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7"><div className="flex items-center gap-4 text-sm font-bold"><Link href="/dashboard" className="text-slate-500 hover:text-slate-900">Journal</Link><Link href="/dashboard/algo" className="border-b-2 border-blue-600 py-2 text-blue-700">Algo Trading</Link></div><span className="text-xs font-bold text-emerald-700">PAPER ONLY</span></div></header><section className="space-y-5 px-4 py-6 lg:px-7"><h1 className="text-2xl font-bold">{sectionTitle}</h1>{status && <div role="status" className="border-l-2 border-blue-500 bg-blue-50 px-4 py-3 text-sm">{status}</div>}{renderSection()}</section></div>
       </div>
       {builderOpen ? <div className="algo-modal-backdrop"><div className="algo-modal"><div className="algo-card-head"><div><h3>Create strategy</h3><p>Saved as draft first. Backtest before deployment.</p></div><button type="button" onClick={() => setBuilderOpen(false)}>×</button></div><div className="algo-form-grid"><label>Strategy name<input value={savedStrategyName} onChange={(event) => setSavedStrategyName(event.target.value)} /></label><label>Instrument<select><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option></select></label><label>Timeframe<select><option>5 Minutes</option><option>15 Minutes</option><option>1 Hour</option></select></label><label>Entry action<select><option>Buy ATM CE</option><option>Buy ATM PE</option><option>Sell option spread</option></select></label></div><label className="algo-textarea-label">Rules<textarea defaultValue="EMA(9) crosses above EMA(21) AND RSI(14) > 55 AND Close > VWAP" /></label><div className="algo-modal-actions"><button type="button" onClick={() => setBuilderOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={saveStrategy} className="algo-action primary">Save draft</button></div></div></div> : null}
       {brokerOpen ? <div className="algo-modal-backdrop"><div className="algo-modal small"><div className="algo-card-head"><div><h3>Connect Dhan</h3><p>Runs a read-only test against Dhan profile, funds, positions and orders. No trade is placed.</p></div><button type="button" onClick={() => setBrokerOpen(false)}>×</button></div><div className="algo-form-grid single"><label>Client ID<input value={dhanClientId} onChange={(event) => setDhanClientId(event.target.value)} placeholder="Dhan client ID" /></label><label>Access token<input value={dhanAccessToken} onChange={(event) => setDhanAccessToken(event.target.value)} placeholder="Paste current Dhan access token" type="password" /></label></div>{dhanTestResult?.error ? <div className="algo-alert-box"><b>Last test failed</b><span>{dhanTestResult.error}</span></div> : null}<div className="algo-modal-actions"><button type="button" onClick={() => setBrokerOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={connectDhan} className="algo-action primary" disabled={dhanTesting}>{dhanTesting ? "Testing..." : "Test connection"}</button></div></div></div> : null}
