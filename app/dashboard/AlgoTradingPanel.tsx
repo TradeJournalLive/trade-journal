@@ -5,7 +5,6 @@ import Link from "next/link";
 import SignalPaperTrading from "./SignalPaperTrading";
 import FyersConnection from "./FyersConnection";
 import OptionsChain from "./OptionsChain";
-import OptionPremiumCalculator from "./OptionPremiumCalculator";
 
 type AlgoSection =
   | "dashboard"
@@ -1041,7 +1040,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "dhan") return renderDhan();
     if (activeSection === "fyers") return <FyersConnection />;
     if (activeSection === "optionchain") return <OptionsChain />;
-    if (activeSection === "calculator") return <OptionPremiumCalculator />;
+    if (activeSection === "calculator") return <OptionsChain calculatorMode />;
     if (activeSection === "tradingview") return renderSignalWorkspace();
     if (activeSection === "settings") return renderSettings();
     return renderAdmin();
