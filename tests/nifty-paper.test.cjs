@@ -21,6 +21,19 @@ function tick(second, price, bid = 99) {
 }
 const enabled = { ...event("control", 0, {}), raw: { paperControl: { market: "NIFTY", enabled: false, niftyOptionsEnabled: true } } };
 const buy = event("buy", 1, { kind: "SIGNAL", high: 25010, low: 24990, closedAt: time(0) }, "BUY");
+test("delayed signals remain eligible for a newly observed breakout", () => {
+  const delayed = { ...buy, receivedAt: time(12) };
+  const result = buildNiftyOptionsPaper([enabled, delayed, tick(13, 25009), tick(14, 25011)], time(15));
+  assert.equal(result.position.openedAt, time(14));
+  assert.equal(result.position.entry, 100);
+  assert.equal(buildNiftyOptionsPaper([enabled, delayed, tick(13, 25011), tick(14, 25012)], time(15)).position, null);
+});
+test("delayed delivery never extends the ten-candle validity window", () => {
+  const delayed = event("expired", 12, { kind: "SIGNAL", high: 25010, low: 24990, closedAt: "2026-10-16T04:20:00Z" }, "BUY");
+  const result = buildNiftyOptionsPaper([enabled, delayed, tick(13, 25009), tick(14, 25011)], time(15));
+  assert.equal(result.position, null);
+  assert.equal(result.setup, null);
+});
 test("full position exits at 1.5R without partial-lot allocation", () => {
   const result = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 130)], time(5));
   assert.equal(result.trades[0].reason, "TARGET_1_5R");

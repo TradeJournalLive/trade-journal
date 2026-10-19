@@ -70,7 +70,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
       const closedAt = String(payload.closedAt ?? "");
       if (!positive(payload.high) || !positive(payload.low) || payload.high < payload.low || payload.high - payload.low > 35
         || interval !== 1 || !Number.isFinite(Date.parse(closedAt))
-        || Date.parse(closedAt) > Date.parse(event.receivedAt) || Date.parse(event.receivedAt) - Date.parse(closedAt) > 5000) {
+        || Date.parse(closedAt) > Date.parse(event.receivedAt)) {
         status = "INVALID_SIGNAL_CANDLE"; continue;
       }
       if (enabled) setup = { id: event.signal.id, action: event.signal.action as "BUY" | "SELL", high: payload.high, low: payload.low, closedAt, intervalMinutes: interval, indexSymbol: event.signal.symbol };
