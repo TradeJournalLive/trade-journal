@@ -12,7 +12,8 @@ export function btcSignal(state: BtcState, signal: BtcSignal) {
   if (s.seen.includes(signal.id)) return s;
   s.seen.push(signal.id);
   if (signal.symbol !== "DELTAIN:BTCUSD.P") { s.status = "REJECTED_DIFFERENT_PRICE_FEED"; return s; }
-  if (!fresh(signal.closedAt, signal.receivedAt) || ![signal.high, signal.low, signal.signalPrice].every(positive) || signal.high <= signal.low) { s.status = "INVALID_SIGNAL_CANDLE"; return s; }
+  const deliveryAge = Date.parse(signal.receivedAt) - Date.parse(signal.closedAt);
+  if (!Number.isFinite(deliveryAge) || deliveryAge < 0 || ![signal.high, signal.low, signal.signalPrice].every(positive) || signal.high <= signal.low) { s.status = "INVALID_SIGNAL_CANDLE"; return s; }
   if (s.position && ((signal.action === "BUY") !== (s.position.side === "LONG"))) s.pendingExit = "OPPOSITE_SIGNAL";
   s.lastSignalAt = signal.receivedAt;
   s.setup = s.enabled && (!s.position || s.pendingExit === "OPPOSITE_SIGNAL") ? signal : null;

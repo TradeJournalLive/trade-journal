@@ -6,6 +6,17 @@ const time = n => new Date(Date.UTC(2026, 9, 16, 22, 0, n)).toISOString();
 const signal = (action = 'BUY', id = 'buy') => ({ id, action, symbol: 'DELTAIN:BTCUSD.P', receivedAt: time(1), closedAt: time(0), high: 80100, low: 80000, signalPrice: 80080 });
 function tick(n, price, bid = price - 1, ask = price + 1) { return { timestamp: time(n), tradeAt: time(n), quoteAt: time(n), price, bid, ask, bidBtc: 2, askBtc: 2, mark: price, markAt: time(n), maintenanceRate: .0025, previous15m: { high: 81000, low: 79000, closedAt: time(0) } }; }
 function entry() { let s = { ...emptyBtcState(), enabled: true }; s = btcSignal(s, signal()); s = btcTick(s, tick(2, 80099)); return btcTick(s, tick(3, 80101)); }
+test('delayed signals allow fresh breakout entries without extending ten-candle validity', () => {
+  const delayed = { ...signal(), receivedAt: time(12) };
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, delayed);
+  assert.ok(s.setup);
+  s = btcTick(btcTick(s, tick(13, 80099)), tick(14, 80101));
+  assert.equal(s.position.openedAt, time(14));
+  const expired = btcSignal({ ...emptyBtcState(), enabled: true }, { ...delayed, receivedAt: time(601) });
+  assert.equal(btcTick(expired, tick(602, 80101)).position, null);
+  assert.equal(btcTick(expired, tick(602, 80101)).setup, null);
+  assert.equal(btcSignal({ ...emptyBtcState(), enabled: true }, { ...delayed, closedAt: time(13) }).status, 'INVALID_SIGNAL_CANDLE');
+});
 test('24/7 crossing enters at ask, stop is candle low and target is 3R', () => {
   const s = entry(), p = s.position;
   assert.equal(p.entry, 80102); assert.equal(p.trigger, 80100); assert.equal(p.stop, 80000); assert.equal(p.target, 80408);
