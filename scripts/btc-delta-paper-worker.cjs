@@ -70,6 +70,12 @@ async function poll() {
   for (const v of r.data || []) {
     if (seenRows.has(v.id)) continue; seenRows.add(v.id);
     const control = v.raw_payload?.paperControl;
+    if (control?.market === 'BTC' && control.stopAndClose === true) {
+      saved.state.enabled = false; saved.state.setup = null;
+      if (saved.state.position && saved.state.pendingExit !== 'MONITORING_INTERRUPTED') saved.state.pendingExit = 'MANUAL_STOP_AND_CLOSE';
+      saved.state.status = saved.state.position ? 'AWAITING_MANUAL_CLOSE' : 'DISABLED';
+      save(); continue;
+    }
     if (control?.market === 'BTC' && typeof control.btcBreakoutEnabled === 'boolean') { saved.state.enabled = control.btcBreakoutEnabled; if (!saved.state.enabled) saved.state.setup = null; saved.state.status = saved.state.position ? 'OPEN' : saved.state.enabled ? 'WAITING_FOR_SIGNAL' : 'DISABLED'; save(); continue; }
     const candle = v.signal?.metadata?.btcPaper;
     if (v.signal?.metadata?.diagnostic || v.raw_payload?.automation?.mode !== 'PAPER' || candle?.kind !== 'SIGNAL' || v.signal.timeframe !== '1' || !['BUY', 'SELL'].includes(v.signal.action)) continue;

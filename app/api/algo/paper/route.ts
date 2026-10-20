@@ -4,7 +4,7 @@ import { connectionSecret, sameOrigin } from "../../../lib/algo/connection";
 import { getServerSupabase, hashWebhookSecret } from "../../../lib/algo/signalStore";
 import { buildPaperBooks, paperValuation, markets, type PaperEvent } from "../../../lib/algo/paperEngine";
 import { buildNiftyOptionsPaper } from "../../../lib/algo/niftyPaperEngine";
-import { btcView } from "../../../lib/algo/btcPaperEngine";
+import { btcView, type BtcTrade } from "../../../lib/algo/btcPaperEngine";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,7 +32,11 @@ async function load(secret: string) {
       const { checkpoint: _checkpoint, ...publicOptions } = options;
       const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000 && !String(worker.raw_payload?.book?.trial?.workerStatus || "").startsWith("STOPPED_"));
       const ledgerTrades = (ledger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse();
-      const delta = btcWorker?.raw_payload?.saved?.state ? { ...btcView(btcWorker.raw_payload.saved.state, now), trades: (btcLedger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse(), workerOnline: Date.parse(now) - Date.parse(btcWorker.received_at) < 15000 && !String(btcWorker.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker.raw_payload.workerStatus, trial: { startedAt: btcWorker.raw_payload.saved.startedAt, endsAt: btcWorker.raw_payload.saved.endsAt } } : null;
+      const deleted = new Set(events.map(event => (event.raw.paperControl as { deleteTrade?: string } | undefined)?.deleteTrade).filter(Boolean));
+      const btcTrades: BtcTrade[] = (btcLedger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse();
+      const removed = btcTrades.filter(trade => deleted.has(`${trade.id}:${trade.openedAt}`) && !trade.monitoringGap);
+      const view = btcWorker?.raw_payload?.saved?.state ? btcView(btcWorker.raw_payload.saved.state, now) : null;
+      const delta = view ? { ...view, realized: view.realized - removed.reduce((sum, trade) => sum + trade.pnl, 0), tradeCount: view.tradeCount - removed.length, trades: btcTrades.filter(trade => !deleted.has(`${trade.id}:${trade.openedAt}`)), workerOnline: Date.parse(now) - Date.parse(btcWorker!.received_at) < 15000 && !String(btcWorker!.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker!.raw_payload.workerStatus, trial: { startedAt: btcWorker!.raw_payload.saved.startedAt, endsAt: btcWorker!.raw_payload.saved.endsAt } } : null;
       return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now), ...(market === "BTC" ? { delta } : {}), ...(market === "NIFTY" ? { options: { ...publicOptions, ...(ledgerTrades.length ? { trades: ledgerTrades } : {}), workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
     }
   }
@@ -50,6 +54,8 @@ export async function POST(request: Request) {
   if (!secret) return NextResponse.json({ error: "Connect TradingView first." }, { status: 401 });
   try {
     const body = await request.json();
+    if (body.stopAndClose !== undefined && (body.market !== "BTC" || body.stopAndClose !== true)) return NextResponse.json({ error: "Invalid close request." }, { status: 400 });
+    if (body.deleteTrade !== undefined && (body.market !== "BTC" || typeof body.deleteTrade !== "string" || body.deleteTrade.length > 300)) return NextResponse.json({ error: "Invalid trade deletion." }, { status: 400 });
     if (body.nextCandle !== undefined && typeof body.nextCandle !== "boolean") return NextResponse.json({ error: "Invalid execution rule." }, { status: 400 });
     if (body.niftyOptionsEnabled !== undefined && (body.market !== "NIFTY" || typeof body.niftyOptionsEnabled !== "boolean")) return NextResponse.json({ error: "Invalid options switch." }, { status: 400 });
     if (body.btcBreakoutEnabled !== undefined && (body.market !== "BTC" || typeof body.btcBreakoutEnabled !== "boolean")) return NextResponse.json({ error: "Invalid BTC breakout switch." }, { status: 400 });
@@ -58,6 +64,15 @@ export async function POST(request: Request) {
     if (body.slippage !== undefined && (typeof body.slippage !== "number" || !Number.isFinite(body.slippage) || body.slippage < 0 || body.slippage > 100000)) return NextResponse.json({ error: "Invalid slippage assumption." }, { status: 400 });
     const db = getServerSupabase();
     if (!db) throw new Error("Saved paper trading is unavailable.");
+    if (body.deleteTrade !== undefined) {
+      const { data, error } = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_trade__").eq("signal_id", hashWebhookSecret(body.deleteTrade)).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: "Completed paper trade not found." }, { status: 404 });
+    }
+    if (body.stopAndClose) {
+      const { data } = await db.from("tradingview_signal_events").select("received_at").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_worker__").eq("signal_id", "state").maybeSingle();
+      const age = Date.now() - Date.parse(data?.received_at || "");
+      if (!Number.isFinite(age) || age < 0 || age > 15000) return NextResponse.json({ error: "Worker offline. Keep the Mac awake and reconnect before closing paper positions." }, { status: 409 });
+    }
     if (body.btcBreakoutEnabled === true) {
       const { data } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_worker__").eq("signal_id", "state").maybeSingle();
       const heartbeatAge = Date.now() - Date.parse(data?.received_at || ""), quoteAge = Date.now() - Date.parse(data?.raw_payload?.saved?.state?.previousTick?.timestamp || "");
@@ -74,7 +89,7 @@ export async function POST(request: Request) {
       action: "EXIT", received_at: now, signal_timestamp: now, status: "VALIDATED", accepted: false,
       execution_mode: "PAPER", stage: "SIGNAL_RECEIVED", reason: body.enabled ? "Paper enabled" : "Paper paused",
       signal: { id, strategyId: "__paper_control__", source: "TRADINGVIEW", symbol: body.market, action: "EXIT", timestamp: now, createdAt: now, metadata: {}, status: "VALIDATED" },
-      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
+      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
     return NextResponse.json({ books: await load(secret) });
