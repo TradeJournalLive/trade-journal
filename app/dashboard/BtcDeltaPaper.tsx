@@ -1,11 +1,17 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; trial: { startedAt: string; endsAt: string } };
 const n = (v: number | null | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const t = (v: string | null | undefined) => v ? new Date(v).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--";
 export default function BtcDeltaPaper({ book, legacyEnabled, onSaved }: { book?: BtcDeltaBook | null; legacyEnabled: boolean; onSaved: () => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  const quoteAge = now - Date.parse(book?.lastTickAt || "");
+  const feedFresh = Number.isFinite(quoteAge) && quoteAge >= -1000 && quoteAge <= 15000;
+  const normalStatuses = ["OPEN", "WAITING_FOR_SIGNAL", "WAITING_FOR_BREAKOUT"];
+  const issue = !book ? "BTC status unavailable" : !book.workerOnline ? "Worker offline or heartbeat missing" : !feedFresh || book.stale ? "Delta prices are stale" : book.workerStatus !== "RECEIVING_DELTA_BTCUSD" ? `Worker: ${book.workerStatus}` : !book.enabled ? "Paper entries are switched off" : !normalStatuses.includes(book.status) ? `Engine: ${book.status}` : null;
   async function toggle() {
     setBusy(true); setError("");
     try { const r = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, btcBreakoutEnabled: !book?.enabled }) }); const v = await r.json(); if (!r.ok) throw new Error(v.error); onSaved(); }
@@ -16,7 +22,11 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved }: { book?:
   return <section className="algo-os-card">
     <div className="algo-card-head"><h3>Delta India · BTCUSD perpetual</h3><label className="flex items-center gap-2 text-sm"><input aria-label="Delta BTC paper entries" role="switch" type="checkbox" checked={book?.enabled ?? false} disabled={busy || !book || (!book.enabled && (!book.workerOnline || book.stale))} onChange={() => void toggle()} />{book?.enabled ? "Entries armed" : "Entries off"}</label></div>
     {error && <p role="alert">{error}</p>}
-    <div role="status" className="algo-alert-box"><b>{book?.workerOnline ? book.stale ? "Worker online · quotes stale" : "Worker online · fresh Delta data" : "Delta worker offline"}</b><span>{book?.status || "Not started"}</span></div>
+    <div role="status" aria-live="polite" className={`flex flex-wrap items-center gap-3 border-l-4 px-4 py-3 ${issue ? "border-red-600 bg-red-50 text-red-900" : "border-emerald-600 bg-emerald-50 text-emerald-900"}`}>
+      <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${issue ? "bg-red-600" : "bg-emerald-600"}`} />
+      <div><b>{issue ? "RED · BTC needs attention" : "GREEN · BTC engine ready"}</b><p className="text-sm">{issue || (p ? "Position open · monitoring exits" : book?.setup ? "Signal received · waiting for breakout" : "Prices fresh · entries armed · waiting for a signal")}</p></div>
+    </div>
+    <p className="text-xs text-slate-500">Last TradingView signal: {t(book?.lastSignalAt)}. Engine health does not verify the TradingView alert is enabled.</p>
     <p className="text-xs text-slate-500">PAPER · 1 BTC fixed · 100× margin assumption · 24/7 · Last quote {t(book?.lastTickAt)}</p>
     <div className="grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-3">{[["Realized · USD gross", n(book?.realized)], ["Open P&L · USD gross", n(book?.unrealized)], ["Closed trades", book?.tradeCount ?? 0]].map(([label, value]) => <div key={label} className="space-y-2"><span className="block text-xs text-slate-500">{label}</span><strong className="block text-xl">{value}</strong></div>)}</div>
     <details className="border-b border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>Confirmed 1m high/low cross · valid 10 candles · no range filter</dd></div><div><dt>Stop / target</dt><dd>Signal candle stop · at +2R move stop to entry · target 3R</dd></div><div><dt>Other exits</dt><dd>Opposite signal · estimated isolated-margin breach</dd></div></dl></details>
