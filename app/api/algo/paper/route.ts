@@ -8,6 +8,7 @@ import { btcView, type BtcTrade } from "../../../lib/algo/btcPaperEngine";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Cookie" };
 
 async function load(secret: string) {
   const db = getServerSupabase();
@@ -43,14 +44,14 @@ async function load(secret: string) {
   throw new Error("History exceeds the paper engine limit; archive is required before continuing.");
 }
 export async function GET() {
-  const secret = connectionSecret();
+  const secret = await connectionSecret();
   if (!secret) return NextResponse.json({ error: "Connect TradingView in Integrations first." }, { status: 401 });
-  try { return NextResponse.json({ books: await load(secret) }); }
+  try { return NextResponse.json({ books: await load(secret) }, { headers: privateHeaders }); }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Paper history unavailable." }, { status: 503 }); }
 }
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
-  const secret = connectionSecret();
+  const secret = await connectionSecret();
   if (!secret) return NextResponse.json({ error: "Connect TradingView first." }, { status: 401 });
   try {
     const body = await request.json();
@@ -92,6 +93,6 @@ export async function POST(request: Request) {
       decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
-    return NextResponse.json({ books: await load(secret) });
+    return NextResponse.json({ books: await load(secret) }, { headers: privateHeaders });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save switch." }, { status: 503 }); }
 }

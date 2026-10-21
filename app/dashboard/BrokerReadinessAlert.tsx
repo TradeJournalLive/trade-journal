@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 
 import { useEffect, useState } from "react";
 
@@ -15,7 +16,7 @@ export default function BrokerReadinessAlert({ onConnect }: { onConnect: () => v
       if (checking) return;
       checking = true;
       try {
-        const response = await fetch("/api/brokers/fyers/quotes?symbols=NSE:NIFTY50-INDEX", { cache: "no-store", signal: controller.signal });
+        const response = await accountFetch("/api/brokers/fyers/quotes?symbols=NSE:NIFTY50-INDEX", { cache: "no-store", signal: controller.signal });
         const result = await response.json();
         const valid = response.ok && result.quotes?.some((quote: { symbol?: string; status?: string; ltp?: number }) => quote.symbol === "NSE:NIFTY50-INDEX" && quote.status === "ok" && typeof quote.ltp === "number" && Number.isFinite(quote.ltp) && quote.ltp > 0);
         if (!stopped) setState(valid ? "ready" : response.status === 401 ? "signin" : "unavailable");

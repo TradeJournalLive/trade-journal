@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 import { useEffect, useState } from "react";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; trial: { startedAt: string; endsAt: string } };
@@ -12,7 +13,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
     if (!window.confirm(action.stopAndClose ? "Pause BTC paper entries and close the open paper position at the next verified executable quote? Keep the Mac awake until closure is confirmed." : "Delete this paper trade from displayed history and performance? An audit record will be retained.")) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const r = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, ...action }) });
+      const r = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, ...action }) });
       const result = await r.json(); if (!r.ok) throw new Error(result.error);
       setNotice(action.stopAndClose ? "Stop & Close requested. Keep the Mac awake until no open position remains and entries show off." : "Trade deleted from history and performance. Audit retained."); onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save paper control."); }
@@ -25,7 +26,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
   const issue = !book ? "BTC status unavailable" : !book.workerOnline ? "Worker offline or heartbeat missing" : !feedFresh || book.stale ? "Delta prices are stale" : book.workerStatus !== "RECEIVING_DELTA_BTCUSD" ? `Worker: ${book.workerStatus}` : !book.enabled ? "Paper entries are switched off" : !normalStatuses.includes(book.status) ? `Engine: ${book.status}` : null;
   async function toggle() {
     setBusy(true); setError("");
-    try { const r = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, btcBreakoutEnabled: !book?.enabled }) }); const v = await r.json(); if (!r.ok) throw new Error(v.error); onSaved(); }
+    try { const r = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, btcBreakoutEnabled: !book?.enabled }) }); const v = await r.json(); if (!r.ok) throw new Error(v.error); onSaved(); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to change BTC switch."); }
     finally { setBusy(false); }
   }

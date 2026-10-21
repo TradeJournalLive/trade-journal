@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
@@ -31,7 +32,7 @@ export default function SignalPaperTrading() {
     if (signal?.aborted) controller.abort();
     setRefreshing(true);
     try {
-      const response = await fetch("/api/algo/paper", { cache: "no-store", signal: controller.signal });
+      const response = await accountFetch("/api/algo/paper", { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       if (id === requestId.current) { setBooks(result.books); setError(""); }
@@ -57,7 +58,7 @@ export default function SignalPaperTrading() {
     if (!books || busy) return;
     setBusy(true);
     try {
-      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: nextCandle === undefined ? !books[market].enabled : books[market].enabled, ...(nextCandle !== undefined ? { nextCandle, slippage: 0 } : {}) }) });
+      const response = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: nextCandle === undefined ? !books[market].enabled : books[market].enabled, ...(nextCandle !== undefined ? { nextCandle, slippage: 0 } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       setBooks(result.books);
@@ -72,7 +73,7 @@ export default function SignalPaperTrading() {
     if (!Number.isFinite(slippage) || slippage < 0) return;
     setBusy(true);
     try {
-      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: books[market].enabled, slippage }) });
+      const response = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market, enabled: books[market].enabled, slippage }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       setBooks(result.books); setError("");
@@ -83,7 +84,7 @@ export default function SignalPaperTrading() {
     if (!books || busy) return;
     setBusy(true);
     try {
-      const response = await fetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "NIFTY", enabled: books.NIFTY.enabled, niftyOptionsEnabled: !books.NIFTY.options?.enabled }) });
+      const response = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "NIFTY", enabled: books.NIFTY.enabled, niftyOptionsEnabled: !books.NIFTY.options?.enabled }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       setBooks(result.books); setError("");

@@ -8,6 +8,7 @@ const copy = new Module(filename, module);
 copy.require = id => {
   if (id === "next/headers") return { cookies: () => ({ get: () => undefined }) };
   if (id === "./signalStore") return {};
+  if (id === "./accountConnections") return {};
   return require(id);
 };
 copy._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, filename);

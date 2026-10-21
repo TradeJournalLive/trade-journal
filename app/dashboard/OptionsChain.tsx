@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { chainWindow } from "../lib/algo/chainWindow";
@@ -27,7 +28,7 @@ export default function OptionsChain({ calculatorMode = false }: { calculatorMod
     async function load() {
       setBusy(true);
       try {
-        const response = await fetch(`/api/brokers/fyers/chain?${new URLSearchParams({ symbol, expiry })}`, { cache: "no-store", signal: controller.signal });
+        const response = await accountFetch(`/api/brokers/fyers/chain?${new URLSearchParams({ symbol, expiry })}`, { cache: "no-store", signal: controller.signal });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error);
         if (!stopped) { setData(result); setError(""); }

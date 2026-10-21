@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const headers = { "Cache-Control": "no-store" };
   try {
-    const connection = await readFyers(fyersDevice());
+    const connection = await readFyers(await fyersDevice());
     if (!connection?.accessToken) return NextResponse.json({ error: "Sign in to FYERS first." }, { status: 401, headers });
     const params = new URL(request.url).searchParams;
     const symbol = params.get("symbol") || "NSE:NIFTY50-INDEX";

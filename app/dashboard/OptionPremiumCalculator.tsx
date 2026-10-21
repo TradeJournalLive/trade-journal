@@ -1,13 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { accountFetch } from "../lib/accountFetch";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { premiumCalculation } from "../lib/algo/premiumCalculator";
 type Reference = { symbol: string; candle: { openedAt: string; closedAt: string; low: number; close: number }; lotSize: number | null };
 type Snapshot = { symbol: string; ask: number | null; timestamp: number | string | null };
-const references = new Map<string, { value: Reference; at: number; bucket: number }>();
 const lotSizes = new Map<string, { value: number; at: number }>();
 const n = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 export default function OptionPremiumCalculator({ contract = "", initialQuote }: { contract?: string; initialQuote?: Snapshot }) {
+  const references = useRef(new Map<string, { value: Reference; at: number; bucket: number }>()).current;
   const [symbol, setSymbol] = useState(contract), [mode, setMode] = useState("MARKET"), [entry, setEntry] = useState(""), [lots, setLots] = useState("1"), [size, setSize] = useState("");
   const [reference, setReference] = useState<Reference | null>(null), [ask, setAsk] = useState<number | null>(null), [quoteAt, setQuoteAt] = useState<string | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false), [refresh, setRefresh] = useState(0);
   const [autoSize, setAutoSize] = useState<number | null>(null);
@@ -18,7 +19,7 @@ export default function OptionPremiumCalculator({ contract = "", initialQuote }:
     let stopped = false; const controller = new AbortController();
     const failed = (cause: unknown) => { if (!stopped) setError(previous => previous || (cause instanceof Error ? cause.message : "Unable to load premium data.")); };
     async function get(path: string) {
-      const response = await fetch(`${path}?${new URLSearchParams({ symbol })}`, { cache: "no-store", signal: controller.signal });
+      const response = await accountFetch(`${path}?${new URLSearchParams({ symbol })}`, { cache: "no-store", signal: controller.signal });
       const data = await response.json(); if (!response.ok) throw new Error(data.error); return data;
     }
     const cached = references.get(symbol), bucket = Math.floor(Date.now() / 300000);
@@ -43,13 +44,13 @@ export default function OptionPremiumCalculator({ contract = "", initialQuote }:
     const initialAt = Number(initialQuote?.timestamp) * 1000;
     if (refresh === 0 && initialQuote?.symbol === symbol && Number(initialQuote.ask) > 0 && Date.now() - initialAt >= 0 && Date.now() - initialAt <= 15000) {
       setAsk(initialQuote.ask); setQuoteAt(new Date(initialAt).toISOString());
-    } else void fetch(`/api/brokers/fyers/quotes?${new URLSearchParams({ symbols: symbol })}`, { cache: "no-store", signal: controller.signal }).then(async response => {
+    } else void accountFetch(`/api/brokers/fyers/quotes?${new URLSearchParams({ symbols: symbol })}`, { cache: "no-store", signal: controller.signal }).then(async response => {
       const data = await response.json(); if (!response.ok) throw new Error(data.error);
       const quote = data.quotes?.find((q: { symbol: string }) => q.symbol === symbol), price = Number(quote?.ask), stamp = Number(quote?.timestamp) * 1000;
       if (!stopped && quote?.status === "ok" && price > 0 && Number.isFinite(stamp)) { setAsk(price); setQuoteAt(new Date(stamp).toISOString()); }
     }).catch(failed);
     return () => { stopped = true; controller.abort(); };
-  }, [symbol, refresh, initialQuote]);
+  }, [symbol, refresh, initialQuote, references]);
   const [clock, setClock] = useState(Date.now());
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const quoteFresh = quoteAt && clock - Date.parse(quoteAt) >= 0 && clock - Date.parse(quoteAt) <= 15000;

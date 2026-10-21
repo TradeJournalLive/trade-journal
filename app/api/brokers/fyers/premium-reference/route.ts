@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   try {
     const symbol = new URL(request.url).searchParams.get("symbol") || "";
     if (!/^NSE:[A-Z0-9]{4,55}(CE|PE)$/.test(symbol)) return NextResponse.json({ error: "Select an NSE option contract." }, { status: 400, headers });
-    const connection = await readFyers(fyersDevice());
+    const connection = await readFyers(await fyersDevice());
     if (!connection?.accessToken) return NextResponse.json({ error: "Sign in to FYERS to load option candles." }, { status: 401, headers });
     const end = Math.floor(Date.now() / 1000);
     const url = new URL("https://api-t1.fyers.in/data/history");

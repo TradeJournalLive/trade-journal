@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const headers = { "Cache-Control": "no-store" };
   try {
-    const connection = await readFyers(fyersDevice());
+    const connection = await readFyers(await fyersDevice());
     if (!connection?.accessToken) return NextResponse.json({ error: "Sign in to FYERS first." }, { status: 401, headers });
     const symbols = new URL(request.url).searchParams.get("symbols") || "NSE:NIFTY50-INDEX";
     if (symbols.split(",").length > 5 || !symbols.split(",").every(symbol => /^NSE:[A-Z0-9&_-]{1,60}$/.test(symbol))) return NextResponse.json({ error: "Up to five NSE symbols are allowed." }, { status: 400, headers });

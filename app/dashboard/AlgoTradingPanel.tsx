@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -355,7 +356,7 @@ export default function AlgoTradingPanel() {
     }
 
     try {
-      const response = await fetch("/api/algo/signals", secret ? {
+      const response = await accountFetch("/api/algo/signals", secret ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
@@ -400,7 +401,7 @@ export default function AlgoTradingPanel() {
     setStatus(`Sending ${action} test signal to the TradingView webhook...`);
 
     try {
-      const response = await fetch("/api/v1/webhooks/tradingview", {
+      const response = await accountFetch("/api/v1/webhooks/tradingview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -492,7 +493,7 @@ export default function AlgoTradingPanel() {
     setStatus("Testing Dhan connection with read-only checks...");
 
     try {
-      const response = await fetch("/api/brokers/dhan/test", {
+      const response = await accountFetch("/api/brokers/dhan/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId, accessToken })
@@ -539,7 +540,7 @@ export default function AlgoTradingPanel() {
     setStatus("Running Dhan order dry-run preview...");
 
     try {
-      const response = await fetch("/api/brokers/dhan/order", {
+      const response = await accountFetch("/api/brokers/dhan/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId, accessToken, ticket: dhanOrderTicket, dryRun: true })
@@ -577,7 +578,7 @@ export default function AlgoTradingPanel() {
     setStatus("Sending live order to Dhan...");
 
     try {
-      const response = await fetch("/api/brokers/dhan/order", {
+      const response = await accountFetch("/api/brokers/dhan/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId, accessToken, ticket: dhanOrderTicket, dryRun: false, liveConfirm: dhanLiveConfirm })
@@ -609,7 +610,7 @@ export default function AlgoTradingPanel() {
       if (instrumentStrike.trim()) params.set("strike", instrumentStrike.trim());
       if (instrumentExpiry.trim()) params.set("expiry", instrumentExpiry.trim());
 
-      const fallbackResponse = await fetch(`/api/brokers/dhan/instruments?${params.toString()}`);
+      const fallbackResponse = await accountFetch(`/api/brokers/dhan/instruments?${params.toString()}`);
       const fallbackResult = (await fallbackResponse.json()) as { matches?: InstrumentMatch[]; error?: string };
       if (!fallbackResponse.ok) {
         throw new Error(fallbackResult.error || reason || "Fallback contract search failed.");
@@ -634,7 +635,7 @@ export default function AlgoTradingPanel() {
 
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 15000);
-      const response = await fetch("/api/brokers/dhan/option-chain", {
+      const response = await accountFetch("/api/brokers/dhan/option-chain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -907,7 +908,7 @@ export default function AlgoTradingPanel() {
               <span className={`algo-pill ${webhookConnected ? "good" : "pending"}`}>{webhookConnected ? "Connection saved on this browser" : "Connect once with your webhook secret"}</span>
               <button type="button" className="algo-action secondary" onClick={() => refreshSignalLog()} disabled={signalLogLoading}>{webhookConnected ? "Check connection" : "Save connection"}</button>
               {webhookConnected && <button type="button" className="algo-action secondary" onClick={async () => {
-                const response = await fetch("/api/algo/signals", { method: "DELETE" });
+                const response = await accountFetch("/api/algo/signals", { method: "DELETE" });
                 if (response.ok) { setWebhookConnected(false); setTvTestSecret(""); setSignalEvents([]); }
               }}>Disconnect</button>}
             </div>

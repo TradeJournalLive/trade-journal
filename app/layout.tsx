@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import AccountSessionBridge from "./AccountSessionBridge";
 
 export const metadata: Metadata = {
   title: "Trade Journal",
@@ -13,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><AccountSessionBridge>{children}</AccountSessionBridge></body>
     </html>
   );
 }

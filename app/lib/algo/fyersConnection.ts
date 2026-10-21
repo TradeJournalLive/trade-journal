@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { getServerSupabase, hashWebhookSecret } from "./signalStore";
+import { accountId, bindAccountConnection, readAccountConnection } from "./accountConnections";
 
 const COOKIE = "fyers_device";
 const STRATEGY = "__fyers_connection__";
@@ -22,11 +23,19 @@ export function openFyers(value: string): FyersConnection {
   cipher.setAuthTag(data.subarray(12, 28));
   return JSON.parse(Buffer.concat([cipher.update(data.subarray(28)), cipher.final()]).toString("utf8"));
 }
-export function fyersDevice(create = false) {
+export function legacyFyersDevice() {
   const previous = cookies().get(COOKIE)?.value;
   if (previous && /^[a-f0-9]{64}$/.test(previous)) return previous;
+  return "";
+}
+export async function fyersDevice(create = false) {
+  const user = await accountId();
+  if (!user) throw new Error("Sign in to access your FYERS connection.");
+  const saved = await readAccountConnection(user, "fyers");
+  if (saved) return saved;
   if (!create) return "";
   const id = randomBytes(32).toString("hex");
+  await bindAccountConnection(user, "fyers", id);
   cookies().set(COOKIE, id, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/api/brokers/fyers", maxAge: 30 * 86400 });
   return id;
 }

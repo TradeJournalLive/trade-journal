@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const finish = (status: string) => { destination.searchParams.set("fyers", status); const result = NextResponse.redirect(destination); result.headers.set("Cache-Control", "no-store"); result.headers.set("Referrer-Policy", "no-referrer"); return result; };
   try {
     const params = new URL(request.url).searchParams;
-    const id = fyersDevice();
+    const id = await fyersDevice();
     const connection = await readFyers(id);
     const state = params.get("state") || "";
     const expected = connection?.state || "";

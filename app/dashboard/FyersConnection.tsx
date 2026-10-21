@@ -1,4 +1,5 @@
 "use client";
+import { accountFetch } from "../lib/accountFetch";
 import { useEffect, useState } from "react";
 
 type Status = { configured: boolean; authenticated: boolean; callback: string };
@@ -14,7 +15,7 @@ export default function FyersConnection() {
   async function testChain() {
     setBusy(true); setError(""); setChain([]);
     try {
-      const response = await fetch("/api/brokers/fyers/chain", { cache: "no-store" });
+      const response = await accountFetch("/api/brokers/fyers/chain", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setChain(data.contracts);
@@ -23,7 +24,7 @@ export default function FyersConnection() {
     finally { setBusy(false); }
   }
   async function refresh() {
-    const response = await fetch("/api/brokers/fyers", { cache: "no-store" });
+    const response = await accountFetch("/api/brokers/fyers", { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     setStatus(data);
@@ -36,7 +37,7 @@ export default function FyersConnection() {
     const appId = String(fields.get("appId") || "").trim();
     const secret = String(fields.get("secret") || "").trim();
     try {
-      const response = await fetch("/api/brokers/fyers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(status?.configured ? {} : { appId, secret }) });
+      const response = await accountFetch("/api/brokers/fyers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(status?.configured ? {} : { appId, secret }) });
       const data = await response.json();
       form.reset();
       if (!response.ok) throw new Error(data.error);
@@ -49,7 +50,7 @@ export default function FyersConnection() {
   async function test() {
     setBusy(true); setError(""); setQuotes([]); setCheckedAt("");
     try {
-      const response = await fetch(`/api/brokers/fyers/quotes?${new URLSearchParams({ symbols })}`, { cache: "no-store" });
+      const response = await accountFetch(`/api/brokers/fyers/quotes?${new URLSearchParams({ symbols })}`, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setQuotes(data.quotes); setCheckedAt(data.checkedAt);
@@ -59,7 +60,7 @@ export default function FyersConnection() {
   async function disconnect() {
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/brokers/fyers", { method: "DELETE" });
+      const response = await accountFetch("/api/brokers/fyers", { method: "DELETE" });
       if (!response.ok) throw new Error("Unable to disconnect FYERS.");
       setQuotes([]); setCheckedAt(""); await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Disconnect failed."); }
