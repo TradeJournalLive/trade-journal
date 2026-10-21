@@ -139,3 +139,18 @@ test('OAuth requires exact account, state, unexpired cookie and PKCE; callbacks 
   r.jar.set('google_sheets_oauth', cookie);
   assert.match((await r.callback.GET(new Request(callbackUrl))).headers.get('location'), /connection_failed/);
 });
+test('optional reporting scheduler cannot reject a durably saved TradingView signal', async () => {
+  const crypto = require('node:crypto');
+  const route = load('app/api/v1/webhooks/tradingview/route.ts', {
+    'next/server': { NextResponse: { json: (body, opts) => Response.json(body, opts) } },
+    '@vercel/functions': { waitUntil() { throw new Error('no scheduler'); } },
+    '../../../../lib/algo/googleSheets': { syncWebhookSheet: async () => {} },
+    '../../../../lib/algo/automation': { evaluateAlgoSignal: () => ({ accepted: true, reasons: [], stage: 'SIGNAL_RECEIVED' }), recordAlgoEvent() {} },
+    '../../../../lib/algo/niftySignal': { niftySignalCandle: () => null },
+    '../../../../lib/algo/signalStore': { persistAlgoSignalEvent: async () => ({ ok: true }), hashWebhookSecret: value => crypto.createHash('sha256').update(value).digest('hex') }
+  });
+  delete process.env.TRADINGVIEW_WEBHOOK_SECRET; delete process.env.TRADINGVIEW_WEBHOOK_HMAC_SECRET;
+  const response = await route.POST(new Request('https://panel.test/api/v1/webhooks/tradingview', { method: 'POST', body: JSON.stringify({ secret: 'test-only', strategyId: 'strategy', signalId: 'test', symbol: 'NSE:NIFTY', action: 'BUY', timestamp: new Date().toISOString(), price: 100 }) }));
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).status, 'ACCEPTED');
+});
