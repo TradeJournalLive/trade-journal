@@ -85,10 +85,11 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100,
   }
   const rows = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await query.range(offset, offset + (date ? 999 : limit - 1));
+    const paginated = Boolean(date) || limit === 0;
+    const { data, error } = await query.range(offset, offset + (paginated ? 999 : limit - 1));
     if (error) return { ok: false, events: [], reason: error.message };
     rows.push(...(data ?? []));
-    if (!date || !data || data.length < 1000) break;
+    if (!paginated || !data || data.length < 1000) break;
   }
 
   return {

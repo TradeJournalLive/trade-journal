@@ -72,6 +72,13 @@ test('disconnect does not release ownership to another account', async () => {
   await assert.rejects(api.bindAccountConnection('user-b', 'fyers', 'original-device'), /another account/);
   await api.bindAccountConnection('user-a', 'fyers', 'original-device');
 });
+test('background Sheets lookup requires both ownership claim and the current account binding', async () => {
+  assert.equal(await api.webhookAccountOwner('unknown'), null);
+  await api.bindAccountConnection('user-a', 'webhook', 'report-secret');
+  assert.equal(await api.webhookAccountOwner('report-secret'), 'user-a');
+  await api.unlinkAccountConnection('user-a', 'webhook');
+  assert.equal(await api.webhookAccountOwner('report-secret'), null);
+});
 test('storage errors and modified ciphertext fail closed', async () => {
   await api.bindAccountConnection('user-a', 'webhook', 'private-test');
   const row = [...rows.values()].find(r => r.raw_payload.sealed);

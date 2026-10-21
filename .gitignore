@@ -4,4 +4,6 @@ node_modules
 .DS_Store
 .vercel
 .paper-worker
+JSONs/
+client_secret_*.json
 tsconfig.tsbuildinfo

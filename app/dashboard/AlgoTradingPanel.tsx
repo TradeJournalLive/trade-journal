@@ -7,6 +7,7 @@ import SignalPaperTrading from "./SignalPaperTrading";
 import FyersConnection from "./FyersConnection";
 import OptionsChain from "./OptionsChain";
 import BrokerReadinessAlert from "./BrokerReadinessAlert";
+import GoogleSheetsConnection from "./GoogleSheetsConnection";
 
 type AlgoSection =
   | "dashboard"
@@ -1008,6 +1009,7 @@ export default function AlgoTradingPanel() {
     const webhookUrl = "/api/v1/webhooks/tradingview";
     const filtered = signalEvents.filter(event => signalMarket === "NIFTY" ? event.signal.symbol === "NSE:NIFTY" : signalMarket === "BTC" ? event.signal.symbol === "DELTAIN:BTCUSD.P" : /GOLD|XAU/i.test(event.signal.symbol));
     return <div className="space-y-5">
+      <GoogleSheetsConnection />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div role="tablist" aria-label="Signal instruments" className="flex gap-2">{[["NIFTY", "NIFTY"], ["BTC", "Delta BTC"], ["GOLD", "Gold"]].map(([id, label]) => <button type="button" key={id} role="tab" aria-selected={signalMarket === id} onClick={() => setSignalMarket(id)} className={`algo-action ${signalMarket === id ? "primary" : "secondary"}`}>{label}</button>)}</div>
         <button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action secondary">{signalLogLoading ? "Refreshing..." : "Refresh"}</button>

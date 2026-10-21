@@ -56,3 +56,11 @@ export async function unlinkAccountConnection(user: string, kind: Kind) {
   const { error } = await db().from("tradingview_signal_events").delete().eq("secret_hash", owner(user)).eq("strategy_id", STRATEGY).eq("signal_id", kind);
   if (error) throw new Error("Unable to disconnect account connection.");
 }
+
+// Background reporting resolves only the current owner of an already-linked webhook.
+export async function webhookAccountOwner(secret: string) {
+  const claim = await db().from("tradingview_signal_events").select("raw_payload").eq("secret_hash", internalKey(`claim:webhook:${secret}`)).eq("strategy_id", STRATEGY).eq("signal_id", "webhook").maybeSingle();
+  if (claim.error) throw new Error("Unable to resolve signal owner.");
+  const user = claim.data?.raw_payload?.user;
+  return typeof user === "string" && await readAccountConnection(user, "webhook") === secret ? user : null;
+}

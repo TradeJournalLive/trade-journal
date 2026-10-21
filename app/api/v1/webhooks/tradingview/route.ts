@@ -4,9 +4,12 @@ import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload } from 
 import { persistAlgoSignalEvent } from "../../../../lib/algo/signalStore";
 import { hashWebhookSecret } from "../../../../lib/algo/signalStore";
 import { niftySignalCandle } from "../../../../lib/algo/niftySignal";
+import { waitUntil } from "@vercel/functions";
+import { syncWebhookSheet } from "../../../../lib/algo/googleSheets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type TradingViewAction = "BUY" | "SELL" | "EXIT" | "CLOSE_LONG" | "CLOSE_SHORT";
 
@@ -218,6 +221,7 @@ export async function POST(request: Request) {
     });
     if (!persistence.ok) return jsonError("Signal was not durably saved. Retry delivery.", 503);
     seenSignals.set(dedupeKey, receivedAt);
+    waitUntil(syncWebhookSheet(String(payload.secret ?? "")));
 
     return NextResponse.json(
       {
