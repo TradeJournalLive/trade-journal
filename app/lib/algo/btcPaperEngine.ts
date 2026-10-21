@@ -54,7 +54,6 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   if (s.pendingExit === "COMPLETED_15M_TRAIL") s.pendingExit = null;
   if (s.previousTick && Date.parse(tick.timestamp) - Date.parse(s.previousTick.timestamp) > 15000) {
     s.setup = null;
-    s.enabled = false;
     if (s.position) {
       s.position.monitoringGap ??= { from: s.previousTick.timestamp, to: tick.timestamp };
       s.pendingExit = "MONITORING_INTERRUPTED";

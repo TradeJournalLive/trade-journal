@@ -96,14 +96,12 @@ async function main() {
   const row = { ...rowBase('state', lease, strategy), raw_payload: { workerId, saved, workerStatus } };
   const claim = old.data ? await db.from(table).update(row).eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').eq('received_at', old.data.received_at).select('id') : await db.from(table).insert(row).select('id');
   if (claim.error || claim.data?.length !== 1) throw new Error('BTC_LEASE_UNAVAILABLE'); save();
-  if (Date.now() >= Date.parse(saved.endsAt) && !saved.state.position) { saved.state.enabled = false; workerStatus = 'TRIAL_COMPLETE'; await publish(); return; }
   product = await publicGet('products/BTCUSD');
   if (product.symbol !== 'BTCUSD' || product.contract_type !== 'perpetual_futures' || product.notional_type !== 'vanilla' || product.state !== 'live' || product.trading_status !== 'operational' || Math.abs(1 / Number(product.contract_value) - Math.round(1 / Number(product.contract_value))) > 1e-8 || Number(product.initial_margin) > 1) throw new Error('BTC_CONTRACT_NOT_SUPPORTED');
   await history(); connect(); let published = 0, historyAt = Date.now();
   console.log('Delta BTC public-data paper worker started. No order API.');
   while (true) {
     await new Promise(r => setTimeout(r, 1000)); await poll();
-    if (Date.now() >= Date.parse(saved.endsAt)) { saved.state.enabled = false; saved.state.setup = null; if (!saved.state.position) { workerStatus = 'TRIAL_COMPLETE'; await publish(); return; } }
     if (Date.now() - historyAt > 30000) { historyAt = Date.now(); try { await history(); } catch { workerStatus = 'HISTORY_REQUEST_FAILED'; } }
     if (socket.readyState === WebSocket.CLOSED) connect();
     else if (lastFrame && Date.now() - lastFrame > 35000) socket.terminate();

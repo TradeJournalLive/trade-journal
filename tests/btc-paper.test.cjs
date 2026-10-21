@@ -129,13 +129,23 @@ test('short 2R uses executable ask and does not require 15m history', () => {
   const closed = btcTick(s, tick(5, 79998, 79997, 79999));
   assert.equal(closed.trades[0].reason, 'COST_TO_COST_STOP');
 });
-test('monitoring gaps pause entries and exclude post-gap exits from verified totals', () => {
+test('monitoring gaps preserve the entries switch and exclude post-gap exits from verified totals', () => {
   const s = btcTick(entry(), tick(30, 80500));
-  assert.equal(s.enabled, false);
+  assert.equal(s.enabled, true);
   assert.equal(s.trades[0].reason, 'MONITORING_INTERRUPTED');
   assert.ok(s.trades[0].monitoringGap);
   assert.equal(btcView(s, time(31)).realized, 0);
   assert.equal(btcView(s, time(31)).tradeCount, 0);
+});
+test('gap recovery discards old setups without switching off or resuming them', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
+  s = btcTick(s, tick(2, 80099));
+  s = btcTick(s, tick(30, 80101));
+  assert.equal(s.enabled, true); assert.equal(s.setup, null); assert.equal(s.position, null);
+  s = btcTick(s, tick(31, 80099));
+  assert.equal(s.status, 'WAITING_FOR_SIGNAL'); assert.equal(s.position, null);
+  const manualOff = { ...s, enabled: false };
+  assert.equal(btcTick(manualOff, tick(55, 80090)).enabled, false);
 });
 test('gap interruption survives insufficient exit depth and restart', () => {
   const quote = tick(30, 80500); quote.bidBtc = 0;
