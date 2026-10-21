@@ -132,7 +132,7 @@ test('short 2R uses executable ask and does not require 15m history', () => {
 test('monitoring gaps preserve the entries switch and exclude post-gap exits from verified totals', () => {
   const s = btcTick(entry(), tick(30, 80500));
   assert.equal(s.enabled, true);
-  assert.equal(s.trades[0].reason, 'MONITORING_INTERRUPTED');
+  assert.equal(s.trades[0].reason, 'TARGET_3R');
   assert.ok(s.trades[0].monitoringGap);
   assert.equal(btcView(s, time(31)).realized, 0);
   assert.equal(btcView(s, time(31)).tradeCount, 0);
@@ -153,7 +153,7 @@ test('gap interruption survives insufficient exit depth and restart', () => {
   assert.ok(s.position.monitoringGap);
   assert.equal(btcView(s, time(31)).unrealized, null);
   const closed = btcTick(JSON.parse(JSON.stringify(s)), tick(31, 80500));
-  assert.equal(closed.trades[0].reason, 'MONITORING_INTERRUPTED');
+  assert.equal(closed.trades[0].reason, 'TARGET_3R');
 });
 test('manual stop request closes at executable quote without fabricating a fill', () => {
   const s = entry(); s.enabled = false; s.setup = null; s.pendingExit = 'MANUAL_STOP_AND_CLOSE';
@@ -161,6 +161,24 @@ test('manual stop request closes at executable quote without fabricating a fill'
   assert.equal(closed.trades[0].reason, 'MANUAL_STOP_AND_CLOSE');
   assert.equal(closed.trades[0].exit, 80109);
   assert.equal(closed.position, null);
+});
+test('fresh quotes can execute stops even when last traded price is old', () => {
+  const quote = tick(30, 80101, 79999, 80000); quote.tradeAt = time(3);
+  const closed = btcTick(entry(), quote);
+  assert.equal(closed.trades[0].reason, 'SIGNAL_CANDLE_STOP');
+  assert.equal(closed.trades[0].exit, 79999);
+});
+test('brief quote gap does not force a position closed', () => {
+  const s = btcTick(entry(), tick(20, 80110));
+  assert.ok(s.position); assert.ok(s.position.monitoringGap);
+  assert.equal(s.trades.length, 0); assert.equal(s.enabled, true);
+  assert.equal(s.pendingExit, null);
+});
+test('old last trade alone cannot create a breakout entry', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
+  s = btcTick(s, tick(2, 80099));
+  const quote = tick(10, 80101); quote.tradeAt = time(1);
+  assert.equal(btcTick(s, quote).position, null);
 });
 test('restart checkpoints preserve gross P&L and never add leverage exposure', () => {
   const s = btcTick(entry(), tick(4, 80410, 80409, 80411)), v = btcView(s, time(5));

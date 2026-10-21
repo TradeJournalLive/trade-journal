@@ -12,11 +12,18 @@ const owner = hash(config.webhookSecret), workerId = crypto.randomUUID(), strate
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const directory = path.resolve('.paper-worker/btc'); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
 const checkpoint = path.join(directory, 'checkpoint.json'), now = () => new Date().toISOString();
-let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, trail, product, after;
+let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, trail, product, after, lastRejectedLog = 0;
 const seenRows = new Set(), persisted = new Set();
 function audit(kind, data) { fs.appendFileSync(path.join(directory, `${now().slice(0, 10)}.jsonl`), JSON.stringify({ at: now(), kind, data }) + '\n', { mode: 0o600 }); }
 function save() { if (!saved) return; saved.savedAt = now(); saved.owner = owner; fs.writeFileSync(`${checkpoint}.tmp`, JSON.stringify(saved), { mode: 0o600 }); fs.renameSync(`${checkpoint}.tmp`, checkpoint); }
-function update(next) { const old = saved.state; saved.state = next; if (old.position?.openedAt !== next.position?.openedAt || old.trades.length !== next.trades.length) save(); }
+function update(next) {
+  const old = saved.state;
+  if (old.status !== next.status || old.setup?.id !== next.setup?.id || old.trades.length !== next.trades.length) {
+    audit('DECISION', { status: next.status, priorStatus: old.status, signalId: old.setup?.id || next.setup?.id, at: now() });
+  }
+  saved.state = next;
+  if (old.position?.openedAt !== next.position?.openedAt || old.trades.length !== next.trades.length) save();
+}
 async function publicGet(endpoint) {
   const r = await fetch(`https://api.india.delta.exchange/v2/${endpoint}`, { signal: AbortSignal.timeout(10000) });
   const v = await r.json(); if (!r.ok || v.success !== true) throw new Error('DELTA_PUBLIC_DATA_UNAVAILABLE'); return v.result;
@@ -36,14 +43,19 @@ function onMessage(raw) {
     if (!trade || Date.parse(at) >= Date.parse(trade.at)) trade = { price: Number(v.p), at };
   }
   if (v.sy === 'MARK:BTCUSD' && v.type === 'mark_price') mark = { price: Number(v.p), at: new Date(Number(v.ts) / 1000).toISOString() };
-  if (!['ob_l1', 'trades', 'mark_price'].includes(v.type) || !quote || !trade || !mark) return;
+  if (!['ob_l1', 'trades', 'mark_price'].includes(v.type) || !quote || !trade) return;
   const timestamp = now();
-  const tick = { timestamp, tradeAt: trade.at, quoteAt: quote.at, price: trade.price, bid: quote.bid, ask: quote.ask, bidBtc: quote.bidBtc, askBtc: quote.askBtc, mark: mark.price, markAt: mark.at, maintenanceRate: Number(product.maintenance_margin) / 100, previous15m: trail };
+  const tick = { timestamp, tradeAt: trade.at, quoteAt: quote.at, price: trade.price, bid: quote.bid, ask: quote.ask, bidBtc: quote.bidBtc, askBtc: quote.askBtc, mark: mark?.price ?? 0, markAt: mark?.at ?? '', maintenanceRate: Number(product.maintenance_margin) / 100, previous15m: trail };
   const next = btcTick(saved.state, tick);
-  if (next.previousTick?.timestamp === timestamp) { audit('TICK', tick); update(next); workerStatus = 'RECEIVING_DELTA_BTCUSD'; }
+  if (next.previousTick?.timestamp === timestamp) { audit('TICK', tick); workerStatus = 'RECEIVING_DELTA_BTCUSD'; }
+  else if (Date.now() - lastRejectedLog > 30000) {
+    lastRejectedLog = Date.now();
+    audit('REJECTED_UPDATE', { quoteAgeMs: Date.parse(timestamp) - Date.parse(quote.at), tradeAgeMs: Date.parse(timestamp) - Date.parse(trade.at), bid: quote.bid, ask: quote.ask, status: next.status });
+  }
+  update(next);
 }
 function connect() {
-  quote = undefined; trade = undefined; mark = undefined;
+  quote = undefined;
   socket = new WebSocket('wss://public-socket.india.delta.exchange');
   socket.on('open', () => { lastFrame = Date.now(); workerStatus = 'SOCKET_CONNECTED_WAITING_FOR_QUOTES'; socket.send(JSON.stringify({ type: 'subscribe', payload: { channels: [{ name: 'ob_l1', symbols: ['BTCUSD'] }, { name: 'trades', symbols: ['BTCUSD'] }, { name: 'mark_price', symbols: ['MARK:BTCUSD'] }] } })); socket.send(JSON.stringify({ type: 'enable_heartbeat' })); });
   socket.on('message', raw => { try { onMessage(raw); } catch { workerStatus = 'STOPPED_DELTA_PROCESSING_ERROR'; console.error(workerStatus); save(); process.exit(1); } });
@@ -80,7 +92,7 @@ async function poll() {
     const candle = v.signal?.metadata?.btcPaper;
     if (v.signal?.metadata?.diagnostic || v.raw_payload?.automation?.mode !== 'PAPER' || candle?.kind !== 'SIGNAL' || v.signal.timeframe !== '1' || !['BUY', 'SELL'].includes(v.signal.action)) continue;
     const signal = { id: v.signal.id, action: v.signal.action, symbol: v.signal.symbol, receivedAt: v.received_at, closedAt: candle.closedAt, high: candle.high, low: candle.low, signalPrice: v.signal.price };
-    audit('SIGNAL', signal); update(btcSignal(saved.state, signal));
+    audit('SIGNAL', signal); const next = btcSignal(saved.state, signal); audit('SIGNAL_DECISION', { signalId: signal.id, status: next.status, enabled: next.enabled }); update(next);
   }
   if (r.data?.length) after = new Date(Date.parse(r.data[r.data.length - 1].received_at) - 60000).toISOString();
 }
@@ -98,13 +110,12 @@ async function main() {
   if (claim.error || claim.data?.length !== 1) throw new Error('BTC_LEASE_UNAVAILABLE'); save();
   product = await publicGet('products/BTCUSD');
   if (product.symbol !== 'BTCUSD' || product.contract_type !== 'perpetual_futures' || product.notional_type !== 'vanilla' || product.state !== 'live' || product.trading_status !== 'operational' || Math.abs(1 / Number(product.contract_value) - Math.round(1 / Number(product.contract_value))) > 1e-8 || Number(product.initial_margin) > 1) throw new Error('BTC_CONTRACT_NOT_SUPPORTED');
-  await history(); connect(); let published = 0, historyAt = Date.now();
+  connect(); let published = 0;
   console.log('Delta BTC public-data paper worker started. No order API.');
   while (true) {
     await new Promise(r => setTimeout(r, 1000)); await poll();
-    if (Date.now() - historyAt > 30000) { historyAt = Date.now(); try { await history(); } catch { workerStatus = 'HISTORY_REQUEST_FAILED'; } }
     if (socket.readyState === WebSocket.CLOSED) connect();
-    else if (socket.readyState === WebSocket.OPEN && ((quote && Date.now() - Date.parse(quote.at) > 20000) || (trade && Date.now() - Date.parse(trade.at) > 20000))) { workerStatus = 'PRICES_STALE_RECONNECTING'; socket.terminate(); }
+    else if (socket.readyState === WebSocket.OPEN && quote && Date.now() - Date.parse(quote.at) > 20000) { workerStatus = 'QUOTES_STALE_RECONNECTING'; audit('FEED_HEALTH', { reason: workerStatus, quoteAgeMs: Date.now() - Date.parse(quote.at), tradeAgeMs: trade ? Date.now() - Date.parse(trade.at) : null }); socket.terminate(); }
     else if (lastFrame && Date.now() - lastFrame > 35000) socket.terminate();
     if (Date.now() - published > 5000) { await publish(); published = Date.now(); }
   }

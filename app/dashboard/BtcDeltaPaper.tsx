@@ -36,7 +36,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
     {error && <p role="alert">{error}</p>}
     <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={busy || !book?.workerOnline} onClick={() => void control({ stopAndClose: true })} className="algo-action danger">Stop &amp; Close paper positions</button><span className="text-xs text-slate-500">Keep the Mac awake until closure is confirmed.</span></div>
     {notice && <p role="status" className="text-sm">{notice}</p>}
-    {p?.monitoringGap && <p role="alert" className="font-bold text-red-700">Monitoring interrupted. This position is excluded from verified performance; closure awaits an executable quote.</p>}
+    {p?.monitoringGap && <p role="alert" className="font-bold text-red-700">Monitoring interrupted. This position is excluded from verified performance. Monitoring continues; exits follow the configured rules.</p>}
     <div role="status" aria-live="polite" className={`flex flex-wrap items-center gap-3 border-l-4 px-4 py-3 ${checking ? "border-amber-500 bg-amber-50 text-amber-950" : issue ? "border-red-600 bg-red-50 text-red-900" : "border-emerald-600 bg-emerald-50 text-emerald-900"}`}>
       <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${checking ? "bg-amber-500" : issue ? "bg-red-600" : "bg-emerald-600"}`} />
       <div><b>{checking ? "Checking latest BTC status..." : issue ? "RED · BTC needs attention" : "GREEN · BTC engine ready"}</b><p className="text-sm">{checking ? "Refreshing panel snapshot; connection not yet verified." : issue || (p ? "Position open · monitoring exits" : book?.setup ? "Signal received · waiting for breakout" : "Prices fresh · entries armed · waiting for a signal")}</p></div>

@@ -7,7 +7,7 @@ export type BtcTrade = BtcPosition & { exit: number; closedAt: string; reason: s
 export type BtcState = { enabled: boolean; setup: BtcSignal | null; position: BtcPosition | null; previousTick: BtcTick | null; priceHistory?: PriceWindow[]; status: string; pendingExit: string | null; seen: string[]; trades: BtcTrade[]; realizedBase: number; tradeCountBase: number; lastSignalAt: string | null };
 export function emptyBtcState(): BtcState { return { enabled: false, setup: null, position: null, previousTick: null, status: "DISABLED", pendingExit: null, seen: [], trades: [], realizedBase: 0, tradeCountBase: 0, lastSignalAt: null }; }
 const positive = (v: number) => Number.isFinite(v) && v > 0;
-const fresh = (at: string, now: string) => { const age = Date.parse(now) - Date.parse(at); return Number.isFinite(age) && age >= 0 && age <= 5000; };
+const fresh = (at: string, now: string) => { const age = Date.parse(now) - Date.parse(at); return Number.isFinite(age) && age >= -1000 && age <= 5000; };
 export function btcSignal(state: BtcState, signal: BtcSignal) {
   const s = structuredClone(state);
   if (s.seen.includes(signal.id)) return s;
@@ -34,7 +34,7 @@ export function btcSignal(state: BtcState, signal: BtcSignal) {
 }
 export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   const s = structuredClone(state);
-  if (!positive(tick.price) || !fresh(tick.tradeAt, tick.timestamp) || !fresh(tick.quoteAt, tick.timestamp)
+  if (!positive(tick.price) || !fresh(tick.quoteAt, tick.timestamp)
     || !positive(tick.bid) || !positive(tick.ask) || tick.ask < tick.bid
     || (s.previousTick && Date.parse(tick.timestamp) <= Date.parse(s.previousTick.timestamp))) {
     if (s.setup && positive(tick.price) && fresh(tick.tradeAt, tick.timestamp)
@@ -51,12 +51,11 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   if (last?.second === second) { last.last = at; last.low = Math.min(last.low, tick.price); last.high = Math.max(last.high, tick.price); last.gap = Math.max(last.gap, gap); }
   else history.push({ second, first: at, last: at, low: tick.price, high: tick.price, gap });
   s.priceHistory = history;
-  if (s.pendingExit === "COMPLETED_15M_TRAIL") s.pendingExit = null;
+  if (s.pendingExit === "COMPLETED_15M_TRAIL" || s.pendingExit === "MONITORING_INTERRUPTED") s.pendingExit = null;
   if (s.previousTick && Date.parse(tick.timestamp) - Date.parse(s.previousTick.timestamp) > 15000) {
     s.setup = null;
     if (s.position) {
       s.position.monitoringGap ??= { from: s.previousTick.timestamp, to: tick.timestamp };
-      s.pendingExit = "MONITORING_INTERRUPTED";
     }
     s.status = "MONITORING_INTERRUPTED";
   }
@@ -86,7 +85,7 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
     const setup = s.setup, age = Date.parse(tick.timestamp) - Date.parse(setup.closedAt);
     if (!setup.breakoutVerified) { s.setup = null; s.status = "UNVERIFIABLE_BREAKOUT_HISTORY"; }
     else if (age >= 10 * 60000) { s.setup = null; s.status = "SETUP_EXPIRED"; }
-    else if (age >= 0 && s.previousTick && fresh(s.previousTick.timestamp, tick.timestamp)) {
+    else if (age >= 0 && fresh(tick.tradeAt, tick.timestamp) && s.previousTick && fresh(s.previousTick.timestamp, tick.timestamp)) {
       const long = setup.action === "BUY", trigger = long ? setup.high : setup.low;
       const crossed = long ? s.previousTick.price <= trigger && tick.price > trigger : s.previousTick.price >= trigger && tick.price < trigger;
       if (crossed) {
