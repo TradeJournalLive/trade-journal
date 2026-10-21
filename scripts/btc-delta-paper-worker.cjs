@@ -1,28 +1,32 @@
 // Separate public-data worker. No broker login, signing key, or order API.
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), Module = require('node:module');
 const ts = require('typescript'), WebSocket = require('ws');
+const { createDeltaDepth } = require('./delta-depth.cjs');
 require('@next/env').loadEnvConfig(process.cwd(), false);
 const { createClient } = require('@supabase/supabase-js');
 const file = path.resolve(__dirname, '../app/lib/algo/btcPaperEngine.ts'), moduleCopy = new Module(file, module);
 moduleCopy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, file);
-const { emptyBtcState, btcSignal, btcTick, btcView } = moduleCopy.exports;
+const { emptyBtcState, btcSignal, btcTick, btcView, btcCancelSetup } = moduleCopy.exports;
 const config = JSON.parse(fs.readFileSync('.paper-worker/config.json', 'utf8'));
 const hash = v => crypto.createHash('sha256').update(v).digest('hex');
 const owner = hash(config.webhookSecret), workerId = crypto.randomUUID(), strategy = '__btc_delta_worker__', table = 'tradingview_signal_events';
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const directory = path.resolve('.paper-worker/btc'); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
 const checkpoint = path.join(directory, 'checkpoint.json'), now = () => new Date().toISOString();
-let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, trail, product, after, lastRejectedLog = 0;
-const seenRows = new Set(), persisted = new Set();
+let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, trail, product, after, lastRejectedLog = 0, depthBook;
+const seenRows = new Set(), persisted = new Set(), persistedDecisions = new Map();
 function audit(kind, data) { fs.appendFileSync(path.join(directory, `${now().slice(0, 10)}.jsonl`), JSON.stringify({ at: now(), kind, data }) + '\n', { mode: 0o600 }); }
 function save() { if (!saved) return; saved.savedAt = now(); saved.owner = owner; fs.writeFileSync(`${checkpoint}.tmp`, JSON.stringify(saved), { mode: 0o600 }); fs.renameSync(`${checkpoint}.tmp`, checkpoint); }
-function update(next) {
+function update(next, tick) {
   const old = saved.state;
   if (old.status !== next.status || old.setup?.id !== next.setup?.id || old.trades.length !== next.trades.length) {
     audit('DECISION', { status: next.status, priorStatus: old.status, signalId: old.setup?.id || next.setup?.id, at: now() });
   }
   saved.state = next;
-  if (old.position?.openedAt !== next.position?.openedAt || old.trades.length !== next.trades.length) save();
+  if (old.position?.openedAt !== next.position?.openedAt || old.position?.quantityBtc !== next.position?.quantityBtc || old.trades.length !== next.trades.length || old.setup?.id !== next.setup?.id) {
+    if (tick) audit('EXECUTION_SNAPSHOT', tick);
+    save();
+  }
 }
 async function publicGet(endpoint) {
   const r = await fetch(`https://api.india.delta.exchange/v2/${endpoint}`, { signal: AbortSignal.timeout(10000) });
@@ -37,27 +41,40 @@ async function history() {
 function onMessage(raw) {
   lastFrame = Date.now(); const v = JSON.parse(raw);
   if (v.type === 'error') { workerStatus = 'DELTA_SUBSCRIPTION_ERROR'; return; }
-  if (v.sy === 'BTCUSD' && v.type === 'ob_l1') quote = { bid: Number(v.bp), ask: Number(v.ap), bidBtc: Number(v.bs) * Number(product.contract_value), askBtc: Number(v.as) * Number(product.contract_value), at: new Date(Number(v.ts) / 1000).toISOString() };
+  if (v.type === 'ob_updates') {
+    try {
+      if (depthBook.accept(v)) {
+        const depth = depthBook.snapshot();
+        if (!quote || Date.parse(depth.at) >= Date.parse(quote.at)) quote = { bid: depth.bids[0].price, ask: depth.asks[0].price, bidBtc: depth.bids[0].quantityBtc, askBtc: depth.asks[0].quantityBtc, at: depth.at };
+      }
+    }
+    catch (error) { workerStatus = 'DEPTH_RESYNC_REQUIRED'; audit('FEED_HEALTH', { reason: String(error.message) }); socket.terminate(); return; }
+  }
+  if (v.sy === 'BTCUSD' && v.type === 'ob_l1') {
+    const at = new Date(Number(v.ts) / 1000).toISOString();
+    if (!quote || Date.parse(at) >= Date.parse(quote.at)) quote = { bid: Number(v.bp), ask: Number(v.ap), bidBtc: Number(v.bs) * Number(product.contract_value), askBtc: Number(v.as) * Number(product.contract_value), at };
+  }
   if (v.sy === 'BTCUSD' && v.type === 'trades') {
     const at = new Date(Number(v.t) / 1000).toISOString();
     if (!trade || Date.parse(at) >= Date.parse(trade.at)) trade = { price: Number(v.p), at };
   }
   if (v.sy === 'MARK:BTCUSD' && v.type === 'mark_price') mark = { price: Number(v.p), at: new Date(Number(v.ts) / 1000).toISOString() };
-  if (!['ob_l1', 'trades', 'mark_price'].includes(v.type) || !quote || !trade) return;
+  if (!['ob_l1', 'ob_updates', 'trades', 'mark_price'].includes(v.type) || !quote || !trade) return;
   const timestamp = now();
-  const tick = { timestamp, tradeAt: trade.at, quoteAt: quote.at, price: trade.price, bid: quote.bid, ask: quote.ask, bidBtc: quote.bidBtc, askBtc: quote.askBtc, mark: mark?.price ?? 0, markAt: mark?.at ?? '', maintenanceRate: Number(product.maintenance_margin) / 100, previous15m: trail };
+  const tick = { timestamp, executionVersion: 2, contractBtc: Number(product.contract_value), depth: depthBook.snapshot(), tradeAt: trade.at, quoteAt: quote.at, price: trade.price, bid: quote.bid, ask: quote.ask, bidBtc: quote.bidBtc, askBtc: quote.askBtc, mark: mark?.price ?? 0, markAt: mark?.at ?? '', maintenanceRate: Number(product.maintenance_margin) / 100, previous15m: trail };
   const next = btcTick(saved.state, tick);
-  if (next.previousTick?.timestamp === timestamp) { audit('TICK', tick); workerStatus = 'RECEIVING_DELTA_BTCUSD'; }
+  if (next.previousTick?.timestamp === timestamp) { const { depth, ...prices } = tick; audit('TICK', { ...prices, depthSequence: depth?.sequence, depthAt: depth?.at }); workerStatus = 'RECEIVING_DELTA_BTCUSD'; }
   else if (Date.now() - lastRejectedLog > 30000) {
     lastRejectedLog = Date.now();
     audit('REJECTED_UPDATE', { quoteAgeMs: Date.parse(timestamp) - Date.parse(quote.at), tradeAgeMs: Date.parse(timestamp) - Date.parse(trade.at), bid: quote.bid, ask: quote.ask, status: next.status });
   }
-  update(next);
+  update(next, tick);
 }
 function connect() {
   quote = undefined;
+  trade = undefined; mark = undefined; depthBook.reset();
   socket = new WebSocket('wss://public-socket.india.delta.exchange');
-  socket.on('open', () => { lastFrame = Date.now(); workerStatus = 'SOCKET_CONNECTED_WAITING_FOR_QUOTES'; socket.send(JSON.stringify({ type: 'subscribe', payload: { channels: [{ name: 'ob_l1', symbols: ['BTCUSD'] }, { name: 'trades', symbols: ['BTCUSD'] }, { name: 'mark_price', symbols: ['MARK:BTCUSD'] }] } })); socket.send(JSON.stringify({ type: 'enable_heartbeat' })); });
+  socket.on('open', () => { lastFrame = Date.now(); workerStatus = 'SOCKET_CONNECTED_WAITING_FOR_QUOTES'; socket.send(JSON.stringify({ type: 'subscribe', payload: { channels: [{ name: 'ob_l1', symbols: ['BTCUSD'] }, { name: 'ob_updates', symbols: ['BTCUSD'] }, { name: 'trades', symbols: ['BTCUSD'] }, { name: 'mark_price', symbols: ['MARK:BTCUSD'] }] } })); socket.send(JSON.stringify({ type: 'enable_heartbeat' })); });
   socket.on('message', raw => { try { onMessage(raw); } catch { workerStatus = 'STOPPED_DELTA_PROCESSING_ERROR'; console.error(workerStatus); save(); process.exit(1); } });
   socket.on('close', () => { workerStatus = 'FEED_DISCONNECTED'; });
   socket.on('error', () => { workerStatus = 'FEED_ERROR'; });
@@ -71,8 +88,15 @@ async function publish() {
     if (r.error) throw new Error('BTC_LEDGER_UNAVAILABLE');
     pending.forEach(t => persisted.add(`${t.id}:${t.openedAt}`));
   }
-  snapshot.state = { ...snapshot.state, trades: [], realizedBase: view.realized, tradeCountBase: view.tradeCount };
-  const r = await db.from(table).update({ received_at: at, raw_payload: { workerId, saved: snapshot, workerStatus, book: { ...view, trades: [] } } }).eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').eq('received_at', lease).select('id');
+  const decisions = (snapshot.state.decisions || []).filter(d => persistedDecisions.get(d.id) !== JSON.stringify(d));
+  if (decisions.length) {
+    const result = await db.from(table).upsert(decisions.map(d => ({ ...rowBase(hash(d.id), d.receivedAt, '__btc_delta_decision__'), raw_payload: { decision: d } })), { onConflict: 'secret_hash,strategy_id,signal_id' });
+    if (result.error) throw new Error('BTC_DECISION_STORAGE_UNAVAILABLE');
+    decisions.forEach(d => persistedDecisions.set(d.id, JSON.stringify(d)));
+  }
+  const partial = snapshot.state.position && !snapshot.state.position.monitoringGap ? snapshot.state.position.realizedPnl || 0 : 0;
+  snapshot.state = { ...snapshot.state, trades: [], decisions: (snapshot.state.decisions || []).slice(-100), realizedBase: view.realized - partial, tradeCountBase: view.tradeCount };
+  const r = await db.from(table).update({ received_at: at, raw_payload: { workerId, saved: snapshot, workerStatus, executionVersion: 2, book: { ...view, decisions: (view.decisions || []).slice(-100), trades: [] } } }).eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (r.error || r.data?.length !== 1) throw new Error('BTC_LEASE_OR_STORAGE_LOST');
   lease = at; save();
 }
@@ -83,12 +107,12 @@ async function poll() {
     if (seenRows.has(v.id)) continue; seenRows.add(v.id);
     const control = v.raw_payload?.paperControl;
     if (control?.market === 'BTC' && control.stopAndClose === true) {
-      saved.state.enabled = false; saved.state.setup = null;
+      saved.state = btcCancelSetup(saved.state, now()); saved.state.enabled = false;
       if (saved.state.position && saved.state.pendingExit !== 'MONITORING_INTERRUPTED') saved.state.pendingExit = 'MANUAL_STOP_AND_CLOSE';
       saved.state.status = saved.state.position ? 'AWAITING_MANUAL_CLOSE' : 'DISABLED';
       save(); continue;
     }
-    if (control?.market === 'BTC' && typeof control.btcBreakoutEnabled === 'boolean') { saved.state.enabled = control.btcBreakoutEnabled; if (!saved.state.enabled) saved.state.setup = null; saved.state.status = saved.state.position ? 'OPEN' : saved.state.enabled ? 'WAITING_FOR_SIGNAL' : 'DISABLED'; save(); continue; }
+    if (control?.market === 'BTC' && typeof control.btcBreakoutEnabled === 'boolean') { if (!control.btcBreakoutEnabled) saved.state = btcCancelSetup(saved.state, now()); saved.state.enabled = control.btcBreakoutEnabled; saved.state.status = saved.state.position ? 'OPEN' : saved.state.enabled ? 'WAITING_FOR_SIGNAL' : 'DISABLED'; save(); continue; }
     const candle = v.signal?.metadata?.btcPaper;
     if (v.signal?.metadata?.diagnostic || v.raw_payload?.automation?.mode !== 'PAPER' || candle?.kind !== 'SIGNAL' || v.signal.timeframe !== '1' || !['BUY', 'SELL'].includes(v.signal.action)) continue;
     const signal = { id: v.signal.id, action: v.signal.action, symbol: v.signal.symbol, receivedAt: v.received_at, closedAt: candle.closedAt, high: candle.high, low: candle.low, signalPrice: v.signal.price };
@@ -110,6 +134,7 @@ async function main() {
   if (claim.error || claim.data?.length !== 1) throw new Error('BTC_LEASE_UNAVAILABLE'); save();
   product = await publicGet('products/BTCUSD');
   if (product.symbol !== 'BTCUSD' || product.contract_type !== 'perpetual_futures' || product.notional_type !== 'vanilla' || product.state !== 'live' || product.trading_status !== 'operational' || Math.abs(1 / Number(product.contract_value) - Math.round(1 / Number(product.contract_value))) > 1e-8 || Number(product.initial_margin) > 1) throw new Error('BTC_CONTRACT_NOT_SUPPORTED');
+  depthBook = createDeltaDepth(Number(product.contract_value));
   connect(); let published = 0;
   console.log('Delta BTC public-data paper worker started. No order API.');
   while (true) {

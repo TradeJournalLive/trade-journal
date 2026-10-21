@@ -9,7 +9,7 @@ function store(rows, failPage = -1) {
   const filters = [], ranges = [];
   const query = {
     select() { return this; }, eq(k, v) { filters.push(['eq', k, v]); return this; },
-    neq() { return this; }, order() { return this; },
+    neq(k, v) { filters.push(['neq', k, v]); return this; }, order() { return this; },
     gte(k, v) { filters.push(['gte', k, v]); return this; },
     lt(k, v) { filters.push(['lt', k, v]); return this; },
     async range(a, b) { ranges.push([a, b]); return ranges.length === failPage ? { error: { message: 'offline' } } : { data: rows.slice(a, b + 1) }; }
@@ -31,6 +31,7 @@ test('selected IST day loads all pages, scoped to the owner secret', async () =>
   assert.ok(filters.some(f => f[0] === 'eq' && f[1] === 'secret_hash' && f[2] === api.hashWebhookSecret('owner-a')));
   assert.ok(filters.some(f => f[0] === 'gte' && f[2] === '2026-10-20T18:30:00.000Z'));
   assert.ok(filters.some(f => f[0] === 'lt' && f[2] === '2026-10-21T18:30:00.000Z'));
+  assert.ok(filters.some(f => f[0] === 'neq' && f[2] === '__btc_delta_decision__'));
 });
 test('invalid calendar dates fail and a failed page never returns partial history', async () => {
   const { api, ranges } = store([]);

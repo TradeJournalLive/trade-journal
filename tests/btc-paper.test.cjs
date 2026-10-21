@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), ts = require('typescript'), Module = require('node:module');
 const file = require('node:path').resolve(__dirname, '../app/lib/algo/btcPaperEngine.ts'), copy = new Module(file, module);
 copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, file);
-const { emptyBtcState, btcSignal: rawBtcSignal, btcTick, btcView } = copy.exports;
+const { emptyBtcState, btcSignal: rawBtcSignal, btcTick, btcView, btcDepthFill, btcCancelSetup } = copy.exports;
 const time = n => new Date(Date.UTC(2026, 9, 16, 22, 0, n)).toISOString();
 const signal = (action = 'BUY', id = 'buy') => ({ id, action, symbol: 'DELTAIN:BTCUSD.P', receivedAt: time(1), closedAt: time(0), high: 80100, low: 80000, signalPrice: 80080 });
 function tick(n, price, bid = price - 1, ask = price + 1) { return { timestamp: time(n), tradeAt: time(n), quoteAt: time(n), price, bid, ask, bidBtc: 2, askBtc: 2, mark: price, markAt: time(n), maintenanceRate: .0025, previous15m: { high: 81000, low: 79000, closedAt: time(0) } }; }
@@ -184,4 +184,96 @@ test('restart checkpoints preserve gross P&L and never add leverage exposure', (
   const s = btcTick(entry(), tick(4, 80410, 80409, 80411)), v = btcView(s, time(5));
   const compact = { ...s, trades: [], realizedBase: v.realized, tradeCountBase: v.tradeCount };
   assert.equal(btcView(compact, time(6)).realized, 307); assert.equal(btcView(compact).tradeCount, 1);
+});
+
+function v2(n, price, bids, asks) {
+  const t=tick(n,price,bids[0].price,asks[0].price);
+  return {...t,executionVersion:2,contractBtc:.001,bidBtc:bids[0].quantityBtc,askBtc:asks[0].quantityBtc,depth:{at:time(n),sequence:n,bids,asks}};
+}
+function depthEntry(asks=[{price:80102,quantityBtc:.4},{price:80104,quantityBtc:.6}]) {
+  let s=btcSignal({...emptyBtcState(),enabled:true},signal());s=btcTick(s,tick(2,80099));
+  return btcTick(s,v2(3,80101,[{price:80101,quantityBtc:2}],asks));
+}
+test('BTC depth entry sweeps asks within five dollars and anchors 3R to actual average',()=>{
+  const s=depthEntry(),p=s.position;
+  assert.equal(p.quantityBtc,1);assert.ok(Math.abs(p.entry-80103.2)<1e-8);assert.equal(p.entryFill.fills.length,2);
+  assert.ok(Math.abs(p.entryFill.slippage-1.2)<1e-8);
+  assert.ok(Math.abs(p.target-(p.entry+3*(p.entry-p.stop)))<1e-8);
+  assert.equal(s.decisions.at(-1).status,'ENTERED');assert.equal(s.decisions.at(-1).filledBtc,1);
+});
+test('partial entry cancels remainder, never tops up, and scales margin and P&L',()=>{
+  const s=depthEntry([{price:80102,quantityBtc:.4},{price:80107.5,quantityBtc:2}]);
+  assert.equal(s.position.quantityBtc,.4);assert.equal(s.position.canceledEntryBtc,.6);
+  assert.equal(s.position.initialMargin,80102*.4/100);assert.equal(s.setup,null);
+  assert.equal(s.decisions.at(-1).status,'PARTIALLY_FILLED');
+  const held=btcTick(s,v2(4,80110,[{price:80109,quantityBtc:2}],[{price:80110,quantityBtc:2}]));
+  assert.equal(held.position.quantityBtc,.4);
+  const closed=btcTick(held,v2(5,80500,[{price:80500,quantityBtc:2}],[{price:80501,quantityBtc:2}]));
+  assert.equal(closed.trades[0].quantityBtc,.4);assert.equal(closed.trades[0].pnl,(80500-80102)*.4);
+});
+test('short depth fill sweeps bids within five dollars, not upward asks',()=>{
+  let s=btcSignal({...emptyBtcState(),enabled:true},signal('SELL','short-depth'));
+  s=btcTick(s,tick(2,80001));
+  s=btcTick(s,v2(3,79999,[{price:79998,quantityBtc:.3},{price:79994,quantityBtc:.7}],[{price:79999,quantityBtc:2}]));
+  assert.equal(s.position.quantityBtc,1);assert.ok(Math.abs(s.position.entry-79995.2)<1e-8);
+  assert.ok(s.position.entryFill.slippage<=5);assert.equal(s.position.stop,80100);
+});
+test('entry limit is inclusive and invalid/mismatched depth cannot invent fills',()=>{
+  assert.equal(btcDepthFill([{price:100,quantityBtc:.4},{price:105,quantityBtc:.6}],true,1,.001,100,'a',5).quantityBtc,1);
+  assert.equal(btcDepthFill([{price:100,quantityBtc:.4},{price:105.01,quantityBtc:.6}],true,1,.001,100,'a',5).quantityBtc,.4);
+  assert.equal(btcDepthFill([{price:100,quantityBtc:.0005}],true,1,.001,100,'a',5),null);
+  assert.equal(btcDepthFill([{price:101,quantityBtc:1}],true,1,.001,100,'a',5),null);
+  assert.equal(btcDepthFill([{price:100,quantityBtc:1},{price:100,quantityBtc:1}],true,1,.001,100,'a',5),null);
+});
+test('partial exits use each snapshot once and survive restart without double-counting',()=>{
+  const s=depthEntry();
+  const partial=btcTick(s,v2(4,80500,[{price:80500,quantityBtc:.3},{price:80499,quantityBtc:.2}],[{price:80501,quantityBtc:2}]));
+  assert.equal(partial.position.quantityBtc,.5);assert.equal(partial.pendingExit,'TARGET_3R');
+  const pnl=(80500-s.position.entry)*.3+(80499-s.position.entry)*.2;
+  assert.ok(Math.abs(btcView(partial,time(4)).realized-pnl)<1e-8);
+  const repeat=v2(5,80500,[{price:80500,quantityBtc:.3},{price:80499,quantityBtc:.2}],[{price:80501,quantityBtc:2}]);
+  repeat.depth={...repeat.depth,at:time(4),sequence:4};
+  const unchanged=btcTick(JSON.parse(JSON.stringify(partial)),repeat);
+  assert.equal(unchanged.position.quantityBtc,.5);
+  const compact={...unchanged,trades:[],realizedBase:btcView(unchanged).realized-unchanged.position.realizedPnl};
+  const final=btcTick(compact,v2(6,80490,[{price:80490,quantityBtc:1}],[{price:80491,quantityBtc:2}]));
+  assert.equal(final.position,null);assert.equal(final.trades.length,1);assert.equal(final.trades[0].quantityBtc,1);
+  assert.ok(Math.abs(final.trades[0].pnl-(pnl+(80490-s.position.entry)*.5))<1e-8);
+  assert.equal(btcView(final).tradeCount,1);
+});
+test('missing deep levels still allow only the actual best-price partial quantity',()=>{
+  const s=depthEntry([{price:80102,quantityBtc:.4}]);
+  assert.equal(s.position.quantityBtc,.4);
+  const miss=v2(3,80101,[{price:80101,quantityBtc:2}],[{price:80102,quantityBtc:.3},{price:80104,quantityBtc:.7}]);
+  miss.depth.at=time(-10);
+  let initial=btcSignal({...emptyBtcState(),enabled:true},signal());initial=btcTick(initial,tick(2,80099));
+  assert.equal(btcTick(initial,miss).position.quantityBtc,.3);
+});
+test('decisions distinguish pre-receipt breaks, expiry, and superseding signals',()=>{
+  let s=btcSignal({...emptyBtcState(),enabled:true},signal());
+  const newer={...signal('BUY','newer'),receivedAt:time(2)};
+  s=btcSignal(s,newer);assert.equal(s.decisions.find(d=>d.id==='buy').status,'SUPERSEDED');
+  assert.equal(s.decisions.find(d=>d.id==='newer').status,'WAITING_FOR_BREAKOUT');
+  s=btcTick(s,tick(600,80101));assert.equal(s.position,null);
+  assert.ok(s.decisions.some(d=>d.status==='MONITORING_INTERRUPTED'));
+});
+test('new partial quantity still moves stop at 2R and preserves the 3R target',()=>{
+  const s=depthEntry([{price:80102,quantityBtc:.4}]),p=s.position;
+  const moved=btcTick(s,v2(4,80307,[{price:80306,quantityBtc:1}],[{price:80307,quantityBtc:1}]));
+  assert.equal(moved.position.stop,p.entry);assert.equal(moved.position.target,p.target);
+  const final=btcTick(moved,v2(5,80101,[{price:80101,quantityBtc:1}],[{price:80102,quantityBtc:1}]));
+  assert.equal(final.trades[0].reason,'COST_TO_COST_STOP');assert.equal(final.trades[0].quantityBtc,.4);
+});
+test('a previously consumed book cannot be reused after a different exit snapshot',()=>{
+  const s=depthEntry();
+  const quote=n=>v2(n,80500,[{price:80500,quantityBtc:.2}],[{price:80501,quantityBtc:1}]);
+  const one=btcTick(s,quote(4)),two=btcTick(one,quote(5)),again=quote(6);
+  again.depth={...again.depth,at:time(4),sequence:4};
+  assert.equal(btcTick(two,again).position.quantityBtc,.6);
+});
+test('switch-off gives waiting signals a durable cancellation reason',()=>{
+  const s=btcSignal({...emptyBtcState(),enabled:true},signal());
+  const canceled=btcCancelSetup(s,time(2));
+  assert.equal(canceled.setup,null);assert.equal(canceled.decisions[0].status,'CANCELED');
+  assert.ok(s.setup);
 });
