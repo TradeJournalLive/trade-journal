@@ -100,7 +100,7 @@ export default function SignUpPage() {
   }
 
   return (
-    <main className="min-h-screen bg-ink text-white relative overflow-hidden">
+    <main className="auth-shell min-h-screen bg-ink relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-grid opacity-70" />
         <div className="absolute -top-40 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[140px]" />
@@ -197,7 +197,7 @@ export default function SignUpPage() {
               </button>
               <button
                 type="button"
-                className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold"
+                className="auth-google-button w-full rounded-lg px-4 py-3 text-sm font-semibold"
                 onClick={handleGoogleSignUp}
                 disabled={oauthLoading}
               >

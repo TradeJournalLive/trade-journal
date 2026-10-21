@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
 import { niftyRules } from "../lib/algo/niftyRules";
 import type { buildNiftyOptionsPaper } from "../lib/algo/niftyPaperEngine";
@@ -16,22 +16,41 @@ export default function SignalPaperTrading() {
   const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(true);
+  const requestId = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
   const refresh = useCallback(async (signal?: AbortSignal) => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const id = ++requestId.current;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 12000);
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) controller.abort();
+    setRefreshing(true);
     try {
-      const response = await fetch("/api/algo/paper", { cache: "no-store", signal });
+      const response = await fetch("/api/algo/paper", { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      setBooks(result.books);
-      setError("");
+      if (id === requestId.current) { setBooks(result.books); setError(""); }
     } catch (cause) {
-      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "Unable to load paper trades.");
+      if (id === requestId.current && (timedOut || !controller.signal.aborted)) setError(timedOut ? "Paper status refresh timed out." : cause instanceof Error ? cause.message : "Unable to load paper trades.");
+    } finally {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      if (id === requestId.current) { activeRequest.current = null; setRefreshing(false); }
     }
   }, []);
   useEffect(() => {
     const controller = new AbortController();
     void refresh(controller.signal);
-    const timer = window.setInterval(() => void refresh(controller.signal), 5000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    const visible = () => { if (document.visibilityState === "visible") void refresh(controller.signal); };
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible" && !activeRequest.current) visible(); }, 5000);
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    return () => { controller.abort(); activeRequest.current?.abort(); window.clearInterval(timer); window.removeEventListener("focus", visible); document.removeEventListener("visibilitychange", visible); };
   }, [refresh]);
 
   async function toggle(nextCandle?: boolean) {
@@ -85,7 +104,7 @@ export default function SignalPaperTrading() {
       <div role="tablist" aria-label="Paper markets" className="flex gap-2">{markets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "GOLD" ? "Gold" : item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
-    {market === "BTC" && <BtcDeltaPaper book={book?.delta} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
+    {market === "BTC" && <BtcDeltaPaper refreshing={refreshing} book={book?.delta} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>

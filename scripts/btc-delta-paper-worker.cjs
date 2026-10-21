@@ -104,6 +104,7 @@ async function main() {
     await new Promise(r => setTimeout(r, 1000)); await poll();
     if (Date.now() - historyAt > 30000) { historyAt = Date.now(); try { await history(); } catch { workerStatus = 'HISTORY_REQUEST_FAILED'; } }
     if (socket.readyState === WebSocket.CLOSED) connect();
+    else if (socket.readyState === WebSocket.OPEN && ((quote && Date.now() - Date.parse(quote.at) > 20000) || (trade && Date.now() - Date.parse(trade.at) > 20000))) { workerStatus = 'PRICES_STALE_RECONNECTING'; socket.terminate(); }
     else if (lastFrame && Date.now() - lastFrame > 35000) socket.terminate();
     if (Date.now() - published > 5000) { await publish(); published = Date.now(); }
   }

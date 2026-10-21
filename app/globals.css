@@ -38,6 +38,35 @@ body {
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
+.auth-shell {
+  color: rgb(var(--color-text));
+}
+
+.auth-shell .card {
+  background: rgb(var(--color-panel));
+}
+
+.auth-google-button {
+  color: rgb(var(--color-text));
+  background: rgb(var(--color-panel));
+  border: 1px solid rgb(var(--color-muted));
+  min-height: 48px;
+}
+
+.auth-google-button:hover {
+  background: rgb(var(--color-elevate));
+}
+
+.auth-google-button:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 3px;
+}
+
+.auth-google-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 * {
   scrollbar-color: #1f2937 #0b0f14;
   scrollbar-width: thin;

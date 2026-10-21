@@ -4,7 +4,7 @@ import type { btcView } from "../lib/algo/btcPaperEngine";
 export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; trial: { startedAt: string; endsAt: string } };
 const n = (v: number | null | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const t = (v: string | null | undefined) => v ? new Date(v).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--";
-export default function BtcDeltaPaper({ book, legacyEnabled, onSaved }: { book?: BtcDeltaBook | null; legacyEnabled: boolean; onSaved: () => void }) {
+export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing = false }: { refreshing?: boolean; book?: BtcDeltaBook | null; legacyEnabled: boolean; onSaved: () => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const [notice, setNotice] = useState("");
@@ -30,15 +30,16 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved }: { book?:
     finally { setBusy(false); }
   }
   const p = book?.position;
+  const checking = refreshing && Boolean(issue);
   return <section className="algo-os-card">
     <div className="algo-card-head"><h3>Delta India · BTCUSD perpetual</h3><label className="flex items-center gap-2 text-sm"><input aria-label="Delta BTC paper entries" role="switch" type="checkbox" checked={book?.enabled ?? false} disabled={busy || !book || (!book.enabled && (!book.workerOnline || book.stale))} onChange={() => void toggle()} />{book?.enabled ? "Entries armed" : "Entries off"}</label></div>
     {error && <p role="alert">{error}</p>}
     <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={busy || !book?.workerOnline} onClick={() => void control({ stopAndClose: true })} className="algo-action danger">Stop &amp; Close paper positions</button><span className="text-xs text-slate-500">Keep the Mac awake until closure is confirmed.</span></div>
     {notice && <p role="status" className="text-sm">{notice}</p>}
     {p?.monitoringGap && <p role="alert" className="font-bold text-red-700">Monitoring interrupted. This position is excluded from verified performance; closure awaits an executable quote.</p>}
-    <div role="status" aria-live="polite" className={`flex flex-wrap items-center gap-3 border-l-4 px-4 py-3 ${issue ? "border-red-600 bg-red-50 text-red-900" : "border-emerald-600 bg-emerald-50 text-emerald-900"}`}>
-      <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${issue ? "bg-red-600" : "bg-emerald-600"}`} />
-      <div><b>{issue ? "RED · BTC needs attention" : "GREEN · BTC engine ready"}</b><p className="text-sm">{issue || (p ? "Position open · monitoring exits" : book?.setup ? "Signal received · waiting for breakout" : "Prices fresh · entries armed · waiting for a signal")}</p></div>
+    <div role="status" aria-live="polite" className={`flex flex-wrap items-center gap-3 border-l-4 px-4 py-3 ${checking ? "border-amber-500 bg-amber-50 text-amber-950" : issue ? "border-red-600 bg-red-50 text-red-900" : "border-emerald-600 bg-emerald-50 text-emerald-900"}`}>
+      <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full ${checking ? "bg-amber-500" : issue ? "bg-red-600" : "bg-emerald-600"}`} />
+      <div><b>{checking ? "Checking latest BTC status..." : issue ? "RED · BTC needs attention" : "GREEN · BTC engine ready"}</b><p className="text-sm">{checking ? "Refreshing panel snapshot; connection not yet verified." : issue || (p ? "Position open · monitoring exits" : book?.setup ? "Signal received · waiting for breakout" : "Prices fresh · entries armed · waiting for a signal")}</p></div>
     </div>
     <p className="text-xs text-slate-500">Last TradingView signal: {t(book?.lastSignalAt)}. Engine health does not verify the TradingView alert is enabled.</p>
     <p className="text-xs text-slate-500">PAPER · 1 BTC fixed · 100× margin assumption · 24/7 · Last quote {t(book?.lastTickAt)}</p>
