@@ -48,7 +48,7 @@ test('database lease excludes concurrent writers, releases on failure, and OAuth
 });
 function reporting() {
   const connections = new Map(), googleCalls = [], rows = [{ receivedAt: '2026-10-21T05:00:00Z', signal: { id: '=IMPORTDATA("bad")', strategyId: 's', timestamp: '2026-10-21T04:59:00Z', symbol: 'NSE:NIFTY', action: 'BUY', price: 100, timeframe: '1', status: 'VALIDATED' }, decision: { accepted: true, stage: 'SIGNAL_RECEIVED', reasons: [] } }];
-  let fails = false;
+  let failStatus = null, failNetwork = false;
   class OAuth2Client { setCredentials() {} async getAccessToken() { return { token: 'test-access' }; } }
   const api = load('app/lib/algo/googleSheets.ts', {
     'google-auth-library': { OAuth2Client },
@@ -57,9 +57,9 @@ function reporting() {
     './googleSheetsStore': { readSheets: async u => structuredClone(connections.get(u) || null), writeSheets: async (u,v) => connections.set(u, structuredClone(v)), withSheetsLock: async (u, f) => f() }
   });
   const oldFetch = global.fetch;
-  global.fetch = async (url, options) => { googleCalls.push({ url, options, body: JSON.parse(options.body) }); if (fails) return { ok: false }; return { ok: true, json: async () => url === 'https://sheets.googleapis.com/v4/spreadsheets' ? { spreadsheetId: 'private-sheet' } : {} }; };
+  global.fetch = async (url, options) => { googleCalls.push({ url, options, body: JSON.parse(options.body) }); if (failNetwork) throw new Error('private provider details'); if (failStatus) return { ok: false, status: failStatus, json: async () => ({ error: { message: 'private provider details' } }) }; return { ok: true, json: async () => url === 'https://sheets.googleapis.com/v4/spreadsheets' ? { spreadsheetId: 'private-sheet' } : {} }; };
   process.env.GOOGLE_SHEETS_CLIENT_ID = 'test-id'; process.env.GOOGLE_SHEETS_CLIENT_SECRET = 'test-secret';
-  return { api, connections, googleCalls, fail: () => fails = true, restore: () => global.fetch = oldFetch };
+  return { api, connections, googleCalls, fail: status => { if (status) failStatus = status; else failNetwork = true; }, restore: () => global.fetch = oldFetch };
 }
 test('create is private, explicit and idempotent; sync writes RAW instrument ranges without credentials', async () => {
   const r = reporting();
@@ -67,6 +67,9 @@ test('create is private, explicit and idempotent; sync writes RAW instrument ran
     r.connections.set('a', { refreshToken: 'private-refresh', enabled: false });
     await r.api.createSignalSheet('a'); await r.api.createSignalSheet('a');
     assert.equal(r.googleCalls.filter(c => c.url === 'https://sheets.googleapis.com/v4/spreadsheets').length, 1);
+    const creation = r.googleCalls.find(c => c.url === 'https://sheets.googleapis.com/v4/spreadsheets');
+    assert.equal(creation.body.properties.locale, 'en_US');
+    assert.equal(creation.body.properties.timeZone, 'Asia/Kolkata');
     assert.equal(r.googleCalls.some(c => c.url.includes('permissions')), false);
     const values = r.googleCalls.find(c => c.url.endsWith('values:batchUpdate'));
     assert.equal(values.body.valueInputOption, 'RAW');
@@ -85,7 +88,7 @@ test('paused or unknown owner never reports; failed background reporting does no
     assert.equal(r.googleCalls.length, 0);
     r.connections.set('a', { refreshToken: 'refresh', sheetId: 's', enabled: true }); r.fail();
     await r.api.syncWebhookSheet('secret-a');
-    assert.match(r.connections.get('a').error, /request failed/);
+    assert.match(r.connections.get('a').error, /SHEETS_NETWORK/);
     assert.equal(r.connections.get('a').lastSyncedAt, undefined);
   } finally { r.restore(); }
 });
@@ -93,10 +96,21 @@ test('uncertain Google create result is not automatically retried into duplicate
   const r = reporting();
   try {
     r.connections.set('a', { refreshToken: 'refresh', enabled: false }); r.fail();
-    await assert.rejects(r.api.createSignalSheet('a'), /request failed/);
+    await assert.rejects(r.api.createSignalSheet('a'), /SHEETS_NETWORK/);
     assert.equal(r.connections.get('a').creationPending, true);
     await assert.rejects(r.api.createSignalSheet('a'), /earlier sheet creation/);
     assert.equal(r.googleCalls.length, 1);
+  } finally { r.restore(); }
+});
+test('definite Google rejection exposes a safe status code and allows retry without reconnecting', async () => {
+  const r = reporting();
+  try {
+    r.connections.set('a', { refreshToken: 'refresh', enabled: false }); r.fail(400);
+    await assert.rejects(r.api.createSignalSheet('a'), /SHEETS_HTTP_400/);
+    assert.equal(r.connections.get('a').creationPending, undefined);
+    assert.equal(r.connections.get('a').error.includes('private provider details'), false);
+    await assert.rejects(r.api.createSignalSheet('a'), /SHEETS_HTTP_400/);
+    assert.equal(r.googleCalls.length, 2);
   } finally { r.restore(); }
 });
 

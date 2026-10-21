@@ -19,17 +19,36 @@ export function signalRows(events: StoredAlgoEvent[]) {
   return events.map(event => [date(event.receivedAt), date(event.signal.timestamp), event.signal.symbol, event.signal.action, event.signal.price ?? "", event.signal.timeframe ?? "", event.signal.status, event.decision.accepted ? "Yes" : "No", event.decision.stage, event.decision.reasons.join("; "), event.signal.strategyId, event.signal.id]);
 }
 const requests = new WeakMap<SheetsConnection, { auth: OAuth2Client; deadline: number }>();
+export class SheetsRequestError extends Error {
+  constructor(message: string, public readonly safeToRetryCreate = false) { super(message); Object.setPrototypeOf(this, new.target.prototype); }
+}
+function responseError(status: number, data: { error?: { message?: string; details?: { reason?: string }[] } }) {
+  const disabled = data.error?.details?.some(detail => detail.reason === "SERVICE_DISABLED");
+  const hint = status === 400 ? "Google rejected the sheet settings."
+    : status === 401 ? "Google authorization expired. Reconnect Google Sheets."
+    : status === 403 && disabled ? "Enable Google Sheets API in the OAuth client's Google Cloud project."
+    : status === 403 ? "Google denied access. Check the granted file permission and Drive storage."
+    : status === 404 ? "The Google sheet is missing or access was removed."
+    : status === 429 ? "Google's request limit was reached. Wait a minute, then retry."
+    : "Google Sheets is temporarily unavailable. Retry sync later.";
+  return new SheetsRequestError(`${hint} (SHEETS_HTTP_${status})`, [400, 401, 403, 404, 429].includes(status));
+}
 async function google(connection: SheetsConnection, path: string, method: string, body?: unknown) {
   let context = requests.get(connection);
   if (!context) { const auth = sheetsOAuth(); auth.setCredentials({ refresh_token: connection.refreshToken }); context = { auth, deadline: Date.now() + 45000 }; requests.set(connection, context); }
+  let token: { token?: string | null };
+  try { token = await context.auth.getAccessToken(); }
+  catch { throw new SheetsRequestError("Google authorization could not be refreshed. Check access or reconnect Google Sheets. (SHEETS_AUTH_REFRESH)", true); }
+  if (!token.token) throw new SheetsRequestError("Reconnect Google Sheets. (SHEETS_AUTH_MISSING)", true);
   try {
-    if (Date.now() > context.deadline) throw new Error("report time limit");
-    const token = await context.auth.getAccessToken();
-    if (!token.token) throw new Error("missing token");
+    if (Date.now() > context.deadline) throw new SheetsRequestError("Report time limit reached. Retry sync. (SHEETS_TIME_LIMIT)", true);
     const result = await fetch(`https://sheets.googleapis.com/v4/spreadsheets${path}`, { method, headers: { Authorization: `Bearer ${token.token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store", signal: AbortSignal.timeout(15000) });
-    if (!result.ok) throw new Error("google rejected request");
+    if (!result.ok) throw responseError(result.status, await result.json().catch(() => ({})));
     return await result.json();
-  } catch { throw new Error("Google Sheets request failed. Check access or reconnect Google, then retry sync."); }
+  } catch (error) {
+    if (error instanceof SheetsRequestError) throw error;
+    throw new SheetsRequestError("Google Sheets connection was interrupted. Retry sync; check Drive before retrying creation. (SHEETS_NETWORK)");
+  }
 }
 async function syncUnlocked(user: string, connection: SheetsConnection) {
   if (!connection.sheetId) throw new Error("Create your private sheet first.");
@@ -58,7 +77,15 @@ export async function createSignalSheet(user: string) {
       if (connection.creationPending) throw new Error("An earlier sheet creation could not be confirmed. Check your Google Drive before disconnecting and reconnecting to try again.");
       connection.creationPending = true;
       await writeSheets(user, connection);
-      const sheet = await google(connection, "", "POST", { properties: { title: "1to2 Trading - Signal Log", locale: "en_IN", timeZone: "Asia/Kolkata" }, sheets: tabs.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { frozenRowCount: 1, columnCount: columns.length } } })) });
+      let sheet;
+      try {
+        sheet = await google(connection, "", "POST", { properties: { title: "1to2 Trading - Signal Log", locale: "en_US", timeZone: "Asia/Kolkata" }, sheets: tabs.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { frozenRowCount: 1, columnCount: columns.length } } })) });
+      } catch (error) {
+        if (error instanceof SheetsRequestError && error.safeToRetryCreate) delete connection.creationPending;
+        connection.error = error instanceof Error ? error.message : "Sheet creation failed.";
+        await writeSheets(user, connection);
+        throw error;
+      }
       if (typeof sheet.spreadsheetId !== "string" || !/^[\w-]+$/.test(sheet.spreadsheetId)) throw new Error("Invalid spreadsheet response.");
       connection.sheetId = sheet.spreadsheetId; connection.enabled = true; delete connection.creationPending;
       // Persist ownership before initial sync, so retry does not create another sheet.
