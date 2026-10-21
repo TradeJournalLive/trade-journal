@@ -17,15 +17,22 @@ export default function AccountSessionBridge({ children }: { children: React.Rea
   const [linking, setLinking] = useState(false);
   useEffect(() => {
     if (!supabase) { setError("Sign-in service unavailable."); return; }
-    let stopped = false, generation = 0, queue = Promise.resolve();
+    let stopped = false, generation = 0, queue = Promise.resolve(), renewalAttempted = false;
     function sync(token: string | null, id: string) {
       const current = ++generation; setReady(false); setError(""); setLinks({});
       queue = queue.catch(() => {}).then(async () => {
         if (stopped || current !== generation) return;
         try {
           const response = await fetch("/api/account/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accessToken: token }), signal: AbortSignal.timeout(15000) });
-          if (!response.ok) throw new Error("Unable to verify your account. Retry or sign in again.");
           const verified = await response.json();
+          if (!response.ok) {
+            if (response.status === 401 && token && !renewalAttempted) {
+              renewalAttempted = true;
+              const renewed = await supabase!.auth.refreshSession();
+              if (!renewed.error && renewed.data.session) return;
+            }
+            throw new Error(`${verified.error || "Unable to verify your account."} (${verified.code || response.status})`);
+          }
           if (token && verified.userId !== id) throw new Error("Account verification mismatch. Sign in again.");
           if (!stopped && current === generation) { setUser(verified.userId || ""); setEmail(verified.email || ""); setReady(true); }
         } catch (e) { if (!stopped && current === generation) setError(e instanceof Error ? e.message : "Account verification failed."); }
@@ -65,7 +72,7 @@ export default function AccountSessionBridge({ children }: { children: React.Rea
     finally { setLinking(false); }
   }
   if (!protectedPage) return <>{children}</>;
-  if (!ready) return <main className="p-8"><p role="status">{error || "Verifying your account..."}</p>{error && <button className="mt-4 underline" onClick={() => setRetry(value => value + 1)}>Retry account verification</button>}</main>;
+  if (!ready) return <main className="p-8"><p role={error ? "alert" : "status"}>{error || "Verifying your account..."}</p>{error && <div className="mt-4 flex flex-wrap gap-4"><button className="underline" onClick={() => setRetry(value => value + 1)}>Retry account verification</button><Link className="underline" href="/sign-in">Sign in again</Link></div>}</main>;
   if (!user) return <main className="p-8"><Link href="/sign-in">Sign in to view your saved setup</Link></main>;
   const pending = Object.values(links).some(state => !state.linked && state.canLink);
   const missing = Object.values(links).some(state => !state.linked && !state.canLink);

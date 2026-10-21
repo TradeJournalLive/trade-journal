@@ -23,7 +23,7 @@ function from() {
     }
   }; return query;
 }
-const db = { from, auth: { getUser: async token => token === 'valid-a' ? { data: { user: { id: 'user-a' } }, error: null } : token === 'valid-b' ? { data: { user: { id: 'user-b' } }, error: null } : { data: {}, error: {} } } };
+const db = { from, auth: { getUser: async token => token === 'valid-a' ? { data: { user: { id: 'user-a' } }, error: null } : token === 'valid-b' ? { data: { user: { id: 'user-b' } }, error: null } : { data: {}, error: { status: 401 } } } };
 const copy = new Module(filename, module);
 copy.require = id => id === 'next/headers' ? { headers: () => ({ get: () => authorization }), cookies: () => ({ get: k => jar.has(k) ? { value: jar.get(k) } : undefined }) } : id === './signalStore' ? { getServerSupabase: () => db, hashWebhookSecret: hash } : require(id);
 copy._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, filename);
@@ -114,4 +114,15 @@ test('linking requires original-device proof, explicit same-origin action and ve
   jar.delete('legacy'); assert.equal((await linkRoute.GET()).body.linked, true);
   jar.set(api.ACCOUNT_COOKIE, 'valid-b'); assert.equal((await linkRoute.GET()).body.linked, false);
   jar.set('legacy', 'old-private-secret'); assert.equal((await linkRoute.POST(request('/api/algo/link-account', {}))).status, 409);
+});
+test('verification errors distinguish invalid sessions from service outages without returning secrets', async () => {
+  const invalid = await sessionRoute.POST(request('/api/account/session', { accessToken: 'invalid-session' }));
+  assert.equal(invalid.status, 401); assert.equal(invalid.body.code, 'SESSION_EXPIRED');
+  const original = db.auth.getUser;
+  try {
+    db.auth.getUser = async () => ({ data: {}, error: { status: 503 } });
+    const unavailable = await sessionRoute.POST(request('/api/account/session', { accessToken: 'private-test-token' }));
+    assert.equal(unavailable.status, 503); assert.equal(unavailable.body.code, 'AUTH_UNAVAILABLE');
+    assert.equal(JSON.stringify(unavailable).includes('private-test-token'), false);
+  } finally { db.auth.getUser = original; }
 });
