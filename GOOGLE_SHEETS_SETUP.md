@@ -37,10 +37,20 @@ Google account's sheet ID.
 
 ## Data and reliability
 
-Reports include all durably stored **signals**, not paper-trade results, tokens,
-raw webhook payloads or broker credentials. Separate NIFTY/BTC/GOLD/Other tabs
-contain received time, signal time (IST), symbol, action, price, timeframe,
-validation status, decision, reason, strategy and signal ID.
+Reports include all durably stored **signals and paper trades**, never tokens,
+raw webhook payloads or broker credentials. NIFTY/BTC/GOLD/Other signal tabs
+contain separate received date/time and signal date/time (IST), symbol, action,
+price, timeframe, validation status, decision, reason, strategy and signal ID.
+Signal time uses the recorded confirmed candle close when available; otherwise
+it uses the recorded signal timestamp.
+
+NIFTY Trades/BTC Trades/GOLD Trades contain distinct engine labels, open/closed
+status, dates and time-only signal/received/entry/exit columns, actual fills,
+quantity, recorded capital, currency and quality. Historical missing fields stay
+blank. Legacy tests report points, not invented currency P&L or capital. BTC
+monitoring-gap trades keep recorded P&L but are excluded from verified gross P&L;
+deleted trades are omitted. Sync clears obsolete values only in app-owned report
+tabs, so deleted trades and changed open positions do not leave stale tail rows.
 
 Supabase remains the source of truth. Writes use RAW values (no formula execution)
 and deterministic snapshot ranges rather than append, avoiding duplicated rows on
@@ -49,11 +59,16 @@ retry. App-owned tabs are overwritten by sync; do not manually edit their data.
 After a persisted webhook, a Vercel `waitUntil` task attempts sync outside the
 signal response path. No change is made to trading rules or worker services.
 Database leases serialize report create/sync/disconnect across instances. If a
-reporting attempt fails, later signals, Sync now or the visible Signals panel's
+reporting attempt fails, later signals, Sync now or the visible Signals/Paper panel's
 one-minute retry can catch up from stored history. This is **not** an independent
 always-on retry queue; a Google outage after the last signal needs one of those
 retry triggers. Large histories may hit the function time limit and need a
 dedicated incremental reporting worker before large-scale rollout.
+
+The panel's native calendar controls filter Signals by received date in IST and
+trade history by entry date in IST (with All dates available for trades). Open
+positions stay visible independently of the history filter. Lifetime figures are
+not rewritten by the filter; separate selected-day history totals are shown.
 
 Validate before rollout: real Google consent, create one sheet, inspect sharing,
 sync twice without duplicate rows, pause, disconnect, test a different panel

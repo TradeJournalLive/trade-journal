@@ -2,18 +2,22 @@
 import { accountFetch } from "../lib/accountFetch";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { markets, type PaperBook, type PaperMarket, type paperValuation } from "../lib/algo/paperEngine";
+import { markets, type PaperMarket } from "../lib/algo/paperEngine";
 import { niftyRules } from "../lib/algo/niftyRules";
-import type { buildNiftyOptionsPaper } from "../lib/algo/niftyPaperEngine";
 import BtcDeltaPaper, { type BtcDeltaBook } from "./BtcDeltaPaper";
+import type { loadPaperBooks } from "../lib/algo/paperHistory";
+import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
+import HistoryDatePicker from "./HistoryDatePicker";
+import GoogleSheetsConnection from "./GoogleSheetsConnection";
 
-type LivePaperBook = PaperBook & { delta?: BtcDeltaBook | null; valuation: ReturnType<typeof paperValuation>; options?: Omit<ReturnType<typeof buildNiftyOptionsPaper>, "checkpoint"> & { workerOnline: boolean; trial?: { startedAt: string; endsAt: string; timeframe: string; workerStatus: string; heartbeatAt: string } } };
+type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
 const number = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 export default function SignalPaperTrading() {
   const [market, setMarket] = useState<PaperMarket>("NIFTY");
+  const [tradeDate, setTradeDate] = useState(() => istDay(new Date().toISOString()));
   const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -92,7 +96,8 @@ export default function SignalPaperTrading() {
     finally { setBusy(false); }
   }
   const book = books?.[market];
-  const trades = (book?.trades ?? []).filter(trade => !book?.symbol || trade.symbol === book.symbol);
+  const trades = onTradeDate((book?.trades ?? []).filter(trade => !book?.symbol || trade.symbol === book.symbol), tradeDate);
+  const optionTrades = onTradeDate(book?.options?.trades ?? [], tradeDate);
   const wins = trades.filter(trade => trade.points > 0).length;
   const points = trades.reduce((total, trade) => total + trade.points, 0);
   const gross = trades.reduce((total, trade) => total + trade.grossPoints, 0);
@@ -101,11 +106,13 @@ export default function SignalPaperTrading() {
   const valuation = book?.valuation;
   const pnl = (value: number | null | undefined) => value == null ? "--" : `${value > 0 ? "+" : ""}${number(value)}`;
   return <div className="space-y-4">
+    <GoogleSheetsConnection />
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
       <div role="tablist" aria-label="Paper markets" className="flex gap-2">{markets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "GOLD" ? "Gold" : item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
+      <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
-    {market === "BTC" && <BtcDeltaPaper refreshing={refreshing} book={book?.delta} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
+    {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
@@ -124,7 +131,8 @@ export default function SignalPaperTrading() {
       </dl></details>
       {book?.options?.position && <div className="algo-rule-list"><div><span>Open contract</span><b>{book.options.position.contract.id}</b></div><div><span>Capital used · INR premium</span><b>{number(book.options.position.entry * book.options.position.quantity)}</b></div><div><span>Lots / quantity</span><b>{book.options.position.lots} / {book.options.position.quantity}</b></div><div><span>Entry ask / current bid</span><b>{number(book.options.position.entry)} / {book.options.mark == null ? "--" : number(book.options.mark)}</b></div><div><span>Premium stop / target</span><b>{number(book.options.position.entry - (book.options.stopDistance ?? 0))} / {number(book.options.position.entry + 1.5 * (book.options.stopDistance ?? 0))}</b></div></div>}
       {book?.options?.pendingExit && <div role="alert" className="algo-alert-box"><b>Exit awaiting verified quote</b><span>{book.options.pendingExit}</span></div>}
-      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Lots</th><th>Entry time</th><th>Entry ask</th><th>Capital used · INR</th><th>Exit time</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{book?.options?.trades.length ? [...book.options.trades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{time(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{number(trade.entry * trade.quantity)}</td><td>{time(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={9}>No completed options paper trades.</td></tr>}</tbody></table></div>
+      <div className="flex flex-wrap gap-4 py-3 text-sm"><span>{optionTrades.length} closed trades · {tradeDate || "All dates"}</span><span>Selected gross INR: {pnl(optionTrades.reduce((sum, trade) => sum + trade.pnl, 0))}</span></div>
+      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Contract</th><th>Lots</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry ask</th><th>Capital used · INR</th><th>Exit date</th><th>Exit time · IST</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{optionTrades.length ? [...optionTrades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{istDay(trade.openedAt)}</td><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{number(trade.entry * trade.quantity)}</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={13}>No completed options paper trades for this entry date.</td></tr>}</tbody></table></div>
     </section>}
     <details key={market} open={market === "GOLD" ? true : undefined} className="border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-500">{market === "GOLD" ? "Gold signal-price test" : "Previous signal-price test & history"}</summary><div className="mt-4 space-y-4">
     <label className="flex items-center gap-3 text-sm"><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} />{market === "GOLD" ? "Gold test entries" : "Legacy test entries"} · {book?.enabled ? "On" : "Off"}</label>
@@ -148,7 +156,7 @@ export default function SignalPaperTrading() {
     </div>
     {Boolean(book?.unresolvedPositions?.length) && <div className="algo-alert-box"><b>Earlier feed positions retained</b><span>{book?.unresolvedPositions.map(item => `${item.symbol} ${item.side} at ${number(item.entry)}`).join("; ")}. These remain unresolved and are excluded from results for this feed.</span></div>}
     <div className="algo-os-card"><div className="algo-card-head"><h3>Open position</h3><span className="algo-pill pending">PAPER</span></div>{position ? <div className="algo-rule-list"><div><span>{position.symbol}</span><b>{position.side}</b></div><div><span>Entry</span><b>{number(position.entry)}</b></div><div><span>Capital used</span><b>Not recorded · price-only test</b></div><div><span>Opened</span><b>{time(position.openedAt)}</b></div><div><span>Last signal price</span><b>{book?.lastPrice == null ? "--" : number(book.lastPrice)}</b></div></div> : <div className="algo-empty-state">{book?.enabled ? "Waiting for the next signal." : "Paper trading is off."}</div>}{book?.pendingSessionClose && <div role="alert" className="algo-alert-box"><b>Session exit pending</b><span>No closing price was received at 15:15 IST. This position is excluded from closed-trade results until a verified exit price is available.</span></div>}</div>
-    <div className="algo-os-card"><div className="algo-card-head"><h3>Trade results</h3><span className="text-xs text-slate-500">{book?.lastSignalAt ? `Last signal ${time(book.lastSignalAt)}` : "No signal yet"}</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Symbol</th><th>Side</th><th>Entry time</th><th>Entry</th><th>Capital used</th><th>Exit time</th><th>Exit</th><th>Points</th><th>Exit reason</th></tr></thead><tbody>{trades.length ? [...trades].reverse().map(trade => <tr key={trade.id}><td>{trade.symbol}</td><td>{trade.side}</td><td>{time(trade.openedAt)}</td><td>{number(trade.entry)}</td><td title="Quantity and margin are not recorded for this signal-price test">Not recorded</td><td>{time(trade.closedAt)}</td><td>{number(trade.exit)}</td><td className={trade.points < 0 ? "text-red-600" : "text-emerald-600"}>{number(trade.points)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={9}>No completed trades.</td></tr>}</tbody></table></div></div>
+    <div className="algo-os-card"><div className="algo-card-head"><h3>Trade results · {tradeDate || "All dates"}</h3><span className="text-xs text-slate-500">{book?.lastSignalAt ? `Last signal ${time(book.lastSignalAt)}` : "No signal yet"}</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Symbol</th><th>Side</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry</th><th>Capital used</th><th>Exit date</th><th>Exit time · IST</th><th>Exit</th><th>Points</th><th>Exit reason</th></tr></thead><tbody>{trades.length ? [...trades].reverse().map(trade => <tr key={trade.id}><td>{istDay(trade.openedAt)}</td><td>{trade.symbol}</td><td>{trade.side}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td title="Quantity and margin are not recorded for this signal-price test">Not recorded</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td className={trade.points < 0 ? "text-red-600" : "text-emerald-600"}>{number(trade.points)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={13}>No completed trades for this entry date.</td></tr>}</tbody></table></div></div>
     </div></details>
   </div>;
 }

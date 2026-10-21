@@ -8,6 +8,8 @@ import FyersConnection from "./FyersConnection";
 import OptionsChain from "./OptionsChain";
 import BrokerReadinessAlert from "./BrokerReadinessAlert";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
+import HistoryDatePicker from "./HistoryDatePicker";
+import { istDay, istTime, signalTime } from "../lib/algo/reportDates";
 
 type AlgoSection =
   | "dashboard"
@@ -1015,9 +1017,9 @@ export default function AlgoTradingPanel() {
         <button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action secondary">{signalLogLoading ? "Refreshing..." : "Refresh"}</button>
       </div>
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span>{webhookConnected ? "Connection saved" : "Connection required"}</span><span>{filtered.length} loaded signals</span><span>Last checked: {signalLogLastChecked || "--"}</span></div>
-      <label className="flex items-center gap-3 text-sm">Signal date · IST<input aria-label="Signal date" type="date" value={signalDate} onChange={event => { if (event.target.value) { setSignalEvents([]); setSignalDate(event.target.value); } }} className="rounded-md border border-slate-300 bg-transparent p-2" /></label>
+      <HistoryDatePicker label="Received date · IST" value={signalDate} onChange={value => { setSignalEvents([]); setSignalDate(value); }} />
       {signalLogError && <p role="alert" className="text-sm text-red-600">{signalLogError}</p>}
-      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received · IST</th><th>Action</th><th>Instrument</th><th>Signal price</th><th>Delivery status</th><th>Reason</th></tr></thead><tbody>{filtered.length ? filtered.map(event => <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{new Date(event.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td><td>{event.signal.action}</td><td>{event.signal.symbol}</td><td>{event.signal.price?.toLocaleString("en-IN") ?? "--"}</td><td>{event.signal.status}</td><td>{event.decision.reasons[0] || "--"}</td></tr>) : <tr><td colSpan={6}>No signals loaded for this instrument.</td></tr>}</tbody></table></div>
+      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received date</th><th>Received time · IST</th><th>Signal date</th><th>Signal time · IST</th><th>Action</th><th>Instrument</th><th>Signal price</th><th>Delivery status</th><th>Reason</th></tr></thead><tbody>{filtered.length ? filtered.map(event => <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{istDay(event.receivedAt)}</td><td>{istTime(event.receivedAt)}</td><td>{istDay(signalTime(event))}</td><td>{istTime(signalTime(event))}</td><td>{event.signal.action}</td><td>{event.signal.symbol}</td><td>{event.signal.price?.toLocaleString("en-IN") ?? "--"}</td><td>{event.signal.status}</td><td>{event.decision.reasons[0] || "--"}</td></tr>) : <tr><td colSpan={9}>No signals received on this date for this instrument.</td></tr>}</tbody></table></div>
       <details open={!webhookConnected} className="border-t border-slate-200 py-4"><summary className="cursor-pointer text-sm font-semibold">TradingView connection</summary><div className="mt-4 space-y-3">
         <label className="block text-sm">Webhook URL<input readOnly value={typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
         <label className="block text-sm">Webhook secret<input type="password" value={tvTestSecret} onChange={event => setTvTestSecret(event.target.value)} placeholder={webhookConnected ? "Saved connection" : "Your existing webhook secret"} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>

@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 import { getServerSupabase } from "./signalStore";
 
 const strategy = "__google_sheets__";
-export type SheetsConnection = { refreshToken: string; sheetId?: string; creationPending?: boolean; enabled: boolean; lastSyncedAt?: string; signalCount?: number; error?: string };
+export type SheetsConnection = { refreshToken: string; sheetId?: string; creationPending?: boolean; enabled: boolean; lastSyncedAt?: string; signalCount?: number; tradeCount?: number; error?: string };
 function key() {
   const value = process.env.ALGO_CONNECTION_ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!value) throw new Error("Connection encryption unavailable.");

@@ -3,6 +3,9 @@ import { readAccountConnection, webhookAccountOwner } from "./accountConnections
 import { listPersistedAlgoSignalEvents } from "./signalStore";
 import { readSheets, writeSheets, withSheetsLock, type SheetsConnection } from "./googleSheetsStore";
 import type { StoredAlgoEvent } from "./automation";
+import { istDay, istTime, signalTime } from "./reportDates";
+import { loadPaperBooks } from "./paperHistory";
+import { buildTradeReports, tradeColumns, tradeRows } from "./tradeReports";
 
 export const SHEETS_SCOPE = "https://www.googleapis.com/auth/drive.file";
 export const sheetsCallback = () => `${process.env.APP_ORIGIN || "https://trade-journal-flax-seven.vercel.app"}/api/integrations/google-sheets/callback`;
@@ -13,10 +16,9 @@ export function sheetsOAuth() {
 }
 const tabs = ["NIFTY", "BTC", "GOLD", "Other"] as const;
 export function signalTab(symbol: string) { return /NIFTY/i.test(symbol) ? "NIFTY" : /BTC/i.test(symbol) ? "BTC" : /GOLD|XAU/i.test(symbol) ? "GOLD" : "Other"; }
-const columns = ["Received at (IST)", "Signal time (IST)", "Instrument", "Action", "Signal price", "Timeframe", "Status", "Accepted", "Stage", "Reason", "Strategy", "Signal ID"];
-const date = (value: string) => new Date(value).toLocaleString("en-GB", { timeZone: "Asia/Kolkata", hour12: false });
+const columns = ["Received date", "Received time (IST)", "Signal date", "Signal time (IST)", "Instrument", "Action", "Signal price", "Timeframe", "Status", "Accepted", "Stage", "Reason", "Strategy", "Signal ID"];
 export function signalRows(events: StoredAlgoEvent[]) {
-  return events.map(event => [date(event.receivedAt), date(event.signal.timestamp), event.signal.symbol, event.signal.action, event.signal.price ?? "", event.signal.timeframe ?? "", event.signal.status, event.decision.accepted ? "Yes" : "No", event.decision.stage, event.decision.reasons.join("; "), event.signal.strategyId, event.signal.id]);
+  return events.map(event => [istDay(event.receivedAt), istTime(event.receivedAt), istDay(signalTime(event)), istTime(signalTime(event)), event.signal.symbol, event.signal.action, event.signal.price ?? "", event.signal.timeframe ?? "", event.signal.status, event.decision.accepted ? "Yes" : "No", event.decision.stage, event.decision.reasons.join("; "), event.signal.strategyId, event.signal.id]);
 }
 const requests = new WeakMap<SheetsConnection, { auth: OAuth2Client; deadline: number }>();
 export class SheetsRequestError extends Error {
@@ -57,15 +59,33 @@ async function syncUnlocked(user: string, connection: SheetsConnection) {
   const history = await listPersistedAlgoSignalEvents(secret, 0);
   if (!history.ok) throw new Error("Signal history is unavailable. Previous sheet data was retained.");
   const events = [...history.events].reverse();
+  const trades = buildTradeReports(await loadPaperBooks(secret), events);
   // Rebuild deterministic ranges, rather than append: retries never duplicate signals.
-  const reports = tabs.map((tab, sheetId) => ({ tab, sheetId, rows: [columns, ...signalRows(events.filter(e => signalTab(e.signal.symbol) === tab))] }));
-  await google(connection, `/${connection.sheetId}:batchUpdate`, "POST", { requests: reports.map(({ sheetId, rows }) => ({ updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount: Math.max(1000, rows.length + 100) } }, fields: "gridProperties.rowCount" } })) });
+  const reports = [
+    ...tabs.map(tab => ({ tab, rows: [columns, ...signalRows(events.filter(e => signalTab(e.signal.symbol) === tab))] })),
+    ...["NIFTY", "BTC", "GOLD"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
+  ];
+  const metadata = await google(connection, `/${connection.sheetId}?fields=sheets(properties(sheetId,title))`, "GET");
+  const existing = new Map<string, number>((metadata.sheets || []).map((sheet: { properties: { title: string; sheetId: number } }) => [sheet.properties.title, sheet.properties.sheetId]));
+  const used = new Set(existing.values());
+  const changes: object[] = [];
+  for (const report of reports) {
+    let sheetId = existing.get(report.tab);
+    if (sheetId === undefined) {
+      sheetId = 0; while (used.has(sheetId)) sheetId++;
+      used.add(sheetId); existing.set(report.tab, sheetId);
+      changes.push({ addSheet: { properties: { sheetId, title: report.tab, gridProperties: { rowCount: Math.max(1000, report.rows.length + 100), columnCount: report.rows[0].length, frozenRowCount: 1 } } } });
+    } else changes.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount: Math.max(1000, report.rows.length + 100), columnCount: report.rows[0].length } }, fields: "gridProperties.rowCount,gridProperties.columnCount" } });
+  }
+  await google(connection, `/${connection.sheetId}:batchUpdate`, "POST", { requests: changes });
   const height = Math.max(...reports.map(r => r.rows.length));
   for (let offset = 0; offset < height; offset += 1000) {
     const data = reports.filter(r => r.rows.length > offset).map(r => ({ range: `'${r.tab}'!A${offset + 1}`, values: r.rows.slice(offset, offset + 1000) }));
     await google(connection, `/${connection.sheetId}/values:batchUpdate`, "POST", { valueInputOption: "RAW", data });
   }
-  connection.lastSyncedAt = new Date().toISOString(); connection.signalCount = events.length; delete connection.error;
+  // Remove obsolete tail rows after successful writes, including deleted paper trades.
+  await google(connection, `/${connection.sheetId}/values:batchClear`, "POST", { ranges: reports.map(report => `'${report.tab}'!A${report.rows.length + 1}:AZ`) });
+  connection.lastSyncedAt = new Date().toISOString(); connection.signalCount = events.length; connection.tradeCount = trades.length; delete connection.error;
   await writeSheets(user, connection);
 }
 export async function createSignalSheet(user: string) {

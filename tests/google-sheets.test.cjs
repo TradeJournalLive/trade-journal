@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), ts = require('typescript'), Module = require('node:module'), path = require('node:path');
 function load(relative, mocks) {
   const filename = path.resolve(__dirname, '..', relative), copy = new Module(filename, module);
-  copy.require = id => id in mocks ? mocks[id] : require(id);
+  copy.require = id => id in mocks ? mocks[id] : id.startsWith('.') && fs.existsSync(path.resolve(path.dirname(filename), id + '.ts')) ? load(path.relative(path.resolve(__dirname, '..'), path.resolve(path.dirname(filename), id + '.ts')), mocks) : require(id);
   copy._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, filename);
   return copy.exports;
 }
@@ -54,10 +54,20 @@ function reporting() {
     'google-auth-library': { OAuth2Client },
     './accountConnections': { readAccountConnection: async user => user === 'a' ? 'secret-a' : null, webhookAccountOwner: async secret => secret === 'secret-a' ? 'a' : null },
     './signalStore': { listPersistedAlgoSignalEvents: async secret => { assert.equal(secret, 'secret-a'); return { ok: true, events: rows }; } },
+    './paperHistory': { loadPaperBooks: async secret => { assert.equal(secret, 'secret-a'); return {}; } },
     './googleSheetsStore': { readSheets: async u => structuredClone(connections.get(u) || null), writeSheets: async (u,v) => connections.set(u, structuredClone(v)), withSheetsLock: async (u, f) => f() }
   });
   const oldFetch = global.fetch;
-  global.fetch = async (url, options) => { googleCalls.push({ url, options, body: JSON.parse(options.body) }); if (failNetwork) throw new Error('private provider details'); if (failStatus) return { ok: false, status: failStatus, json: async () => ({ error: { message: 'private provider details' } }) }; return { ok: true, json: async () => url === 'https://sheets.googleapis.com/v4/spreadsheets' ? { spreadsheetId: 'private-sheet' } : {} }; };
+  const sheets = new Map();
+  global.fetch = async (url, options) => {
+    const body = options.body ? JSON.parse(options.body) : undefined;
+    googleCalls.push({ url, options, body });
+    if (failNetwork) throw new Error('private provider details');
+    if (failStatus) return { ok: false, status: failStatus, json: async () => ({ error: { message: 'private provider details' } }) };
+    if (url === 'https://sheets.googleapis.com/v4/spreadsheets') for (const sheet of body.sheets) sheets.set(sheet.properties.title, sheet.properties);
+    if (url.endsWith(':batchUpdate') && !url.endsWith('values:batchUpdate')) for (const request of body.requests) if (request.addSheet) sheets.set(request.addSheet.properties.title, request.addSheet.properties);
+    return { ok: true, json: async () => url === 'https://sheets.googleapis.com/v4/spreadsheets' ? { spreadsheetId: 'private-sheet' } : url.includes('?fields=sheets') ? { sheets: [...sheets.values()].map(properties => ({ properties })) } : {} };
+  };
   process.env.GOOGLE_SHEETS_CLIENT_ID = 'test-id'; process.env.GOOGLE_SHEETS_CLIENT_SECRET = 'test-secret';
   return { api, connections, googleCalls, fail: status => { if (status) failStatus = status; else failNetwork = true; }, restore: () => global.fetch = oldFetch };
 }
@@ -77,6 +87,12 @@ test('create is private, explicit and idempotent; sync writes RAW instrument ran
     assert.ok(values.body.data[0].values.some(row => row.includes('=IMPORTDATA("bad")')));
     assert.equal(JSON.stringify(values.body).includes('private-refresh'), false);
     assert.equal(r.connections.get('a').signalCount, 1);
+    assert.equal(r.connections.get('a').tradeCount, 0);
+    const signalRow = r.api.signalRows([{ receivedAt: '2026-10-21T18:30:05Z', signal: { id: 's', strategyId: 'x', timestamp: '2026-10-21T18:29:00Z', symbol: 'NSE:NIFTY', action: 'BUY', metadata: {}, status: 'VALIDATED' }, decision: { accepted: true, reasons: [], stage: 'SIGNAL_RECEIVED' } }])[0];
+    assert.deepEqual(signalRow.slice(0,4), ['2026-10-22', '00:00:05', '2026-10-21', '23:59:00']);
+    assert.equal(r.googleCalls.filter(c => c.body?.requests?.some(r => r.addSheet)).length, 1);
+    const clear = r.googleCalls.find(c => c.url.endsWith('values:batchClear'));
+    assert.ok(clear.body.ranges.some(range => range.startsWith("'BTC Trades'!A2:")));
     await assert.rejects(r.api.createSignalSheet('b'), /Connect Google/);
   } finally { r.restore(); }
 });

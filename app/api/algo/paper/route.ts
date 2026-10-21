@@ -2,47 +2,13 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { connectionSecret, sameOrigin } from "../../../lib/algo/connection";
 import { getServerSupabase, hashWebhookSecret } from "../../../lib/algo/signalStore";
-import { buildPaperBooks, paperValuation, markets, type PaperEvent } from "../../../lib/algo/paperEngine";
-import { buildNiftyOptionsPaper } from "../../../lib/algo/niftyPaperEngine";
-import { btcView, type BtcTrade } from "../../../lib/algo/btcPaperEngine";
+import { markets } from "../../../lib/algo/paperEngine";
+import { loadPaperBooks as load } from "../../../lib/algo/paperHistory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Cookie" };
 
-async function load(secret: string) {
-  const db = getServerSupabase();
-  if (!db) throw new Error("Saved paper trading is unavailable.");
-  const events: PaperEvent[] = [];
-  const { data: worker, error: workerError } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_worker__").eq("signal_id", "state").maybeSingle();
-  if (workerError) throw new Error("Unable to verify options worker status.");
-  const { data: ledger, error: ledgerError } = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_trade__").order("received_at", { ascending: false }).limit(1000);
-  if (ledgerError) throw new Error("Unable to load options trade ledger.");
-  const { data: btcWorker, error: btcError } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_worker__").eq("signal_id", "state").maybeSingle();
-  const { data: btcLedger, error: btcLedgerError } = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_trade__").order("received_at", { ascending: false }).limit(1000);
-  if (btcError || btcLedgerError) throw new Error("Unable to load Delta BTC paper state.");
-  for (let offset = 0; offset < 100000; offset += 1000) {
-    const { data, error } = await db.from("tradingview_signal_events").select("received_at,signal,raw_payload,id")
-      .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").neq("strategy_id", "__btc_delta_worker__").neq("strategy_id", "__btc_delta_trade__").order("received_at").order("id").range(offset, offset + 999);
-    if (error) throw new Error(error.message);
-    events.push(...(data ?? []).map(row => ({ receivedAt: row.received_at, signal: row.signal, raw: row.raw_payload || {} })));
-    if (!data || data.length < 1000) {
-      const now = new Date().toISOString();
-      const books = buildPaperBooks(events, now);
-      const options = worker?.raw_payload?.state?.checkpoint ? buildNiftyOptionsPaper([], now, worker.raw_payload.state.checkpoint) : buildNiftyOptionsPaper(events, now);
-      const { checkpoint: _checkpoint, ...publicOptions } = options;
-      const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000 && !String(worker.raw_payload?.book?.trial?.workerStatus || "").startsWith("STOPPED_"));
-      const ledgerTrades = (ledger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse();
-      const deleted = new Set(events.map(event => (event.raw.paperControl as { deleteTrade?: string } | undefined)?.deleteTrade).filter(Boolean));
-      const btcTrades: BtcTrade[] = (btcLedger || []).map(row => row.raw_payload?.trade).filter(Boolean).reverse();
-      const removed = btcTrades.filter(trade => deleted.has(`${trade.id}:${trade.openedAt}`) && !trade.monitoringGap);
-      const view = btcWorker?.raw_payload?.saved?.state ? btcView(btcWorker.raw_payload.saved.state, now) : null;
-      const delta = view ? { ...view, realized: view.realized - removed.reduce((sum, trade) => sum + trade.pnl, 0), tradeCount: view.tradeCount - removed.length, trades: btcTrades.filter(trade => !deleted.has(`${trade.id}:${trade.openedAt}`)), workerOnline: Date.parse(now) - Date.parse(btcWorker!.received_at) < 15000 && !String(btcWorker!.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker!.raw_payload.workerStatus, trial: { startedAt: btcWorker!.raw_payload.saved.startedAt, endsAt: btcWorker!.raw_payload.saved.endsAt } } : null;
-      return Object.fromEntries(markets.map(market => [market, { ...books[market], valuation: paperValuation(books[market], events, now), ...(market === "BTC" ? { delta } : {}), ...(market === "NIFTY" ? { options: { ...publicOptions, ...(ledgerTrades.length ? { trades: ledgerTrades } : {}), workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
-    }
-  }
-  throw new Error("History exceeds the paper engine limit; archive is required before continuing.");
-}
 export async function GET() {
   const secret = await connectionSecret();
   if (!secret) return NextResponse.json({ error: "Connect TradingView in Integrations first." }, { status: 401 });

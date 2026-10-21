@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const user = await accountId(); if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401, headers });
     const c = await readSheets(user);
-    return NextResponse.json({ configured: sheetsConfigured(), connected: Boolean(c), enabled: c?.enabled ?? false, url: c?.sheetId ? `https://docs.google.com/spreadsheets/d/${c.sheetId}/edit` : null, lastSyncedAt: c?.lastSyncedAt, signalCount: c?.signalCount ?? 0, error: c?.error }, { headers });
+    return NextResponse.json({ configured: sheetsConfigured(), connected: Boolean(c), enabled: c?.enabled ?? false, url: c?.sheetId ? `https://docs.google.com/spreadsheets/d/${c.sheetId}/edit` : null, lastSyncedAt: c?.lastSyncedAt, signalCount: c?.signalCount ?? 0, tradeCount: c?.tradeCount ?? 0, error: c?.error }, { headers });
   } catch { return NextResponse.json({ error: "Unable to read Sheets connection." }, { status: 503, headers }); }
 }
 export async function POST(request: Request) {
