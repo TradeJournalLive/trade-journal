@@ -6,14 +6,16 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Cookie" };
 
-export async function GET() {
+export async function GET(request: Request) {
   const secret = await connectionSecret();
   if (!secret) return NextResponse.json({ error: "Connect your webhook once to load saved signals." }, { status: 401 });
-  return history(secret);
+  const date = new URL(request.url).searchParams.get("date") || undefined;
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+  return history(secret, date);
 }
 
-async function history(secret: string) {
-  const persisted = await listPersistedAlgoSignalEvents(secret, 100);
+async function history(secret: string, date?: string) {
+  const persisted = await listPersistedAlgoSignalEvents(secret, 100, date);
   if (!persisted.ok) return NextResponse.json({ error: persisted.reason }, { status: 503 });
   return NextResponse.json({ events: persisted.events, source: "supabase", connected: true }, { headers: privateHeaders });
 }

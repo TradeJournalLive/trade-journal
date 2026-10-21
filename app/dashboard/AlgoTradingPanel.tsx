@@ -313,6 +313,7 @@ export default function AlgoTradingPanel() {
   const [savedStrategyName, setSavedStrategyName] = useState("NIFTY EMA Protection");
   const [webhookSecretVisible, setWebhookSecretVisible] = useState(false);
   const [signalMarket, setSignalMarket] = useState("NIFTY");
+  const [signalDate, setSignalDate] = useState(() => new Date(Date.now() + 19800000).toISOString().slice(0, 10));
   const [dhanClientId, setDhanClientId] = useState("");
   const [dhanAccessToken, setDhanAccessToken] = useState("");
   const [dhanTesting, setDhanTesting] = useState(false);
@@ -356,12 +357,13 @@ export default function AlgoTradingPanel() {
     }
 
     try {
-      const response = await accountFetch("/api/algo/signals", secret ? {
+      let response = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}`, secret ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
         cache: "no-store"
       } : { cache: "no-store" });
+      if (secret && response.ok) response = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}`, { cache: "no-store" });
       const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string; warning?: string; source?: string };
       if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
       if (!response.ok) {
@@ -386,7 +388,7 @@ export default function AlgoTradingPanel() {
     } finally {
       if (!silent) setSignalLogLoading(false);
     }
-  }, [tvTestSecret]);
+  }, [tvTestSecret, signalDate]);
 
   async function sendTradingViewTestSignal(action: "BUY" | "SELL" = "BUY") {
     const secret = tvTestSecret.trim();
@@ -1011,6 +1013,7 @@ export default function AlgoTradingPanel() {
         <button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action secondary">{signalLogLoading ? "Refreshing..." : "Refresh"}</button>
       </div>
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span>{webhookConnected ? "Connection saved" : "Connection required"}</span><span>{filtered.length} loaded signals</span><span>Last checked: {signalLogLastChecked || "--"}</span></div>
+      <label className="flex items-center gap-3 text-sm">Signal date · IST<input aria-label="Signal date" type="date" value={signalDate} onChange={event => { if (event.target.value) { setSignalEvents([]); setSignalDate(event.target.value); } }} className="rounded-md border border-slate-300 bg-transparent p-2" /></label>
       {signalLogError && <p role="alert" className="text-sm text-red-600">{signalLogError}</p>}
       <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received · IST</th><th>Action</th><th>Instrument</th><th>Signal price</th><th>Delivery status</th><th>Reason</th></tr></thead><tbody>{filtered.length ? filtered.map(event => <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{new Date(event.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td><td>{event.signal.action}</td><td>{event.signal.symbol}</td><td>{event.signal.price?.toLocaleString("en-IN") ?? "--"}</td><td>{event.signal.status}</td><td>{event.decision.reasons[0] || "--"}</td></tr>) : <tr><td colSpan={6}>No signals loaded for this instrument.</td></tr>}</tbody></table></div>
       <details open={!webhookConnected} className="border-t border-slate-200 py-4"><summary className="cursor-pointer text-sm font-semibold">TradingView connection</summary><div className="mt-4 space-y-3">

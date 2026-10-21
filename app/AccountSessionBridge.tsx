@@ -18,8 +18,14 @@ export default function AccountSessionBridge({ children }: { children: React.Rea
   useEffect(() => {
     if (!supabase) { setError("Sign-in service unavailable."); return; }
     let stopped = false, generation = 0, queue = Promise.resolve(), renewalAttempted = false;
+    let lastToken: string | null | undefined;
+    let verifiedId = "";
     function sync(token: string | null, id: string) {
-      const current = ++generation; setReady(false); setError(""); setLinks({});
+      if (token === lastToken) return;
+      lastToken = token;
+      const current = ++generation;
+      if (!id || id !== verifiedId) { setReady(false); setLinks({}); }
+      setError("");
       queue = queue.catch(() => {}).then(async () => {
         if (stopped || current !== generation) return;
         try {
@@ -34,8 +40,8 @@ export default function AccountSessionBridge({ children }: { children: React.Rea
             throw new Error(`${verified.error || "Unable to verify your account."} (${verified.code || response.status})`);
           }
           if (token && verified.userId !== id) throw new Error("Account verification mismatch. Sign in again.");
-          if (!stopped && current === generation) { setUser(verified.userId || ""); setEmail(verified.email || ""); setReady(true); }
-        } catch (e) { if (!stopped && current === generation) setError(e instanceof Error ? e.message : "Account verification failed."); }
+          if (!stopped && current === generation) { verifiedId = verified.userId || ""; setUser(verifiedId); setEmail(verified.email || ""); setReady(true); }
+        } catch (e) { if (!stopped && current === generation) { lastToken = undefined; verifiedId = ""; setReady(false); setError(e instanceof Error ? e.message : "Account verification failed."); } }
       });
     }
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { sync(session?.access_token ?? null, session?.user.id ?? ""); });

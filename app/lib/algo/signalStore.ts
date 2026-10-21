@@ -63,11 +63,11 @@ export async function persistAlgoSignalEvent({ event, secret, rawPayload }: Pers
   return { ok: true, skipped: false };
 }
 
-export async function listPersistedAlgoSignalEvents(secret: string, limit = 100) {
+export async function listPersistedAlgoSignalEvents(secret: string, limit = 100, date?: string) {
   const supabase = getServerSupabase();
   if (!supabase || !secret.trim()) return { ok: false, events: [], reason: "Supabase service role or secret is missing." };
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE_NAME)
     .select("received_at,signal,decision")
     .eq("secret_hash", hashWebhookSecret(secret.trim()))
@@ -77,13 +77,23 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100)
     .neq("strategy_id", "__btc_delta_worker__")
     .neq("strategy_id", "__btc_delta_trade__")
     .order("received_at", { ascending: false })
-    .limit(limit);
-
-  if (error) return { ok: false, events: [], reason: error.message };
+    .order("signal_id", { ascending: false });
+  if (date) {
+    const start = new Date(`${date}T00:00:00+05:30`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(start.getTime()) || new Date(start.getTime() + 19800000).toISOString().slice(0, 10) !== date) return { ok: false, events: [], reason: "Invalid signal date." };
+    query = query.gte("received_at", start.toISOString()).lt("received_at", new Date(start.getTime() + 86400000).toISOString());
+  }
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await query.range(offset, offset + (date ? 999 : limit - 1));
+    if (error) return { ok: false, events: [], reason: error.message };
+    rows.push(...(data ?? []));
+    if (!date || !data || data.length < 1000) break;
+  }
 
   return {
     ok: true,
-    events: (data ?? []).map((row) => ({
+    events: rows.map((row) => ({
       receivedAt: String(row.received_at),
       signal: row.signal,
       decision: row.decision
