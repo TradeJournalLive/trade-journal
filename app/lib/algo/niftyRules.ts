@@ -10,7 +10,30 @@ export const niftyRules = {
   maxLots: null,
   sizeReset: false,
   targetR: 1.5,
+  maxEntrySlippage: 4,
 } as const;
+
+export function niftyTargets(entry: number, lots: number, lotSize: number) {
+  const first = lots === 1 ? 1 : lots === 2 ? 1 : Math.min(lots - 1, Math.max(1, Math.round(lots * 0.8)));
+  return [{ price: entry * 2, quantity: first * lotSize, filled: false },
+    ...(lots > first ? [{ price: entry * 2.5, quantity: (lots - first) * lotSize, filled: false }] : [])];
+}
+
+export type NiftyDepthLevel = { price: number; quantity: number };
+export function niftyEntryFill(ask: number, quantity: number, levels: NiftyDepthLevel[]) {
+  if (!Number.isFinite(ask) || ask <= 0 || !Number.isSafeInteger(quantity) || quantity <= 0 || !levels.length) return null;
+  const sorted = [...levels].sort((a, b) => a.price - b.price);
+  if (sorted[0].price !== ask || sorted.some((l, i) => !Number.isFinite(l.price) || l.price <= 0 || !Number.isSafeInteger(l.quantity) || l.quantity <= 0 || (i > 0 && l.price === sorted[i - 1].price))) return null;
+  let remaining = quantity, cost = 0;
+  const fills: NiftyDepthLevel[] = [];
+  for (const level of sorted) {
+    if (level.price > ask + niftyRules.maxEntrySlippage + 1e-9) break;
+    const taken = Math.min(remaining, level.quantity);
+    fills.push({ price: level.price, quantity: taken }); cost += taken * level.price; remaining -= taken;
+    if (!remaining) return { price: cost / quantity, initialAsk: ask, slippage: cost / quantity - ask, fills };
+  }
+  return null;
+}
 
 export type NiftySetup = { action: "BUY" | "SELL"; high: number; low: number };
 export type SizeState = { lots: number; consecutiveLosses: number };
@@ -41,12 +64,12 @@ export function niftyBreakout(setup: NiftySetup, previous: number, current: numb
 
 export function niftyExit(input: {
   side: "CE" | "PE"; entryPremium: number; premium: number; index: number;
-  previous15m: { high: number; low: number }; oppositeSignal: boolean; minutesIST: number;
+  previous15m: { high: number; low: number }; oppositeSignal: boolean; minutesIST: number; premiumTargets?: boolean;
 }) {
   if (input.minutesIST >= niftyRules.cutoffMinutesIST) return "TIME_EXIT";
   if (input.oppositeSignal) return "OPPOSITE_SIGNAL";
   if (input.premium > 0 && input.premium <= input.entryPremium - premiumStopDistance(input.entryPremium)) return "PREMIUM_SL";
-  if (input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_1_5R";
+  if (!input.premiumTargets && input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_1_5R";
   if (input.side === "CE" && input.index < input.previous15m.low) return "INDEX_15M_TRAIL";
   if (input.side === "PE" && input.index > input.previous15m.high) return "INDEX_15M_TRAIL";
   return null;

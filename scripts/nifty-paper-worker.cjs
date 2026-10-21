@@ -8,6 +8,7 @@ require('@next/env').loadEnvConfig(process.cwd(), false);
 const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
+const { readDepth, withDepth } = require('./nifty-depth.cjs');
 function load(name) {
   const file = path.resolve(__dirname, `../app/lib/algo/${name}.ts`), copy = new Module(file, module);
   copy.require = id => id.startsWith('./') ? load(id.slice(2)) : require(id);
@@ -39,6 +40,7 @@ const secretHash = hash(env.PAPER_WEBHOOK_SECRET), workerId = crypto.randomUUID(
 let state, book, lease, connection, socket, master = [], quotes = new Map(), index, trail, lastMasterDay;
 let status = 'STARTING', processed = new Set(), pollAfter, lastPublish = 0, failed = false;
 let queue = Promise.resolve();
+const depths = new Map();
 const persistedTrades = new Set();
 function audit(type, data) {
   fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, data }) + '\n', { mode: 0o600 });
@@ -49,10 +51,11 @@ function event(id, data, action = 'EXIT', timestamp = now()) {
 function advance(events) {
   const before = book?.trades.length ?? 0;
   const previousPosition = book?.position?.openedAt;
+  const previousQuantity = book?.position?.quantity;
   book = buildNiftyOptionsPaper(events, now(), state.checkpoint);
   state.checkpoint = book.checkpoint;
   for (const trade of book.trades.slice(before)) audit('TRADE', trade);
-  if (before !== book.trades.length || previousPosition !== book.position?.openedAt) saveLocal();
+  if (before !== book.trades.length || previousPosition !== book.position?.openedAt || previousQuantity !== book.position?.quantity) saveLocal();
 }
 function saveLocal() {
   if (!state) return;
@@ -100,6 +103,11 @@ function marketTick(message) {
   const rows = Array.isArray(message) ? message : [message];
   for (const row of rows) {
     if (!row || !row.symbol) continue;
+    if (row.type === 'dp') {
+      const depth = readDepth(row, now());
+      if (depth) depths.set(row.symbol, depth);
+      continue;
+    }
     const timestamp = Number(row.exch_feed_time) * 1000;
     if (!Number.isFinite(timestamp) || Math.abs(Date.now() - timestamp) > 5000) continue;
     if (row.symbol === indexSymbol && Number(row.ltp) > 0) index = { price: Number(row.ltp), at: timestamp };
@@ -110,8 +118,8 @@ function marketTick(message) {
     if (minutes(timestampISO) < 555 || minutes(timestampISO) > 930) continue;
     status = 'RECEIVING_FYERS_TICKS';
     const nearestExpiry = master.map(c => c.expiry).sort()[0];
-    const contracts = master.filter(c => (c.expiry === nearestExpiry && Math.abs(c.strike - index.price) <= 700) || c.id === book?.position?.contract.id).map(c => ({ ...c, ...(quotes.get(c.id) || { bid: 0, ask: 0, timestamp: '' }) }));
-    const tick = { kind: 'TICK', indexSymbol: 'NSE:NIFTY', timestamp: timestampISO, price: index.price, nearestExpiry, chainComplete: true, previous15m: trail, contracts };
+    const contracts = master.filter(c => (c.expiry === nearestExpiry && Math.abs(c.strike - index.price) <= 700) || c.id === book?.position?.contract.id).map(c => ({ ...c, ...(withDepth(quotes.get(c.id), depths.get(c.id), timestampISO) || { bid: 0, ask: 0, timestamp: '' }) }));
+    const tick = { kind: 'TICK', executionVersion: 2, indexSymbol: 'NSE:NIFTY', timestamp: timestampISO, price: index.price, nearestExpiry, chainComplete: true, previous15m: trail, contracts };
     audit('TICK', tick);
     advance([event(`tick-${crypto.randomUUID()}`, tick, 'EXIT', timestampISO)]);
   }
@@ -124,7 +132,7 @@ async function connect() {
   if (!symbols.length) throw new Error('OPTION_SUBSCRIPTIONS_UNAVAILABLE');
   if (book?.position) symbols.push(book.position.contract.id);
   socket = fyersDataSocket.getInstance(`${connection.appId}:${connection.accessToken}`, directory, false);
-  socket.on('connect', () => { status = 'SOCKET_CONNECTED_WAITING_FOR_FRESH_DATA'; socket.subscribe([indexSymbol, ...new Set(symbols)]); });
+  socket.on('connect', () => { status = 'SOCKET_CONNECTED_WAITING_FOR_FRESH_DATA'; quotes.clear(); depths.clear(); index = undefined; socket.subscribe([indexSymbol, ...new Set(symbols)]); socket.subscribe([...new Set(symbols)], true); });
   socket.on('message', message => { queue = queue.then(() => marketTick(message)).catch(() => { status = 'PROCESSING_ERROR'; failed = true; }); });
   socket.on('error', () => { status = 'FEED_ERROR_RECONNECT_REQUIRED'; });
   socket.on('close', () => { status = 'FEED_DISCONNECTED'; });
@@ -135,11 +143,11 @@ async function subscriptions() {
   const result = await api(`data/options-chain-v3?symbol=${encodeURIComponent(indexSymbol)}&strikecount=12`);
   const symbols = (result.data?.optionsChain || []).filter(row => ['CE', 'PE'].includes(row.option_type)).map(row => row.symbol);
   if (book?.position) symbols.push(book.position.contract.id);
-  if (symbols.length && socket?.isConnected()) socket.subscribe([...new Set(symbols)]);
+  if (symbols.length && socket?.isConnected()) { socket.subscribe([...new Set(symbols)]); socket.subscribe([...new Set(symbols)], true); }
 }
 function summary(value = state) {
   const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), value.checkpoint);
-  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', workerStatus: status, heartbeatAt: now() }, feesIncluded: false };
+  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: false };
 }
 async function publish() {
   const at = now();
@@ -156,7 +164,7 @@ async function publish() {
     unpersisted.forEach(trade => persistedTrades.add(`${trade.signalId}:${trade.openedAt}`));
   }
   // Historical fills live in their own immutable-key ledger, not every heartbeat.
-  snapshot.checkpoint = { ...result.checkpoint, trades: [], realizedBase: result.realized, tradeCountBase: result.tradeCount };
+  snapshot.checkpoint = { ...result.checkpoint, trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
   const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (error || data?.length !== 1) throw new Error('WORKER_LEASE_OR_STORAGE_LOST');
   lease = at; lastPublish = Date.now(); saveLocal();

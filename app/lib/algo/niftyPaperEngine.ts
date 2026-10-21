@@ -1,11 +1,11 @@
 import type { PaperEvent } from "./paperEngine";
-import { nextNiftySize, niftyBreakout, niftyExit, premiumStopDistance, type NiftySetup } from "./niftyRules";
+import { nextNiftySize, niftyBreakout, niftyExit, niftyTargets, niftyEntryFill, premiumStopDistance, type NiftySetup, type NiftyDepthLevel } from "./niftyRules";
 
-type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE"; lotSize: number; bid: number; ask: number; timestamp: string; bidSize?: number; askSize?: number };
+type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE"; lotSize: number; bid: number; ask: number; timestamp: string; bidSize?: number; askSize?: number; asks?: NiftyDepthLevel[]; depthAt?: string };
 type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: number; indexSymbol: string };
-type Position = { contract: Contract; lots: number; quantity: number; entry: number; openedAt: string; signalId: string; indexSymbol: string };
+type Position = { contract: Contract; lots: number; quantity: number; entry: number; openedAt: string; signalId: string; indexSymbol: string; targets?: ReturnType<typeof niftyTargets>; initialLots?: number; initialQuantity?: number; realizedPnl?: number; entryFill?: NonNullable<ReturnType<typeof niftyEntryFill>>; exitFills?: { price: number; quantity: number; at: string; reason: string }[] };
 type Trade = Position & { exit: number; closedAt: string; reason: string; pnl: number };
-type Tick = { indexSymbol: string; timestamp: string; price: number; nearestExpiry: string; chainComplete: boolean; previous15m?: { high: number; low: number; closedAt: string }; contracts: Contract[] };
+type Tick = { indexSymbol: string; timestamp: string; price: number; nearestExpiry: string; chainComplete: boolean; executionVersion?: 2; previous15m?: { high: number; low: number; closedAt: string }; contracts: Contract[] };
 export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number };
 
 function minutesIST(timestamp: string) {
@@ -88,15 +88,32 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
     if (position) {
       const quote = quotes.find(contract => contract.id === position!.contract.id && contract.expiry === position!.contract.expiry && contract.side === position!.contract.side && contract.strike === position!.contract.strike);
       mark = quote?.bid ?? null;
-      if (quote && (quote.bidSize === undefined || (Number.isFinite(quote.bidSize) && quote.bidSize >= position.quantity))) {
+      if (quote) {
         // Missing trail history blocks new entries, never premium or timed exits.
-        const reason = dayIST(tick.timestamp) > dayIST(position.openedAt) ? "DELAYED_SESSION_EXIT" : pendingExit || niftyExit({ side: position.contract.side, entryPremium: position.entry, premium: quote.bid, index: tick.price, previous15m: completed15m ? tick.previous15m! : { high: Infinity, low: -Infinity }, oppositeSignal: false, minutesIST: minutesIST(tick.timestamp) });
-        if (reason) {
-          const pnl = (quote.bid - position.entry) * position.quantity;
-          trades.push({ ...position, exit: quote.bid, closedAt: tick.timestamp, reason, pnl });
-          size = nextNiftySize(size, { points: pnl, stopLoss: reason === "PREMIUM_SL" });
-          position = null; pendingExit = null; mark = null; status = enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
-        }
+        let reason = dayIST(tick.timestamp) > dayIST(position.openedAt) ? "DELAYED_SESSION_EXIT" : pendingExit || niftyExit({ side: position.contract.side, entryPremium: position.entry, premium: quote.bid, index: tick.price, previous15m: completed15m ? tick.previous15m! : { high: Infinity, low: -Infinity }, oppositeSignal: false, minutesIST: minutesIST(tick.timestamp), premiumTargets: Boolean(position.targets) });
+        let available = quote.bidSize ?? 0;
+        const reached = !reason ? position.targets?.filter(target => {
+          if (target.filled || quote.bid < target.price || available < target.quantity) return false;
+          available -= target.quantity; return true;
+        }) ?? [] : [];
+        const exitQuantity = reason ? position.quantity : reached.reduce((sum, target) => sum + target.quantity, 0);
+        if (!reason && reached.length) reason = reached.length > 1 || reached[0].price === position.entry * 2.5 ? "TARGET_2_5X" : "TARGET_2X";
+        const enough = quote.bidSize === undefined ? !position.targets : Number.isFinite(quote.bidSize) && quote.bidSize >= exitQuantity;
+        if (reason && exitQuantity > 0 && enough) {
+          const pnl = (position.realizedPnl ?? 0) + (quote.bid - position.entry) * exitQuantity;
+          const exitFills = [...(position.exitFills ?? []), { price: quote.bid, quantity: exitQuantity, at: tick.timestamp, reason }];
+          if (exitQuantity < position.quantity) {
+            reached.forEach(target => { target.filled = true; });
+            position = { ...position, quantity: position.quantity - exitQuantity, lots: (position.quantity - exitQuantity) / position.contract.lotSize, realizedPnl: pnl, exitFills };
+            status = "PARTIAL_TARGET_FILLED";
+          } else {
+            const quantity = position.initialQuantity ?? position.quantity;
+            const exit = exitFills.reduce((sum, fill) => sum + fill.price * fill.quantity, 0) / quantity;
+            trades.push({ ...position, lots: position.initialLots ?? position.lots, quantity, exit, exitFills, closedAt: tick.timestamp, reason, pnl });
+            size = nextNiftySize(size, { points: pnl, stopLoss: reason === "PREMIUM_SL" });
+            position = null; pendingExit = null; mark = null; status = enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
+          }
+        } else if (reason && !enough) status = "WAITING_FOR_EXIT_LIQUIDITY";
       } else status = "WAITING_FOR_POSITION_PREMIUM";
     }
     if (!completed15m && !position) status = "WAITING_FOR_COMPLETED_15M_CANDLE";
@@ -114,10 +131,16 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
             const atm = strikes.reduce((best, strike) => Math.abs(strike - tick.price) < Math.abs(best - tick.price) ? strike : best, strikes[0]);
             const index = strikes.indexOf(atm) + (side === "CE" ? 1 : -1);
             const contract = chain.find(item => item.side === side && item.strike === strikes[index]);
-            if (contract && (contract.askSize === undefined || (Number.isFinite(contract.askSize) && contract.askSize >= size.lots * contract.lotSize))) {
-              position = { contract, lots: size.lots, quantity: size.lots * contract.lotSize, entry: contract.ask, openedAt: tick.timestamp, signalId: setup.id, indexSymbol: tick.indexSymbol };
+            const quantity = contract ? size.lots * contract.lotSize : 0;
+            const fill = contract && tick.executionVersion === 2 ? niftyEntryFill(contract.ask, quantity,
+              contract.asks && contract.depthAt && fresh(contract.depthAt, tick.timestamp) ? contract.asks :
+              Number.isSafeInteger(contract.askSize) && contract.askSize! > 0 ? [{ price: contract.ask, quantity: contract.askSize! }] : []) : null;
+            if (contract && (tick.executionVersion === 2 ? Boolean(fill) : contract.askSize === undefined || (Number.isFinite(contract.askSize) && contract.askSize >= quantity))) {
+              const entry = fill?.price ?? contract.ask;
+              position = { contract, lots: size.lots, quantity, entry, openedAt: tick.timestamp, signalId: setup.id, indexSymbol: tick.indexSymbol,
+                ...(fill ? { targets: niftyTargets(entry, size.lots, contract.lotSize), initialLots: size.lots, initialQuantity: quantity, entryFill: fill } : {}) };
               mark = contract.bid; setup = null; status = "OPEN";
-            } else { status = "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; setup = null; }
+            } else { status = contract ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; setup = null; }
           }
         }
       }
@@ -133,7 +156,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   const stale = !Number.isFinite(age) || age < 0 || age > 15000;
   if (position && (dayIST(now) > dayIST(position.openedAt) || minutesIST(now) >= 895)) pendingExit = pendingExit || "TIME_EXIT_AWAITING_VERIFIED_QUOTE";
   const realizedBase = saved?.realizedBase ?? 0, tradeCountBase = saved?.tradeCountBase ?? 0;
-  const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0) + (position?.realizedPnl ?? 0);
   return { enabled, status, position, setup, size, trades, mark, lastTickAt, stale, pendingExit, realized,
     tradeCount: tradeCountBase + trades.length,
     checkpoint: { enabled, setup, position, previousTick, size, pendingExit, status, lastTickAt, mark, trades, seen: [...seen], realizedBase, tradeCountBase } satisfies NiftyPaperCheckpoint,

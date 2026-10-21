@@ -6,7 +6,7 @@ const Module = require("node:module");
 const filename = require("node:path").resolve(__dirname, "../app/lib/algo/niftyRules.ts");
 const copy = new Module(filename, module);
 copy._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, filename);
-const { niftyBreakout, niftyExit, premiumStopDistance, nextNiftySize } = copy.exports;
+const { niftyBreakout, niftyExit, premiumStopDistance, nextNiftySize, niftyTargets, niftyEntryFill } = copy.exports;
 test("index crossings, validity and session boundaries", () => {
   const setup = { action: "BUY", high: 25030, low: 25000 };
   assert.equal(niftyBreakout(setup, 25030, 25031, 10, 894), "CE");
@@ -15,6 +15,20 @@ test("index crossings, validity and session boundaries", () => {
   assert.equal(niftyBreakout(setup, 25030, 25031, 1, 895), null);
   assert.equal(niftyBreakout({ ...setup, high: 25036 }, 25035, 25037, 1, 600), null);
   assert.equal(niftyBreakout({ ...setup, action: "SELL" }, 25000, 24999, 1, 600), "PE");
+});
+test("premium targets round whole lots and retain at least one second-target lot", () => {
+  for (const [lots, first, second] of [[1, 1, 0], [2, 1, 1], [3, 2, 1], [4, 3, 1], [5, 4, 1], [8, 6, 2]]) {
+    const plan = niftyTargets(130, lots, 65);
+    assert.equal(plan[0].price, 260); assert.equal(plan[0].quantity, first * 65);
+    assert.equal(plan[1]?.quantity ?? 0, second * 65);
+    if (second) assert.equal(plan[1].price, 325);
+  }
+});
+test("depth fill allows exactly four points, rejects duplicates and invalid sizes", () => {
+  assert.equal(niftyEntryFill(130, 130, [{ price: 130, quantity: 65 }, { price: 134, quantity: 65 }]).price, 132);
+  assert.equal(niftyEntryFill(130, 130, [{ price: 130, quantity: 65 }, { price: 134.05, quantity: 65 }]), null);
+  assert.equal(niftyEntryFill(130, 130, [{ price: 130, quantity: 65 }, { price: 130, quantity: 65 }]), null);
+  assert.equal(niftyEntryFill(130, 130, [{ price: 130, quantity: NaN }]), null);
 });
 test("premium SL uses smaller of twenty points and twenty percent", () => {
   assert.equal(premiumStopDistance(50), 10);

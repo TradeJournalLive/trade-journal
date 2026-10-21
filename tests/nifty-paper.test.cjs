@@ -106,3 +106,79 @@ test("insufficient quoted quantity never fabricates a full fill", () => {
   assert.equal(result.trades.length, 0);
   assert.ok(result.position);
 });
+
+function v2(second, price, bid = 99, askSize = 6500) {
+  const e = tick(second, price, bid), data = e.signal.metadata.niftyPaper;
+  data.executionVersion = 2;
+  data.contracts.forEach(c => { c.askSize = askSize; c.bidSize = 6500; });
+  return e;
+}
+function newBook(lots) {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint;
+  seed.size.lots = lots;
+  return buildNiftyOptionsPaper([buy, v2(2, 25009), v2(3, 25011)], time(3), seed);
+}
+test("new single-lot trade ignores legacy 1.5R and exits at double premium", () => {
+  const open = newBook(1);
+  const held = buildNiftyOptionsPaper([v2(4, 25012, 130)], time(4), open.checkpoint);
+  assert.ok(held.position); assert.equal(held.trades.length, 0);
+  const closed = buildNiftyOptionsPaper([v2(5, 25012, 200)], time(5), held.checkpoint);
+  assert.equal(closed.trades[0].reason, 'TARGET_2X'); assert.equal(closed.realized, 6500);
+});
+test("existing old position retains its recorded legacy rule on version-two ticks", () => {
+  const old = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011)], time(3));
+  const result = buildNiftyOptionsPaper([v2(4, 25012, 130)], time(4), old.checkpoint);
+  assert.equal(result.trades[0].reason, 'TARGET_1_5R');
+});
+test("new targets never disable the completed 15-minute trail or opposite signal exit", () => {
+  const open = newBook(2), trail = v2(4, 24899, 110);
+  assert.equal(buildNiftyOptionsPaper([trail], time(4), open.checkpoint).trades[0].reason, 'INDEX_15M_TRAIL');
+  const sell = event('sell-new', 4, { kind: 'SIGNAL', high: 25020, low: 25000, closedAt: time(4) }, 'SELL');
+  assert.equal(buildNiftyOptionsPaper([sell, v2(5, 25012, 110)], time(5), open.checkpoint).trades[0].reason, 'OPPOSITE_SIGNAL');
+});
+test("two lots book one at double, remainder at 2.5x; restart keeps partial P&L once", () => {
+  const open = newBook(2);
+  const partial = buildNiftyOptionsPaper([v2(4, 25012, 200)], time(4), open.checkpoint);
+  assert.equal(partial.position.quantity, 65); assert.equal(partial.position.lots, 1);
+  assert.equal(partial.realized, 6500); assert.equal(partial.trades.length, 0);
+  const compact = { ...partial.checkpoint, trades: [], realizedBase: partial.realized - partial.position.realizedPnl };
+  const repeated = buildNiftyOptionsPaper([v2(5, 25012, 200)], time(5), compact);
+  assert.equal(repeated.position.quantity, 65); assert.equal(repeated.realized, 6500);
+  const final = buildNiftyOptionsPaper([v2(6, 25012, 250)], time(6), repeated.checkpoint);
+  assert.equal(final.position, null); assert.equal(final.realized, 16250); assert.equal(final.tradeCount, 1);
+  assert.equal(final.trades[0].exit, 225); assert.equal(final.trades[0].quantity, 130);
+  assert.equal(final.trades[0].exitFills.length, 2); assert.equal(final.size.lots, 2);
+});
+test("partial target keeps original premium stop and sizes once on final exit", () => {
+  const partial = buildNiftyOptionsPaper([v2(4, 25012, 200)], time(4), newBook(2).checkpoint);
+  const final = buildNiftyOptionsPaper([v2(5, 25012, 79)], time(5), partial.checkpoint);
+  assert.equal(final.trades[0].reason, 'PREMIUM_SL'); assert.equal(final.realized, (100 - 21) * 65);
+  assert.equal(final.size.lots, 3);
+});
+test("new entry sweeps recorded asks within four points and targets its average fill", () => {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 2;
+  const entry = v2(3, 25011, 129, 65);
+  entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks = [{ price: 130, quantity: 65 }, { price: 132, quantity: 65 }]; c.depthAt = time(3); });
+  const result = buildNiftyOptionsPaper([buy, v2(2, 25009), entry], time(3), seed);
+  assert.equal(result.position.entry, 131); assert.equal(result.position.entryFill.slippage, 1);
+  assert.equal(result.position.targets[0].price, 262); assert.equal(result.position.targets[1].price, 327.5);
+  entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks[1].price = 134.05; });
+  const skipped = buildNiftyOptionsPaper([buy, v2(2, 25009), entry], time(3), seed);
+  assert.equal(skipped.position, null); assert.equal(skipped.status, 'ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS');
+});
+test("stale depth or unreported quantity cannot fabricate a new fill", () => {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 2;
+  const entry = v2(8, 25011, 99, 65);
+  entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks = [{ price: 100, quantity: 10000 }]; c.depthAt = time(0); });
+  assert.equal(buildNiftyOptionsPaper([buy, v2(7, 25009), entry], time(8), seed).position, null);
+  const unknown = v2(3, 25011); unknown.signal.metadata.niftyPaper.contracts.forEach(c => { delete c.askSize; });
+  assert.equal(buildNiftyOptionsPaper([buy, v2(2, 25009), unknown], time(3), seed).position, null);
+});
+test("gap over both targets never reuses the same bid quantity twice", () => {
+  const open = newBook(2), exit = v2(4, 25012, 260);
+  exit.signal.metadata.niftyPaper.contracts.forEach(c => { c.bidSize = 65; });
+  const held = buildNiftyOptionsPaper([exit], time(4), open.checkpoint);
+  assert.equal(held.position.quantity, 65); assert.equal(held.trades.length, 0);
+  const closed = buildNiftyOptionsPaper([v2(5, 25012, 260)], time(5), held.checkpoint);
+  assert.equal(closed.trades[0].quantity, 130); assert.equal(closed.realized, 160 * 130);
+});
