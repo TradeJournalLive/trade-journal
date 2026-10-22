@@ -182,3 +182,16 @@ test("gap over both targets never reuses the same bid quantity twice", () => {
   const closed = buildNiftyOptionsPaper([v2(5, 25012, 260)], time(5), held.checkpoint);
   assert.equal(closed.trades[0].quantity, 130); assert.equal(closed.realized, 160 * 130);
 });
+test('NIFTY records exact range rejection and entry reasons without changing fills',()=>{
+  const invalid=event('range',1,{kind:'SIGNAL',high:25132.65,low:25000,closedAt:time(0)},'SELL');
+  const rejected=buildNiftyOptionsPaper([enabled,invalid],time(2));
+  assert.equal(rejected.checkpoint.decisions[0].status,'INVALID_SIGNAL_CANDLE');
+  assert.match(rejected.checkpoint.decisions[0].reason,/132.65/);
+  const entered=newBook(1);assert.equal(entered.checkpoint.decisions.find(d=>d.id==='buy').status,'ENTERED');
+});
+test('NIFTY reports the existing 15-minute entry gate explicitly',()=>{
+  const first=tick(2,25009);delete first.signal.metadata.niftyPaper.previous15m;
+  const result=buildNiftyOptionsPaper([enabled,buy,first],time(3));
+  assert.equal(result.position,null);
+  assert.equal(result.checkpoint.decisions.find(d=>d.id==='buy').status,'WAITING_FOR_COMPLETED_15M_CANDLE');
+});

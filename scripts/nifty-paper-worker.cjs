@@ -42,6 +42,7 @@ let status = 'STARTING', processed = new Set(), pollAfter, lastPublish = 0, fail
 let queue = Promise.resolve();
 const depths = new Map();
 const persistedTrades = new Set();
+const persistedDecisions = new Map();
 function audit(type, data) {
   fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, data }) + '\n', { mode: 0o600 });
 }
@@ -153,6 +154,13 @@ async function publish() {
   const at = now();
   const snapshot = structuredClone(state);
   const result = buildNiftyOptionsPaper([], at, snapshot.checkpoint);
+  const decisions = (result.checkpoint.decisions || []).filter(d => persistedDecisions.get(d.id) !== JSON.stringify(d));
+  if (decisions.length) {
+    const rows = decisions.map(d => ({ secret_hash: secretHash, strategy_id: '__nifty_paper_decision__', signal_id: hash(d.id), symbol: 'NIFTY', action: 'EXIT', received_at: d.receivedAt, signal_timestamp: d.receivedAt, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: { ...event(hash(d.id), { kind: 'INTERNAL' }).signal, strategyId: '__nifty_paper_decision__' }, decision: {}, raw_payload: { decision: d } }));
+    const stored = await db.from(TABLE).upsert(rows, { onConflict: 'secret_hash,strategy_id,signal_id' });
+    if (stored.error) throw new Error('DECISION_LEDGER_STORAGE_LOST');
+    decisions.forEach(d => persistedDecisions.set(d.id, JSON.stringify(d)));
+  }
   const unpersisted = result.trades.filter(trade => !persistedTrades.has(`${trade.signalId}:${trade.openedAt}`));
   if (unpersisted.length) {
     const rows = unpersisted.map(trade => {
@@ -164,7 +172,7 @@ async function publish() {
     unpersisted.forEach(trade => persistedTrades.add(`${trade.signalId}:${trade.openedAt}`));
   }
   // Historical fills live in their own immutable-key ledger, not every heartbeat.
-  snapshot.checkpoint = { ...result.checkpoint, trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
+  snapshot.checkpoint = { ...result.checkpoint, decisions: (result.checkpoint.decisions || []).slice(-100), trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
   const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (error || data?.length !== 1) throw new Error('WORKER_LEASE_OR_STORAGE_LOST');
   lease = at; lastPublish = Date.now(); saveLocal();

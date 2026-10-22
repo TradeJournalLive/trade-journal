@@ -5,8 +5,9 @@ type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE";
 type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: number; indexSymbol: string };
 type Position = { contract: Contract; lots: number; quantity: number; entry: number; openedAt: string; signalId: string; indexSymbol: string; targets?: ReturnType<typeof niftyTargets>; initialLots?: number; initialQuantity?: number; realizedPnl?: number; entryFill?: NonNullable<ReturnType<typeof niftyEntryFill>>; exitFills?: { price: number; quantity: number; at: string; reason: string }[] };
 type Trade = Position & { exit: number; closedAt: string; reason: string; pnl: number };
+type Decision = { id: string; receivedAt: string; decidedAt: string; status: string; reason: string };
 type Tick = { indexSymbol: string; timestamp: string; price: number; nearestExpiry: string; chainComplete: boolean; executionVersion?: 2; previous15m?: { high: number; low: number; closedAt: string }; contracts: Contract[] };
-export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number };
+export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number; decisions?: Decision[] };
 
 function minutesIST(timestamp: string) {
   const date = new Date(Date.parse(timestamp) + 330 * 60000);
@@ -45,11 +46,18 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   let mark: number | null = saved?.mark ?? null;
   const trades: Trade[] = saved?.trades ?? [];
   const seen = new Set<string>(saved?.seen ?? []);
+  const decisions = saved?.decisions ?? [];
+  function record(id: string, at: string, result: string, reason: string, receivedAt?: string) {
+    const index = decisions.findIndex(d => d.id === id), previous = decisions[index];
+    if (previous?.status === result && previous.reason === reason) return;
+    const value = { id, receivedAt: previous?.receivedAt ?? receivedAt ?? at, decidedAt: at, status: result, reason };
+    if (index < 0) decisions.push(value); else decisions[index] = value;
+  }
   for (const event of [...events].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.signal.id.localeCompare(b.signal.id))) {
     const control = event.raw.paperControl;
     if (control?.market === "NIFTY" && typeof control.niftyOptionsEnabled === "boolean") {
       enabled = control.niftyOptionsEnabled;
-      if (!enabled) setup = null;
+      if (!enabled) { if (setup) record(setup.id, event.receivedAt, "CANCELED", "Paper entries switched off before entry."); setup = null; }
       status = enabled ? "WAITING_FOR_SIGNAL_AND_DATA" : "DISABLED";
       continue;
     }
@@ -61,20 +69,26 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
     if (payload.kind === "SIGNAL") {
       if (seen.has(key)) continue;
       seen.add(key);
-      if ((!enabled && !position) || event.signal.symbol !== "NSE:NIFTY" || !["BUY", "SELL"].includes(event.signal.action)) continue;
+      if ((!enabled && !position) || event.signal.symbol !== "NSE:NIFTY" || !["BUY", "SELL"].includes(event.signal.action)) {
+        record(event.signal.id, event.receivedAt, "NOT_ELIGIBLE", !enabled ? "NIFTY paper entries were off." : "Wrong instrument or signal action."); continue;
+      }
       const opposite = position && ((position.contract.side === "CE" && event.signal.action === "SELL") || (position.contract.side === "PE" && event.signal.action === "BUY"));
       if (opposite) pendingExit = "OPPOSITE_SIGNAL";
       // An invalid opposite setup still closes the old position, but cannot create a new entry.
+      if (setup) record(setup.id, event.receivedAt, "SUPERSEDED", "A newer signal replaced this setup before entry.");
       setup = null;
       const interval = Number(event.signal.timeframe);
       const closedAt = String(payload.closedAt ?? "");
       if (!positive(payload.high) || !positive(payload.low) || payload.high < payload.low || payload.high - payload.low > 35
         || interval !== 1 || !Number.isFinite(Date.parse(closedAt))
         || Date.parse(closedAt) > Date.parse(event.receivedAt)) {
-        status = "INVALID_SIGNAL_CANDLE"; continue;
+        status = "INVALID_SIGNAL_CANDLE";
+        const range = Number(payload.high) - Number(payload.low);
+        record(event.signal.id, event.receivedAt, status, Number.isFinite(range) && range > 35 ? `Signal candle range ${range.toFixed(2)} points exceeds the 35-point maximum.` : "Invalid candle data, timeframe or close timestamp."); continue;
       }
       if (enabled) setup = { id: event.signal.id, action: event.signal.action as "BUY" | "SELL", high: payload.high, low: payload.low, closedAt, intervalMinutes: interval, indexSymbol: event.signal.symbol };
       status = "WAITING_FOR_INDEX_BREAK";
+      record(event.signal.id, event.receivedAt, setup ? status : "ENTRIES_OFF", setup ? opposite ? "Opposite-position exit requested; new entry requires a fresh index crossing." : "Waiting for the signal high/low crossing within ten candles." : "Paper entries were off; only existing-position exits remain active.");
       continue;
     }
     if (payload.kind !== "TICK") continue;
@@ -116,11 +130,15 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
         } else if (reason && !enough) status = "WAITING_FOR_EXIT_LIQUIDITY";
       } else status = "WAITING_FOR_POSITION_PREMIUM";
     }
-    if (!completed15m && !position) status = "WAITING_FOR_COMPLETED_15M_CANDLE";
+    if (!completed15m && !position) {
+      status = "WAITING_FOR_COMPLETED_15M_CANDLE";
+      if (setup) record(setup.id, tick.timestamp, status, "Entry blocked: a completed current-session 15-minute candle is required by the existing engine.");
+    }
     if (!position && enabled && setup && completed15m) {
+      if (decisions.find(d => d.id === setup!.id)?.status === "WAITING_FOR_COMPLETED_15M_CANDLE") record(setup.id, tick.timestamp, "WAITING_FOR_INDEX_BREAK", "15-minute history is available; waiting for an eligible signal high/low crossing.");
       const elapsed = Date.parse(tick.timestamp) - Date.parse(setup.closedAt);
       const candle = Math.floor(elapsed / (setup.intervalMinutes * 60000)) + 1;
-      if (candle > 10 || dayIST(tick.timestamp) !== dayIST(setup.closedAt) || minutesIST(tick.timestamp) >= 895) { setup = null; status = "SETUP_EXPIRED"; }
+      if (candle > 10 || dayIST(tick.timestamp) !== dayIST(setup.closedAt) || minutesIST(tick.timestamp) >= 895) { record(setup.id, tick.timestamp, "SETUP_EXPIRED", "No eligible entry before the ten-candle/session cutoff."); setup = null; status = "SETUP_EXPIRED"; }
       else if (elapsed >= 0 && previousTick && fresh(previousTick.timestamp, tick.timestamp)) {
         const side = niftyBreakout(setup, previousTick.price, tick.price, candle, minutesIST(tick.timestamp));
         if (side) {
@@ -139,8 +157,9 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
               const entry = fill?.price ?? contract.ask;
               position = { contract, lots: size.lots, quantity, entry, openedAt: tick.timestamp, signalId: setup.id, indexSymbol: tick.indexSymbol,
                 ...(fill ? { targets: niftyTargets(entry, size.lots, contract.lotSize), initialLots: size.lots, initialQuantity: quantity, entryFill: fill } : {}) };
+              record(setup.id, tick.timestamp, "ENTERED", `Entered ${size.lots} lot(s) of ${contract.id} at average premium ${entry.toFixed(2)}.`);
               mark = contract.bid; setup = null; status = "OPEN";
-            } else { status = contract ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; setup = null; }
+            } else { status = contract ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; record(setup.id, tick.timestamp, status, contract ? "Full entry quantity was not available at observed asks within ₹4 of the initial ask; setup discarded." : "A fresh nearest-expiry 1 OTM contract quote was unavailable; setup discarded."); setup = null; }
           }
         }
       }
@@ -159,7 +178,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0) + (position?.realizedPnl ?? 0);
   return { enabled, status, position, setup, size, trades, mark, lastTickAt, stale, pendingExit, realized,
     tradeCount: tradeCountBase + trades.length,
-    checkpoint: { enabled, setup, position, previousTick, size, pendingExit, status, lastTickAt, mark, trades, seen: [...seen], realizedBase, tradeCountBase } satisfies NiftyPaperCheckpoint,
+    checkpoint: { enabled, setup, position, previousTick, size, pendingExit, status, lastTickAt, mark, trades, seen: [...seen], realizedBase, tradeCountBase, decisions } satisfies NiftyPaperCheckpoint,
     unrealized: position && mark !== null ? (mark - position.entry) * position.quantity : null,
     stopDistance: position ? premiumStopDistance(position.entry) : null };
 }

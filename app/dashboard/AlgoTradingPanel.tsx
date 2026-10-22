@@ -9,7 +9,7 @@ import OptionsChain from "./OptionsChain";
 import BrokerReadinessAlert from "./BrokerReadinessAlert";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import HistoryDatePicker from "./HistoryDatePicker";
-import { istDay, istTime, signalTime } from "../lib/algo/reportDates";
+import SignalExecutionTable from "./SignalExecutionTable";
 
 type AlgoSection =
   | "dashboard"
@@ -1019,7 +1019,7 @@ export default function AlgoTradingPanel() {
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span>{webhookConnected ? "Connection saved" : "Connection required"}</span><span>{filtered.length} loaded signals</span><span>Last checked: {signalLogLastChecked || "--"}</span></div>
       <HistoryDatePicker label="Received date · IST" value={signalDate} onChange={value => { setSignalEvents([]); setSignalDate(value); }} />
       {signalLogError && <p role="alert" className="text-sm text-red-600">{signalLogError}</p>}
-      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Received date</th><th>Received time · IST</th><th>Signal date</th><th>Signal time · IST</th><th>Action</th><th>Instrument</th><th>Signal price</th><th>Delivery status</th><th>Reason</th></tr></thead><tbody>{filtered.length ? filtered.map(event => <tr key={`${event.signal.id}-${event.receivedAt}`}><td>{istDay(event.receivedAt)}</td><td>{istTime(event.receivedAt)}</td><td>{istDay(signalTime(event))}</td><td>{istTime(signalTime(event))}</td><td>{event.signal.action}</td><td>{event.signal.symbol}</td><td>{event.signal.price?.toLocaleString("en-IN") ?? "--"}</td><td>{event.signal.status}</td><td>{event.decision.reasons[0] || "--"}</td></tr>) : <tr><td colSpan={9}>No signals received on this date for this instrument.</td></tr>}</tbody></table></div>
+      <SignalExecutionTable events={filtered} />
       <details open={!webhookConnected} className="border-t border-slate-200 py-4"><summary className="cursor-pointer text-sm font-semibold">TradingView connection</summary><div className="mt-4 space-y-3">
         <label className="block text-sm">Webhook URL<input readOnly value={typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
         <label className="block text-sm">Webhook secret<input type="password" value={tvTestSecret} onChange={event => setTvTestSecret(event.target.value)} placeholder={webhookConnected ? "Saved connection" : "Your existing webhook secret"} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>

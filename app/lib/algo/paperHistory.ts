@@ -27,7 +27,7 @@ export async function loadPaperBooks(secret: string) {
   const btcDecisionLedger = await ledger(secret, "__btc_delta_decision__");
   for (let offset = 0; offset < 100000; offset += 1000) {
     const { data, error } = await db.from("tradingview_signal_events").select("received_at,signal,raw_payload,id")
-      .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").neq("strategy_id", "__btc_delta_worker__").neq("strategy_id", "__btc_delta_trade__").neq("strategy_id", "__btc_delta_decision__").order("received_at").order("id").range(offset, offset + 999);
+      .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").neq("strategy_id", "__btc_delta_worker__").neq("strategy_id", "__btc_delta_trade__").neq("strategy_id", "__btc_delta_decision__").neq("strategy_id", "__nifty_paper_decision__").order("received_at").order("id").range(offset, offset + 999);
     if (error) throw new Error("Unable to load the complete paper event history.");
     events.push(...(data ?? []).map(row => ({ receivedAt: row.received_at, signal: row.signal, raw: row.raw_payload || {} })));
     if (!data || data.length < 1000) {

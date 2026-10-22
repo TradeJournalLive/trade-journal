@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listPersistedAlgoSignalEvents } from "../../../lib/algo/signalStore";
 import { connectionSecret, saveConnection, clearConnection, sameOrigin } from "../../../lib/algo/connection";
+import { addSignalExecutions } from "../../../lib/algo/signalExecution";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,7 +18,13 @@ export async function GET(request: Request) {
 async function history(secret: string, date?: string) {
   const persisted = await listPersistedAlgoSignalEvents(secret, 100, date);
   if (!persisted.ok) return NextResponse.json({ error: persisted.reason }, { status: 503 });
-  return NextResponse.json({ events: persisted.events, source: "supabase", connected: true }, { headers: privateHeaders });
+  try {
+    const events = await addSignalExecutions(secret, persisted.events);
+    return NextResponse.json({ events, source: "supabase", connected: true }, { headers: privateHeaders });
+  } catch {
+    const events = persisted.events.map(event => ({ ...event, execution: { status: "UNAVAILABLE", reason: "Execution history could not be loaded. Retry; no outcome has been assumed.", source: "Unavailable" } }));
+    return NextResponse.json({ events, source: "supabase", connected: true, warning: "Execution reasons are temporarily unavailable." }, { headers: privateHeaders });
+  }
 }
 
 export async function DELETE(request: Request) {
@@ -41,12 +48,5 @@ export async function POST(request: Request) {
   }
 
   try { await saveConnection(secret); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to link connection." }, { status: 403 }); }
-  const persisted = await listPersistedAlgoSignalEvents(secret, 100);
-  if (persisted.ok) {
-    return NextResponse.json({ events: persisted.events, source: "supabase", connected: true }, { headers: privateHeaders });
-  }
-
-  return NextResponse.json({
-    error: persisted.reason || "Saved signal history is temporarily unavailable."
-  }, { status: 503 });
+  return history(secret);
 }
