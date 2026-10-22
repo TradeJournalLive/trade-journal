@@ -43,6 +43,7 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
     if (!page.data || page.data.length < 1000) break;
   }
   return events.map(event => {
+    if (event.signal.metadata?.trackingOnly === true) return { ...event, execution: { status: "TRACKING_ONLY", reason: "Saved for separate signal tracking. Paper and live execution are disabled.", source: "Recorded" as const } };
     const market = event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : "OTHER";
     const k = key(market, event.signal.id), d = decisions.get(k), entry = entries.get(k);
     let execution: SignalExecution;

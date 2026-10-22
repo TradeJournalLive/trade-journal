@@ -6,6 +6,7 @@ import { hashWebhookSecret } from "../../../../lib/algo/signalStore";
 import { niftySignalCandle } from "../../../../lib/algo/niftySignal";
 import { waitUntil } from "@vercel/functions";
 import { syncWebhookSheet } from "../../../../lib/algo/googleSheets";
+import { isolateTrackingSignal } from "../../../../lib/algo/trackingSignals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
 
     let payload: TradingViewWebhookPayload;
     try {
-      payload = JSON.parse(rawBody) as TradingViewWebhookPayload;
+      payload = isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload);
     } catch {
       return jsonError("Invalid JSON payload.");
     }
