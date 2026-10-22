@@ -9,6 +9,7 @@ import type { loadPaperBooks } from "../lib/algo/paperHistory";
 import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
+import GoldMt5Paper from "./GoldMt5Paper";
 
 type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
@@ -113,6 +114,7 @@ export default function SignalPaperTrading() {
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
+    {market === "GOLD" && <GoldMt5Paper book={book?.mt5} tradeDate={tradeDate} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
@@ -135,7 +137,7 @@ export default function SignalPaperTrading() {
       <div className="flex flex-wrap gap-4 py-3 text-sm"><span>{optionTrades.length} closed trades · {tradeDate || "All dates"}</span><span>Selected gross INR: {pnl(optionTrades.reduce((sum, trade) => sum + trade.pnl, 0))}</span></div>
       <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Contract</th><th>Lots</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry ask</th><th>Capital used · INR</th><th>Exit date</th><th>Exit time · IST</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{optionTrades.length ? [...optionTrades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{istDay(trade.openedAt)}</td><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{number(trade.entry * trade.quantity)}</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={13}>No completed options paper trades for this entry date.</td></tr>}</tbody></table></div>
     </section>}
-    <details key={market} open={market === "GOLD" ? true : undefined} className="border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-500">{market === "GOLD" ? "Gold signal-price test" : "Previous signal-price test & history"}</summary><div className="mt-4 space-y-4">
+    <details key={market} className="border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-500">Previous signal-price test &amp; history</summary><div className="mt-4 space-y-4">
     <label className="flex items-center gap-3 text-sm"><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} />{market === "GOLD" ? "Gold test entries" : "Legacy test entries"} · {book?.enabled ? "On" : "Off"}</label>
     <div className="algo-os-grid three">
       <div className="algo-os-card metric"><span>Open trade P&amp;L · points</span><strong className={(valuation?.unrealized ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}>{pnl(valuation?.unrealized)}</strong><p>{position ? `${position.symbol} · ${position.side} · Entry ${number(position.entry)}` : "No open trade"}</p></div>

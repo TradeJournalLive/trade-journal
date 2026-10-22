@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   if (!secret) return NextResponse.json({ error: "Connect TradingView first." }, { status: 401 });
   try {
     const body = await request.json();
+    if (body.goldBreakoutEnabled !== undefined && (body.market !== "GOLD" || typeof body.goldBreakoutEnabled !== "boolean")) return NextResponse.json({ error: "Invalid gold switch." }, { status: 400 });
     if (body.stopAndClose !== undefined && (body.market !== "BTC" || body.stopAndClose !== true)) return NextResponse.json({ error: "Invalid close request." }, { status: 400 });
     if (body.deleteTrade !== undefined && (body.market !== "BTC" || typeof body.deleteTrade !== "string" || body.deleteTrade.length > 300)) return NextResponse.json({ error: "Invalid trade deletion." }, { status: 400 });
     if (body.nextCandle !== undefined && typeof body.nextCandle !== "boolean") return NextResponse.json({ error: "Invalid execution rule." }, { status: 400 });
@@ -31,6 +32,11 @@ export async function POST(request: Request) {
     if (body.slippage !== undefined && (typeof body.slippage !== "number" || !Number.isFinite(body.slippage) || body.slippage < 0 || body.slippage > 100000)) return NextResponse.json({ error: "Invalid slippage assumption." }, { status: 400 });
     const db = getServerSupabase();
     if (!db) throw new Error("Saved paper trading is unavailable.");
+    if (body.goldBreakoutEnabled === true) {
+      const { data, error } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__gold_mt5_worker__").eq("signal_id", "state").maybeSingle();
+      const { validGoldQuote } = await import("../../../lib/algo/goldPaperEngine");
+      if (error || !data || Date.now() - Date.parse(data.received_at) > 15000 || !validGoldQuote(data.raw_payload?.state?.quote, Date.now())) return NextResponse.json({ error: "Attach GoldPriceBridge in the Vantage demo MT5 terminal and wait for fresh quotes before arming entries." }, { status: 409 });
+    }
     if (body.deleteTrade !== undefined) {
       const { data, error } = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_trade__").eq("signal_id", hashWebhookSecret(body.deleteTrade)).maybeSingle();
       if (error || !data) return NextResponse.json({ error: "Completed paper trade not found." }, { status: 404 });
@@ -56,7 +62,7 @@ export async function POST(request: Request) {
       action: "EXIT", received_at: now, signal_timestamp: now, status: "VALIDATED", accepted: false,
       execution_mode: "PAPER", stage: "SIGNAL_RECEIVED", reason: body.enabled ? "Paper enabled" : "Paper paused",
       signal: { id, strategyId: "__paper_control__", source: "TRADINGVIEW", symbol: body.market, action: "EXIT", timestamp: now, createdAt: now, metadata: {}, status: "VALIDATED" },
-      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
+      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.goldBreakoutEnabled !== undefined ? { goldBreakoutEnabled: body.goldBreakoutEnabled } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
     return NextResponse.json({ books: await load(secret) }, { headers: privateHeaders });

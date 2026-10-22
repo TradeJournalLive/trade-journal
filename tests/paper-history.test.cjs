@@ -9,6 +9,9 @@ function fixture(failPage = false) {
   rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { saved: { state: {} }, workerStatus: 'RECEIVING_DELTA_BTCUSD' } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__paper_control__', signal_id: 'delete', received_at: '2026-10-21T06:00:00Z', signal: { id: 'delete', metadata: {} }, raw_payload: { paperControl: { deleteTrade: `${btc.id}:${btc.openedAt}` } } });
   const ranges = [];
+  rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { state: { enabled: true, trades: [] } } });
+  rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_trade__', received_at: '2026-10-22T16:00:00Z', signal_id: 'gold', raw_payload: { trade: { id: 'gold-own', pnl: 30 } } });
+  rows.push({ secret_hash: 'owner-b', strategy_id: '__gold_mt5_trade__', raw_payload: { trade: { id: 'gold-private', pnl: 100 } } });
   function from() {
     const filters = []; let single = false, range = null;
     const q = { select() { return q; }, eq(k,v) { filters.push(r => r[k] === v); return q; }, neq(k,v) { filters.push(r => r[k] !== v); return q; }, order() { return q; }, maybeSingle() { single = true; return q; }, range(a,b) { range = [a,b]; ranges.push(range); return q; }, then(resolve,reject) { return Promise.resolve().then(() => {
@@ -18,7 +21,7 @@ function fixture(failPage = false) {
     }).then(resolve,reject); } }; return q;
   }
   const filename = path.resolve(__dirname, '../app/lib/algo/paperHistory.ts'), copy = new Module(filename, module);
-  copy.require = id => id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { markets: ['NIFTY','BTC','GOLD'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
+  copy.require = id => id === './goldPaperEngine' ? { goldView: s => ({ ...s, realized: s.trades.reduce((sum,t) => sum + t.pnl, 0) }) } : id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { markets: ['NIFTY','BTC','GOLD'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
   copy._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, filename);
   return { api: copy.exports, ranges };
 }
@@ -33,6 +36,8 @@ test('shared paper history loads every ledger page, isolates owners and preserve
   assert.equal(books.BTC.delta.decisions.length, 1);
   assert.equal(books.BTC.delta.decisions[0].status, 'PARTIALLY_FILLED');
   assert.equal(books.BTC.delta.decisions[0].filledBtc, .4);
+  assert.equal(books.GOLD.mt5.realized, 30);
+  assert.deepEqual(books.GOLD.mt5.trades.map(t => t.id), ['gold-own']);
 });
 test('ledger pagination failure never presents a truncated successful history', async () => {
   await assert.rejects(fixture(true).api.loadPaperBooks('owner-a'), /complete paper trade ledger/);

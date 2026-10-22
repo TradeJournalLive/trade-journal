@@ -77,7 +77,7 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100,
     .neq("strategy_id", "__btc_delta_worker__")
     .neq("strategy_id", "__btc_delta_trade__")
     .neq("strategy_id", "__btc_delta_decision__")
-    .neq("strategy_id", "__nifty_paper_decision__")
+    .neq("strategy_id", "__nifty_paper_decision__").neq("strategy_id", "__gold_mt5_worker__").neq("strategy_id", "__gold_mt5_trade__").neq("strategy_id", "__gold_mt5_decision__")
     .order("received_at", { ascending: false })
     .order("signal_id", { ascending: false });
   if (date) {

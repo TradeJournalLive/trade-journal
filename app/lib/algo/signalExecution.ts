@@ -17,38 +17,40 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
     if (!old || Date.parse(d.decidedAt) >= Date.parse(old.decidedAt)) decisions.set(k, d);
   }
   function readTrade(market: string, t: Trade) {
+    if (market === "GOLD") return;
     const id = market === "NIFTY" ? t?.signalId : t?.id;
     if (!id || !t.openedAt || typeof t.entry !== "number" || !Number.isFinite(t.entry)) return;
     entries.set(key(market, id), market === "NIFTY" ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
   }
-  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__"]);
+  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__gold_mt5_worker__"]);
   if (workers.error) throw Error("Execution history unavailable.");
   for (const row of workers.data || []) {
-    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : "BTC";
-    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : row.raw_payload?.saved?.state;
+    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__gold_mt5_worker__" ? "GOLD" : "BTC";
+    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "GOLD" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
     for (const d of state?.decisions || []) readDecision(market, d);
     if (state?.position) readTrade(market, state.position);
     for (const t of state?.trades || []) readTrade(market, t);
   }
   for (let offset = 0; ; offset += 1000) {
     const page = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner)
-      .in("strategy_id", ["__nifty_paper_decision__", "__btc_delta_decision__", "__nifty_paper_trade__", "__btc_delta_trade__"])
+      .in("strategy_id", ["__nifty_paper_decision__", "__btc_delta_decision__", "__nifty_paper_trade__", "__btc_delta_trade__", "__gold_mt5_decision__"])
       .order("received_at").order("signal_id").range(offset, offset + 999);
     if (page.error) throw Error("Execution history unavailable.");
     for (const row of page.data || []) {
-      const market = row.strategy_id.startsWith("__nifty") ? "NIFTY" : "BTC";
+      const market = row.strategy_id.startsWith("__nifty") ? "NIFTY" : row.strategy_id.startsWith("__gold") ? "GOLD" : "BTC";
       if (row.raw_payload?.decision) readDecision(market, row.raw_payload.decision);
       if (row.raw_payload?.trade) readTrade(market, row.raw_payload.trade);
     }
     if (!page.data || page.data.length < 1000) break;
   }
   return events.map(event => {
-    if (event.signal.metadata?.trackingOnly === true) return { ...event, execution: { status: "TRACKING_ONLY", reason: "Saved for separate signal tracking. Paper and live execution are disabled.", source: "Recorded" as const } };
-    const market = event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : "OTHER";
+    if (event.signal.metadata?.trackingOnly === true && event.signal.symbol !== "VANTAGE:XAUUSD") return { ...event, execution: { status: "TRACKING_ONLY", reason: "Saved for separate signal tracking. Paper and live execution are disabled.", source: "Recorded" as const } };
+    const market = event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : event.signal.symbol === "VANTAGE:XAUUSD" ? "GOLD" : "OTHER";
     const k = key(market, event.signal.id), d = decisions.get(k), entry = entries.get(k);
     let execution: SignalExecution;
     if (entry && (!d || !["ENTERED", "PARTIALLY_FILLED"].includes(d.status))) execution = { status: "ENTERED", reason: entry, source: "Recorded" };
     else if (d) execution = { status: d.status, reason: d.reason, source: "Recorded", at: d.decidedAt };
+    else if (market === "GOLD" && event.signal.metadata?.trackingOnly === true) execution = { status: "TRACKING_ONLY", reason: "Gold signal saved. No MT5 paper execution decision has been recorded.", source: "Recorded" };
     else {
       const candle = event.signal.metadata?.niftyPaper as { high?: number; low?: number } | undefined;
       const range = Number(candle?.high) - Number(candle?.low);
