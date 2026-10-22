@@ -1,11 +1,11 @@
-export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 1, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
+export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
 export type BtcLevel = { price: number; quantityBtc: number };
 export type BtcFill = { price: number; quantityBtc: number; initialQuote: number; slippage: number; fills: BtcLevel[]; liquidityId: string };
 export type BtcDecision = { id: string; action: string; receivedAt: string; signalClosedAt: string; decidedAt: string; status: string; reason: string; filledBtc?: number; canceledBtc?: number; entry?: number; slippage?: number };
 function decision(s: BtcState, signal: BtcSignal, status: string, reason: string, at = signal.receivedAt, fill?: BtcFill) {
   s.decisions ??= [];
   const value: BtcDecision = { id: signal.id, action: signal.action, receivedAt: signal.receivedAt, signalClosedAt: signal.closedAt, decidedAt: at, status, reason,
-    ...(fill ? { filledBtc: fill.quantityBtc, canceledBtc: Math.max(0, Math.round((1 - fill.quantityBtc) * 1e12) / 1e12), entry: fill.price, slippage: fill.slippage } : {}) };
+    ...(fill ? { filledBtc: fill.quantityBtc, canceledBtc: Math.max(0, Math.round((btcRules.quantityBtc - fill.quantityBtc) * 1e12) / 1e12), entry: fill.price, slippage: fill.slippage } : {}) };
   const index = s.decisions.findIndex(item => item.id === signal.id);
   if (index < 0) s.decisions.push(value); else s.decisions[index] = value;
 }
@@ -150,17 +150,17 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
       const long = setup.action === "BUY", trigger = long ? setup.high : setup.low;
       const crossed = long ? s.previousTick.price <= trigger && tick.price > trigger : s.previousTick.price >= trigger && tick.price < trigger;
       if (crossed) {
-        const fill = tick.executionVersion === 2 ? executionFill(tick, long, 1, btcRules.maxEntrySlippageUsd) : null;
+        const fill = tick.executionVersion === 2 ? executionFill(tick, long, btcRules.quantityBtc, btcRules.maxEntrySlippageUsd) : null;
         const entry = fill?.price ?? (long ? tick.ask : tick.bid), stop = long ? setup.low : setup.high, risk = long ? entry - stop : stop - entry;
         const depth = long ? tick.askBtc : tick.bidBtc, mm = tick.maintenanceRate;
         let skipReason = "";
         if (!positive(risk) || !Number.isFinite(mm) || mm < 0 || mm >= 1 / 100 || !positive(tick.mark) || !fresh(tick.markAt, tick.timestamp)) { s.status = "MISSING_CONTRACT_OR_MARK_DATA"; skipReason = "Invalid stop distance or missing fresh mark/contract data."; }
-        else if (tick.executionVersion === 2 ? !fill : !Number.isFinite(depth) || depth < 1) { s.status = "INSUFFICIENT_ENTRY_DEPTH"; skipReason = "No executable contract quantity within the entry price limit."; }
+        else if (tick.executionVersion === 2 ? !fill : !Number.isFinite(depth) || depth < btcRules.quantityBtc) { s.status = "INSUFFICIENT_ENTRY_DEPTH"; skipReason = "No executable contract quantity within the entry price limit."; }
         else {
-          const quantity = fill?.quantityBtc ?? 1;
+          const quantity = fill?.quantityBtc ?? btcRules.quantityBtc;
           s.position = { id: setup.id, side: long ? "LONG" : "SHORT", quantityBtc: quantity, leverage: 100, entry, openedAt: tick.timestamp, stop, initialRisk: risk, breakEven: false, target: entry + (long ? 1 : -1) * btcRules.targetR * risk, trigger, signalPrice: setup.signalPrice, signalClosedAt: setup.closedAt, signalReceivedAt: setup.receivedAt, entryDifference: long ? entry - trigger : trigger - entry, initialMargin: entry * quantity / 100, estimatedLiquidation: long ? entry * (1 - 1 / 100) / (1 - mm) : entry * (1 + 1 / 100) / (1 + mm),
-            ...(fill ? { entryFill: fill, entryQuantityBtc: quantity, canceledEntryBtc: Math.max(0, Math.round((1 - quantity) * 1e12) / 1e12) } : {}) };
-          decision(s, setup, quantity < 1 ? "PARTIALLY_FILLED" : "ENTERED", quantity < 1 ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.", tick.timestamp, fill ?? undefined);
+            ...(fill ? { entryFill: fill, entryQuantityBtc: quantity, canceledEntryBtc: Math.max(0, Math.round((btcRules.quantityBtc - quantity) * 1e12) / 1e12) } : {}) };
+          decision(s, setup, quantity < btcRules.quantityBtc ? "PARTIALLY_FILLED" : "ENTERED", quantity < btcRules.quantityBtc ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.", tick.timestamp, fill ?? undefined);
           s.setup = null; s.status = "OPEN";
         }
         if (!s.position) { decision(s, setup, "MISSED_BREAKOUT_UNFILLED", `${skipReason} First breakout skipped; no later re-entry.`, tick.timestamp); s.setup = null; s.status = "MISSED_BREAKOUT_UNFILLED"; }

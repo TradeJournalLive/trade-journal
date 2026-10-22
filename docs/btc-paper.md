@@ -7,13 +7,13 @@ This worker only consumes public market data. It has no order API or broker keys
 - Candle metadata: `btcPaper: {kind: "SIGNAL", high: "{{high}}", low: "{{low}}", barOpen: "{{time}}"}`.
 - Use `{{exchange}}:{{ticker}}` for symbol, `{{close}}` for price, `{{timenow}}` for timestamp.
 - Enter on a crossing of the signal high/low within the next ten candles.
-- Request 1 BTC per entry; 100x initial-margin assumption; no time or candle-range filter.
+- Request 0.1 BTC per entry; 100x initial-margin assumption; no time or candle-range filter.
 - New version-two entries sweep observed prices up to $5 adverse from the initial
   ask (buy) or bid (sell). Quantities must be whole Delta contracts. Manage any
   partial fill and cancel the unfilled entry remainder; never top up later.
 - Store individual fills, weighted-average entry, actual quantity, canceled
   quantity and slippage relative to the first quote. Margin and gross P&L use
-  the actual filled BTC amount, not the requested 1 BTC.
+  the actual filled BTC amount, not the requested 0.1 BTC.
 - Stop at the opposite signal-candle end; full target 3 times actual average
   entry-to-stop risk. At 2R, move the stop to actual average entry.
 - Other exits: opposite signal and estimated isolated-margin breach. No 15m trail.
