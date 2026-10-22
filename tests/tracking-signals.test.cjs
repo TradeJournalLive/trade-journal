@@ -14,3 +14,8 @@ test('existing strategy payloads remain untouched', () => {
   const source = { strategyId: 'nifty_breakout_options_v1', automation: { enabled: true }, metadata: { niftyPaper: {} } };
   assert.equal(isolateTrackingSignal(source), source);
 });
+test('Vantage gold tracking also forces execution off', () => {
+  const result = isolateTrackingSignal({ strategyId: copy.exports.GOLD_TRACKING_STRATEGY, automation: { enabled: true, mode: 'LIVE' }, metadata: { niftyPaper: {}, btcPaper: {} } });
+  assert.deepEqual(result.automation, { enabled: false, mode: 'PAPER', underlying: 'GOLD' });
+  assert.deepEqual(result.metadata, { trackingOnly: true });
+});
