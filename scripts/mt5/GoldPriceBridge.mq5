@@ -23,7 +23,10 @@ void OnTimer()
    double margin=0;
    // Calculation only: this does not submit an order.
    if(!OrderCalcMargin(ORDER_TYPE_BUY,GoldSymbol,0.03,tick.ask,margin)) return;
+   double sellMargin=0;
+   if(!OrderCalcMargin(ORDER_TYPE_SELL,GoldSymbol,0.03,tick.bid,sellMargin)) return;
    string data=StringFormat("{\"version\":1,\"symbol\":\"%s\",\"server\":\"VantageMarkets-Demo\",\"demo\":true,\"currency\":\"%s\",\"sequence\":%I64u,\"exportedAtMs\":%I64d,\"tickAtMs\":%I64d,\"serverOffsetSeconds\":%I64d,\"bid\":%.8f,\"ask\":%.8f,\"contractSize\":%.8f,\"tickSize\":%.8f,\"volumeMin\":%.8f,\"volumeMax\":%.8f,\"volumeStep\":%.8f,\"margin003\":%.8f,\"leverage\":%I64d}",GoldSymbol,AccountInfoString(ACCOUNT_CURRENCY),++sequence,(long)TimeGMT()*1000,tick.time_msc-offset*1000,offset,tick.bid,tick.ask,SymbolInfoDouble(GoldSymbol,SYMBOL_TRADE_CONTRACT_SIZE),SymbolInfoDouble(GoldSymbol,SYMBOL_TRADE_TICK_SIZE),SymbolInfoDouble(GoldSymbol,SYMBOL_VOLUME_MIN),SymbolInfoDouble(GoldSymbol,SYMBOL_VOLUME_MAX),SymbolInfoDouble(GoldSymbol,SYMBOL_VOLUME_STEP),margin,AccountInfoInteger(ACCOUNT_LEVERAGE));
+   data=StringSubstr(data,0,StringLen(data)-1)+StringFormat(",\"sellMargin003\":%.8f}",sellMargin);
    int handle=FileOpen("1to2-gold-quote.tmp",FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
    if(handle==INVALID_HANDLE) return;
    FileWriteString(handle,data); FileFlush(handle); FileClose(handle);

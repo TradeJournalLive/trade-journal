@@ -3,7 +3,7 @@ const file = require('node:path').resolve(__dirname, '../app/lib/algo/goldPaperE
 copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, file);
 const { emptyGoldState, goldTick, goldSignal, goldView, validGoldQuote } = copy.exports;
 const base = Date.parse('2026-10-22T16:00:00Z'), iso = n => new Date(base + n * 1000).toISOString();
-const quote = (n, bid, ask = bid + 0.2) => ({ symbol: 'XAUUSD', server: 'VantageMarkets-Demo', demo: true, currency: 'USD', tickAtMs: base + n * 1000, exportedAtMs: base + n * 1000, bid, ask, contractSize: 100, volumeMin: .01, volumeMax: 10, volumeStep: .01, tickSize: .01, margin003: 120, leverage: 100 });
+const quote = (n, bid, ask = bid + 0.2) => ({ symbol: 'XAUUSD', server: 'VantageMarkets-Demo', demo: true, currency: 'USD', tickAtMs: base + n * 1000, exportedAtMs: base + n * 1000, bid, ask, contractSize: 100, volumeMin: .01, volumeMax: 10, volumeStep: .01, tickSize: .01, margin003: 120, sellMargin003: 121, leverage: 100 });
 const tick = (s, n, bid, ask) => goldTick(s, quote(n, bid, ask), base + n * 1000);
 const signal = (action = 'BUY', id = 'buy') => ({ id, action, receivedAt: iso(2), closedAt: iso(0), high: 4010, low: 4000 });
 function setup(action = 'BUY') { let s = { ...emptyGoldState(), enabled: true }; for (let n = 0; n <= 2; n++) s = tick(s, n, 4005); return goldSignal(s, signal(action)); }

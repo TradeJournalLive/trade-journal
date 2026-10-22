@@ -1,5 +1,5 @@
 export const goldRules = { lots: 0.03, targetR: 3, breakEvenR: 2, validMs: 600000 } as const;
-export type GoldQuote = { symbol: string; server: string; demo: boolean; currency: string; tickAtMs: number; exportedAtMs: number; bid: number; ask: number; contractSize: number; volumeMin: number; volumeMax: number; volumeStep: number; tickSize: number; margin003: number; leverage: number };
+export type GoldQuote = { symbol: string; server: string; demo: boolean; currency: string; tickAtMs: number; exportedAtMs: number; bid: number; ask: number; contractSize: number; volumeMin: number; volumeMax: number; volumeStep: number; tickSize: number; margin003: number; sellMargin003: number; leverage: number };
 export type GoldSignal = { id: string; action: "BUY" | "SELL"; closedAt: string; receivedAt: string; high: number; low: number };
 type GoldPosition = { id: string; side: "LONG" | "SHORT"; lots: number; units: number; entry: number; openedAt: string; stop: number; initialRisk: number; target: number; breakEven: boolean; margin: number; signalClosedAt: string; signalReceivedAt: string; unverified?: boolean };
 export type GoldTrade = GoldPosition & { exit: number; closedAt: string; reason: string; pnl: number };
@@ -7,7 +7,7 @@ export type GoldState = { enabled: boolean; status: string; quote: GoldQuote | n
 export function emptyGoldState(): GoldState { return { enabled: false, status: "WAITING_FOR_MT5", quote: null, previousAt: 0, history: [], setup: null, position: null, trades: [], decisions: [], seen: [], pendingExit: false }; }
 export function validGoldQuote(q: GoldQuote, now: number) {
   return q?.symbol === "XAUUSD" && q.server === "VantageMarkets-Demo" && q.demo === true && q.currency === "USD"
-    && [q.tickAtMs, q.exportedAtMs, q.bid, q.ask, q.contractSize, q.volumeMin, q.volumeMax, q.volumeStep, q.tickSize, q.margin003, q.leverage].every(v => Number.isFinite(v) && v > 0)
+    && [q.tickAtMs, q.exportedAtMs, q.bid, q.ask, q.contractSize, q.volumeMin, q.volumeMax, q.volumeStep, q.tickSize, q.margin003, q.sellMargin003, q.leverage].every(v => Number.isFinite(v) && v > 0)
     && q.ask >= q.bid && now - q.tickAtMs >= -2000 && now - q.tickAtMs <= 5000 && now - q.exportedAtMs >= -2000 && now - q.exportedAtMs <= 5000
     && goldRules.lots >= q.volumeMin && goldRules.lots <= q.volumeMax && Math.abs(goldRules.lots / q.volumeStep - Math.round(goldRules.lots / q.volumeStep)) < 1e-7;
 }
@@ -73,7 +73,7 @@ export function goldTick(state: GoldState, q: GoldQuote, now: number): GoldState
     if (crossed) {
       const entry = long ? q.ask : q.bid, stop = long ? v.low : v.high, risk = (entry - stop) * (long ? 1 : -1);
       if (risk > 0) {
-        s.position = { id: v.id, side: long ? "LONG" : "SHORT", lots: goldRules.lots, units: goldRules.lots * q.contractSize, entry, openedAt: at, stop, initialRisk: risk, target: entry + (long ? 1 : -1) * goldRules.targetR * risk, breakEven: false, margin: q.margin003, signalClosedAt: v.closedAt, signalReceivedAt: v.receivedAt };
+        s.position = { id: v.id, side: long ? "LONG" : "SHORT", lots: goldRules.lots, units: goldRules.lots * q.contractSize, entry, openedAt: at, stop, initialRisk: risk, target: entry + (long ? 1 : -1) * goldRules.targetR * risk, breakEven: false, margin: long ? q.margin003 : q.sellMargin003, signalClosedAt: v.closedAt, signalReceivedAt: v.receivedAt };
         s.status = "OPEN"; decision(s, v, at, "ENTERED", `Simulated ${goldRules.lots} lots at observed ${long ? "ask" : "bid"} ${entry}. Quote-fill model, not broker-confirmed liquidity.`);
       } else decision(s, v, at, "INVALID_RISK", "Entry is beyond its protective stop.");
       s.setup = null;
