@@ -1,5 +1,5 @@
 import type { PaperEvent } from "./paperEngine";
-import { nextNiftySize, niftyBreakout, niftyExit, niftyTargets, niftyEntryFill, premiumStopDistance, type NiftySetup, type NiftyDepthLevel } from "./niftyRules";
+import { niftyRules, nextNiftySize, niftyBreakout, niftyExit, niftyTargets, niftyEntryFill, premiumStopDistance, type NiftySetup, type NiftyDepthLevel } from "./niftyRules";
 
 type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE"; lotSize: number; bid: number; ask: number; timestamp: string; bidSize?: number; askSize?: number; asks?: NiftyDepthLevel[]; depthAt?: string };
 type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: number; indexSymbol: string };
@@ -138,7 +138,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
       if (decisions.find(d => d.id === setup!.id)?.status === "WAITING_FOR_COMPLETED_15M_CANDLE") record(setup.id, tick.timestamp, "WAITING_FOR_INDEX_BREAK", "15-minute history is available; waiting for an eligible signal high/low crossing.");
       const elapsed = Date.parse(tick.timestamp) - Date.parse(setup.closedAt);
       const candle = Math.floor(elapsed / (setup.intervalMinutes * 60000)) + 1;
-      if (candle > 10 || dayIST(tick.timestamp) !== dayIST(setup.closedAt) || minutesIST(tick.timestamp) >= 895) { record(setup.id, tick.timestamp, "SETUP_EXPIRED", "No eligible entry before the ten-candle/session cutoff."); setup = null; status = "SETUP_EXPIRED"; }
+      if (candle > 10 || dayIST(tick.timestamp) !== dayIST(setup.closedAt) || minutesIST(tick.timestamp) >= niftyRules.cutoffMinutesIST) { record(setup.id, tick.timestamp, "SETUP_EXPIRED", "No eligible entry before the ten-candle/session cutoff."); setup = null; status = "SETUP_EXPIRED"; }
       else if (elapsed >= 0 && previousTick && fresh(previousTick.timestamp, tick.timestamp)) {
         const side = niftyBreakout(setup, previousTick.price, tick.price, candle, minutesIST(tick.timestamp));
         if (side) {
@@ -173,7 +173,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   // Display checkpoints refresh every five seconds; execution still uses fresh()'s five-second limit.
   const age = lastTickAt ? Date.parse(now) - Date.parse(lastTickAt) : NaN;
   const stale = !Number.isFinite(age) || age < 0 || age > 15000;
-  if (position && (dayIST(now) > dayIST(position.openedAt) || minutesIST(now) >= 895)) pendingExit = pendingExit || "TIME_EXIT_AWAITING_VERIFIED_QUOTE";
+  if (position && (dayIST(now) > dayIST(position.openedAt) || minutesIST(now) >= niftyRules.cutoffMinutesIST)) pendingExit = pendingExit || "TIME_EXIT_AWAITING_VERIFIED_QUOTE";
   const realizedBase = saved?.realizedBase ?? 0, tradeCountBase = saved?.tradeCountBase ?? 0;
   const realized = realizedBase + trades.reduce((sum, trade) => sum + trade.pnl, 0) + (position?.realizedPnl ?? 0);
   return { enabled, status, position, setup, size, trades, mark, lastTickAt, stale, pendingExit, realized,

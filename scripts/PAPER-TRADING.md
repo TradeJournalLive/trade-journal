@@ -38,7 +38,7 @@ The private `.paper-worker/config.json` supplies `webhookSecret` and
 - Version-2 feed snapshots opt new entries into these rules. Existing positions
   without a stored target plan and historical version-1 fills retain 1.5R.
 - Previous completed 15-minute index low/high trail; opposite signal exit.
-- No new entry from 14:55 IST; close at the first verified quote at/after 14:55.
+- No new entry from 15:15 IST; close at the first verified quote at/after 15:15.
 - Missing quote at cutoff leaves an explicitly unresolved exit. A next-day
   recovery exit is labelled delayed, never backdated to the prior session.
 - Start one lot; increase one after SL or two consecutive other losses.

@@ -5,7 +5,7 @@ export const niftyRules = {
   expiry: "NEAREST",
   validCandles: 10,
   maxSignalRange: 35,
-  cutoffMinutesIST: 14 * 60 + 55,
+  cutoffMinutesIST: 15 * 60 + 15,
   startingLots: 1,
   maxLots: null,
   sizeReset: false,

@@ -125,7 +125,7 @@ export default function SignalPaperTrading() {
         <div><dt>Validity</dt><dd>Next 10 candles · signal range ≤35 points</dd></div>
         <div><dt>Premium stop</dt><dd>min(20 points, 20% of entry premium)</dd></div>
         <div><dt>Index trail</dt><dd>CE: previous completed 15m low · PE: previous completed 15m high</dd></div>
-        <div><dt>Exit</dt><dd>Opposite signal or 14:55 IST</dd></div>
+        <div><dt>Exit</dt><dd>Opposite signal or 15:15 IST</dd></div>
         <div><dt>Size</dt><dd>Start 1 lot · +1 after SL or two consecutive other losses · no size reset or cap</dd></div>
         <div><dt>Entry fill</dt><dd>Available ask depth · maximum ₹4 above initial ask · average fill price</dd></div>
         <div><dt>Targets · new entries</dt><dd>1 lot: 2× entry · 2 lots: 1 at 2×, 1 at 2.5× · larger: rounded 80% / 20%</dd></div>
