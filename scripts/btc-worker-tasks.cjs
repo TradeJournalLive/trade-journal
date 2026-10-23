@@ -1,14 +1,18 @@
 // One in-flight request per task, but independent tasks never wait for each other.
 function startTask({ name, intervalMs, task, onError, clock = globalThis }) {
-  let stopped = false, timer, active = false, failures = 0;
+  let stopped = false, timer, active = false, failures = 0, queued = false;
+  const now = () => clock.now ? clock.now() : Date.now();
   async function run() {
     if (stopped || active) return;
+    const started = now(); queued = false;
     active = true;
     try { await task(); failures = 0; } catch (error) { failures++; onError(name, error); }
-    finally { active = false; if (!stopped) timer = clock.setTimeout(run, failures ? Math.min(intervalMs, 500 * 2 ** Math.min(failures - 1, 2)) : intervalMs); }
+    finally { active = false; if (!stopped) timer = clock.setTimeout(run, queued ? 0 : failures ? Math.min(intervalMs, 500 * 2 ** Math.min(failures - 1, 2)) : Math.max(25, intervalMs - (now() - started))); }
   }
   void run();
-  return () => { stopped = true; clock.clearTimeout(timer); };
+  const stop = () => { stopped = true; clock.clearTimeout(timer); };
+  stop.trigger = () => { if (stopped) return; if (active) { queued = true; return; } clock.clearTimeout(timer); timer = clock.setTimeout(run, 0); };
+  return stop;
 }
 
 function createTickAudit(write) {

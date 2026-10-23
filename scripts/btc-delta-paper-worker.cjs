@@ -18,7 +18,7 @@ const directory = path.resolve('.paper-worker/btc'); fs.mkdirSync(directory, { r
 const checkpoint = path.join(directory, 'checkpoint.json'), now = () => new Date().toISOString();
 let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, product, after, lastRejectedLog = 0, depthBook;
 let connectedAt = 0, watchdog;
-const stopTasks = [], taskErrors = {}, health = { lastSignalPollAt: null, lastLedgerSyncAt: null, lastSnapshotAt: null, lastError: null, lastErrorAt: null, lastFeedAt: null, reconnects: 0, taskLatencyMs: {}, eventLoopMaxMs: 0 };
+const stopTasks = [], taskErrors = {}, health = { lastSignalPollAt: null, lastLedgerSyncAt: null, lastSnapshotAt: null, lastError: null, lastErrorAt: null, lastFeedAt: null, reconnects: 0, taskLatencyMs: {}, eventLoopMaxMs: 0, signalNotifications: 'CONNECTING', signalWakeups: 0, lastSignalDetectionMs: null };
 const seenRows = new Set(), persisted = new Set(), persistedDecisions = new Map();
 const heartbeatAttempts = new Set();
 function audit(kind, data) { fs.appendFileSync(path.join(directory, `${now().slice(0, 10)}.jsonl`), JSON.stringify({ at: now(), kind, data }) + '\n', { mode: 0o600 }); }
@@ -155,7 +155,9 @@ async function poll() {
     const candle = v.signal?.metadata?.btcPaper;
     if (v.signal?.metadata?.diagnostic || v.raw_payload?.automation?.mode !== 'PAPER' || candle?.kind !== 'SIGNAL' || v.signal.timeframe !== '1' || !['BUY', 'SELL'].includes(v.signal.action)) continue;
     const signal = { id: v.signal.id, action: v.signal.action, symbol: v.signal.symbol, receivedAt: v.received_at, closedAt: candle.closedAt, high: candle.high, low: candle.low, signalPrice: v.signal.price };
-    audit('SIGNAL', signal); const next = btcSignal(saved.state, signal); audit('SIGNAL_DECISION', { signalId: signal.id, status: next.status, enabled: next.enabled }); update(next);
+    const processedAt = now();
+    health.lastSignalDetectionMs = Math.max(0, Date.parse(processedAt) - Date.parse(signal.receivedAt));
+    audit('SIGNAL', signal); const next = btcSignal(saved.state, signal, processedAt); audit('SIGNAL_DECISION', { signalId: signal.id, status: next.status, enabled: next.enabled, processedAt, detectionMs: health.lastSignalDetectionMs }); update(next);
   }
   if (r.data?.length) after = new Date(Date.parse(r.data[r.data.length - 1].received_at) - 60000).toISOString();
   health.lastSignalPollAt = now();
@@ -200,7 +202,18 @@ async function main() {
       workerStatus = `STOPPED_${reason}`; audit('WORKER_STOP', { reason: workerStatus }); process.exit(1);
     }
   }
-  for (const [name, intervalMs, task] of [['heartbeat', 2000, heartbeat], ['signals', 1000, poll], ['ledger', 2000, syncLedger], ['snapshot', 3000, publishSnapshot], ['checkpoint', 1000, async () => save()]]) stopTasks.push(startTask({ name, intervalMs, task: async () => { const start = Date.now(); try { const result = await task(); if (result !== false) delete taskErrors[name]; } finally { health.taskLatencyMs[name] = Date.now() - start; } }, onError }));
+  let signalTask;
+  for (const [name, intervalMs, task] of [['heartbeat', 2000, heartbeat], ['signals', 500, poll], ['ledger', 2000, syncLedger], ['snapshot', 3000, publishSnapshot], ['checkpoint', 1000, async () => save()]]) {
+    const scheduled = startTask({ name, intervalMs, task: async () => { const start = Date.now(); try { const result = await task(); if (result !== false) delete taskErrors[name]; } finally { health.taskLatencyMs[name] = Date.now() - start; } }, onError });
+    stopTasks.push(scheduled); if (name === 'signals') signalTask = scheduled;
+  }
+  // Notifications are wake-up hints only. The authenticated owner-scoped poll remains authoritative.
+  try { db.channel(`btc-signal-wakeup-${workerId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `secret_hash=eq.${owner}` }, payload => {
+    const row = payload.new;
+    if (row?.secret_hash !== owner || !['btc_delta_breakout_v1', '__paper_control__'].includes(row.strategy_id)) return;
+    health.signalWakeups++; signalTask.trigger();
+  }).subscribe(status => { health.signalNotifications = status === 'SUBSCRIBED' ? 'SUBSCRIBED' : 'POLLING_FALLBACK'; }); }
+  catch { health.signalNotifications = 'POLLING_FALLBACK'; }
   await new Promise(() => {});
 }
 function shutdown() { clearInterval(watchdog); stopTasks.forEach(stop => stop()); tickAudit.flush(); save(); process.exit(0); }

@@ -51,14 +51,14 @@ export function btcCancelSetup(state: BtcState, at: string) {
 }
 const positive = (v: number) => Number.isFinite(v) && v > 0;
 const fresh = (at: string, now: string) => { const age = Date.parse(now) - Date.parse(at); return Number.isFinite(age) && age >= -1000 && age <= 5000; };
-export function btcSignal(state: BtcState, signal: BtcSignal) {
+export function btcSignal(state: BtcState, signal: BtcSignal, processedAt = signal.receivedAt) {
   const s = structuredClone(state);
   if (s.seen.includes(signal.id)) return s;
   s.seen.push(signal.id);
-  if (signal.symbol !== "DELTAIN:BTCUSD.P") { s.status = "REJECTED_DIFFERENT_PRICE_FEED"; decision(s, signal, s.status, "Signal is not from Delta India BTCUSD perpetual."); return s; }
+  if (signal.symbol !== "DELTAIN:BTCUSD.P") { s.status = "REJECTED_DIFFERENT_PRICE_FEED"; decision(s, signal, s.status, "Signal is not from Delta India BTCUSD perpetual.", processedAt); return s; }
   const deliveryAge = Date.parse(signal.receivedAt) - Date.parse(signal.closedAt);
-  if (!Number.isFinite(deliveryAge) || deliveryAge < 0 || ![signal.high, signal.low, signal.signalPrice].every(positive) || signal.high <= signal.low) { s.status = "INVALID_SIGNAL_CANDLE"; decision(s, signal, s.status, "Invalid signal candle or close timestamp."); return s; }
-  if (s.setup) decision(s, s.setup, "SUPERSEDED", "A newer signal replaced this setup before entry.", signal.receivedAt);
+  if (!Number.isFinite(deliveryAge) || deliveryAge < 0 || ![signal.high, signal.low, signal.signalPrice].every(positive) || signal.high <= signal.low) { s.status = "INVALID_SIGNAL_CANDLE"; decision(s, signal, s.status, "Invalid signal candle or close timestamp.", processedAt); return s; }
+  if (s.setup) decision(s, s.setup, "SUPERSEDED", "A newer signal replaced this setup before entry.", processedAt);
   if (s.position && ((signal.action === "BUY") !== (s.position.side === "LONG"))) s.pendingExit = "OPPOSITE_SIGNAL";
   s.lastSignalAt = signal.receivedAt;
   s.setup = s.enabled && (!s.position || s.pendingExit === "OPPOSITE_SIGNAL") ? signal : null;
@@ -75,7 +75,7 @@ export function btcSignal(state: BtcState, signal: BtcSignal) {
     } else s.setup.breakoutVerified = true;
   }
   decision(s, signal, s.setup ? "WAITING_FOR_BREAKOUT" : s.status === "OPEN" ? "POSITION_ALREADY_OPEN" : s.status,
-    s.setup ? "Waiting for the first eligible high/low crossing." : s.status === "MISSED_BREAKOUT" ? "The level broke before the worker processed this signal; no late entry." : s.status === "SETUP_EXPIRED" ? "The ten-candle entry window expired." : s.status === "UNVERIFIABLE_BREAKOUT_HISTORY" ? "Continuous price history during alert delivery is unavailable." : s.position ? "Existing position managed; no additional same-direction entry." : "Paper entries are off.");
+    s.setup ? "Waiting for the first eligible high/low crossing." : s.status === "MISSED_BREAKOUT" ? "The level broke before the worker processed this signal; no late entry." : s.status === "SETUP_EXPIRED" ? "The ten-candle entry window expired." : s.status === "UNVERIFIABLE_BREAKOUT_HISTORY" ? "Continuous price history during alert delivery is unavailable." : s.position ? "Existing position managed; no additional same-direction entry." : "Paper entries are off.", processedAt);
   return s;
 }
 export function btcTick(state: BtcState, tick: BtcTick): BtcState {

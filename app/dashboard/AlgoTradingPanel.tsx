@@ -139,6 +139,7 @@ type InstrumentMatch = {
 
 type AlgoSignalEvent = {
   receivedAt: string;
+  execution?: import("../lib/algo/signalExecution").SignalExecution;
   signal: {
     id: string;
     strategyId: string;
@@ -342,6 +343,11 @@ export default function AlgoTradingPanel() {
   const [tvTestSecret, setTvTestSecret] = useState("");
   const [webhookConnected, setWebhookConnected] = useState(false);
   const signalRequestVersion = useRef(0);
+  const signalRequest = useRef<{ key: string; controller: AbortController } | null>(null);
+  const signalDetailsRequest = useRef<{ key: string; controller: AbortController } | null>(null);
+  const connectedSignalSecret = useRef("");
+  const currentSignalDate = useRef(signalDate);
+  currentSignalDate.current = signalDate;
   const currentSignalSecret = useRef(tvTestSecret);
   currentSignalSecret.current = tvTestSecret;
 
@@ -353,43 +359,70 @@ export default function AlgoTradingPanel() {
 
   const refreshSignalLog = useCallback(async (silent = false) => {
     const secret = tvTestSecret.trim();
+    const key = `${signalDate}:${secret}`;
+    if (signalRequest.current?.key === key) return;
+    signalRequest.current?.controller.abort();
+    const controller = new AbortController();
+    signalRequest.current = { key, controller };
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
     const version = ++signalRequestVersion.current;
+    const current = () => version === signalRequestVersion.current && secret === currentSignalSecret.current.trim() && signalDate === currentSignalDate.current;
     if (!silent) {
       setSignalLogLoading(true);
       setSignalLogError("");
     }
 
     try {
-      let response = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}`, secret ? {
+      const connect = !silent && secret && connectedSignalSecret.current !== secret;
+      const response = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}&receipts=1`, connect ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
-        cache: "no-store"
-      } : { cache: "no-store" });
-      if (secret && response.ok) response = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}`, { cache: "no-store" });
+        cache: "no-store", signal: controller.signal
+      } : { cache: "no-store", signal: controller.signal });
       const data = (await response.json()) as { events?: AlgoSignalEvent[]; error?: string; warning?: string; source?: string };
-      if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
+      if (!current()) return;
       if (!response.ok) {
-        if (response.status === 401) setWebhookConnected(false);
+        if (response.status === 401) { setWebhookConnected(false); connectedSignalSecret.current = ""; }
         throw new Error(data.error || "Signal log failed to load.");
       }
       if (data.source !== "supabase") {
         throw new Error(data.warning || "Saved history is temporarily unavailable. Previous signals are retained.");
       }
       const events = Array.isArray(data.events) ? data.events : [];
-      setSignalEvents(events);
+      setSignalEvents(previous => events.map(event => ({ ...event, execution: previous.find(old => old.signal.id === event.signal.id && old.receivedAt === event.receivedAt)?.execution ?? { status: "LOADING", reason: "Signal saved. Loading execution decision.", source: "Unavailable" as const } })));
+      if (connect) connectedSignalSecret.current = secret;
       setWebhookConnected(true);
       setSignalLogLastChecked(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       setSignalLogError("");
+      // Receipts render first; slow execution-history reads must not hide new signals.
+      if (signalDetailsRequest.current?.key !== key) {
+        signalDetailsRequest.current?.controller.abort();
+        const detailsController = new AbortController();
+        signalDetailsRequest.current = { key, controller: detailsController };
+        const detailsTimeout = window.setTimeout(() => detailsController.abort(), 12000);
+        void (async () => {
+          try {
+            const result = await accountFetch(`/api/algo/signals?date=${encodeURIComponent(signalDate)}`, { cache: "no-store", signal: detailsController.signal });
+            const body = await result.json() as { events?: AlgoSignalEvent[] };
+            if (!result.ok || signalDetailsRequest.current?.controller !== detailsController || secret !== currentSignalSecret.current.trim() || signalDate !== currentSignalDate.current) return;
+            const details = new Map((body.events || []).map(event => [`${event.signal.id}:${event.receivedAt}`, event.execution]));
+            setSignalEvents(previous => previous.map(event => ({ ...event, execution: details.get(`${event.signal.id}:${event.receivedAt}`) ?? event.execution })));
+          } catch { /* Retain saved receipts; the next refresh retries execution details. */ }
+          finally { window.clearTimeout(detailsTimeout); if (signalDetailsRequest.current?.controller === detailsController) signalDetailsRequest.current = null; }
+        })();
+      }
       if (!silent) {
         const source = data.source === "supabase" ? "saved" : "temporary";
         setStatus(events.length ? `Loaded ${events.length} ${source} TradingView signal${events.length === 1 ? "" : "s"}.` : "Signal log checked. No TradingView alerts received yet.");
       }
     } catch (error) {
-      if (version !== signalRequestVersion.current || secret !== currentSignalSecret.current.trim()) return;
+      if (!current()) return;
       setSignalLogError(error instanceof Error ? error.message : "Signal log failed to load.");
     } finally {
-      if (!silent) setSignalLogLoading(false);
+      window.clearTimeout(timeout);
+      if (signalRequest.current?.controller === controller) signalRequest.current = null;
+      if (current()) setSignalLogLoading(false);
     }
   }, [tvTestSecret, signalDate]);
 
@@ -451,11 +484,14 @@ export default function AlgoTradingPanel() {
   useEffect(() => {
     if (activeSection !== "tradingview") return;
     void refreshSignalLog(true);
-    const timer = window.setInterval(() => {
-      void refreshSignalLog(true);
-    }, 5000);
-    return () => window.clearInterval(timer);
+    const refresh = () => { if (document.visibilityState === "visible") void refreshSignalLog(true); };
+    const timer = window.setInterval(refresh, 2000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("focus", refresh); };
   }, [activeSection, tvTestSecret, refreshSignalLog]);
+
+  useEffect(() => () => { signalRequest.current?.controller.abort(); signalDetailsRequest.current?.controller.abort(); }, []);
 
   function selectSection(id: AlgoSection) {
     setActiveSection(id);

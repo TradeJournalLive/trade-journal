@@ -65,6 +65,13 @@ Remote snapshots omit historical price windows and redundant depth/decision data
 unsynced trades/decisions remain included. Recovery without a valid local checkpoint
 must warm up observed breakout history again, rather than invent missing coverage.
 
+Signal ingestion uses fixed-start cadence with a 500 ms polling fallback (one
+request in flight). Owner-filtered INSERT notifications, when enabled by Supabase,
+wake that same poll immediately; notifications are hints, never execution input.
+If notifications are unavailable polling continues. Audits record webhook receipt,
+actual processing time and receipt-to-detection milliseconds separately. Neither
+faster polling nor UI refresh bypasses the first-breakout/missed-entry rule.
+
 `STORAGE_HEALTH`, `FEED_HEALTH`, and timestamped `WORKER_STOP` audits distinguish
 storage trouble from feed interruptions. Panel database-sync and signal-poll
 timestamps are separate from feed health. Genuine missing-history signals remain

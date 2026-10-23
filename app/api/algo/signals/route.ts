@@ -12,12 +12,13 @@ export async function GET(request: Request) {
   if (!secret) return NextResponse.json({ error: "Connect your webhook once to load saved signals." }, { status: 401 });
   const date = new URL(request.url).searchParams.get("date") || undefined;
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Invalid date." }, { status: 400 });
-  return history(secret, date);
+  return history(secret, date, new URL(request.url).searchParams.get("receipts") === "1");
 }
 
-async function history(secret: string, date?: string) {
+async function history(secret: string, date?: string, receiptsOnly = false) {
   const persisted = await listPersistedAlgoSignalEvents(secret, 100, date);
   if (!persisted.ok) return NextResponse.json({ error: persisted.reason }, { status: 503 });
+  if (receiptsOnly) return NextResponse.json({ events: persisted.events, source: "supabase", connected: true }, { headers: privateHeaders });
   try {
     const events = await addSignalExecutions(secret, persisted.events);
     return NextResponse.json({ events, source: "supabase", connected: true }, { headers: privateHeaders });
@@ -48,5 +49,7 @@ export async function POST(request: Request) {
   }
 
   try { await saveConnection(secret); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to link connection." }, { status: 403 }); }
-  return history(secret);
+  const date = new URL(request.url).searchParams.get("date") || undefined;
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+  return history(secret, date, new URL(request.url).searchParams.get("receipts") === "1");
 }

@@ -28,6 +28,10 @@ test('missing delivery-period price history is unverifiable', () => {
   const s = rawBtcSignal({ ...emptyBtcState(), enabled: true }, signal());
   assert.equal(s.status, 'UNVERIFIABLE_BREAKOUT_HISTORY'); assert.equal(s.setup, null);
 });
+test('signal decisions distinguish actual processing time from webhook receipt', () => {
+  const s = rawBtcSignal({ ...emptyBtcState(), enabled: true }, signal(), time(5));
+  assert.equal(s.decisions[0].receivedAt, time(1)); assert.equal(s.decisions[0].decidedAt, time(5));
+});
 
 test('ownership pause keeps observed prices but cannot create a late breakout fill', () => {
   let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
