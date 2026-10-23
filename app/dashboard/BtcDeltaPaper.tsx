@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
-export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; trial: { startedAt: string; endsAt: string } };
+export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; health?: { databaseStatus: string; snapshotAt: string; lastSignalPollAt: string | null; lastLedgerSyncAt: string | null; reconnects: number }; trial: { startedAt: string; endsAt: string } };
 const n = (v: number | null | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const q = (v: number | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 8 });
 const t = (v: string | null | undefined) => v ? new Date(v).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--";
@@ -26,7 +26,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
   const quoteAge = now - Date.parse(book?.lastTickAt || "");
   const feedFresh = Number.isFinite(quoteAge) && quoteAge >= -1000 && quoteAge <= 15000;
   const normalStatuses = ["OPEN", "WAITING_FOR_SIGNAL", "WAITING_FOR_BREAKOUT", "MISSED_BREAKOUT", "MISSED_BREAKOUT_UNFILLED", "SETUP_EXPIRED"];
-  const issue = !book ? "BTC status unavailable" : !book.workerOnline ? "Worker offline or heartbeat missing" : !feedFresh || book.stale ? "Delta prices are stale" : book.workerStatus !== "RECEIVING_DELTA_BTCUSD" ? `Worker: ${book.workerStatus}` : !book.enabled ? "Paper entries are switched off" : !normalStatuses.includes(book.status) ? `Engine: ${book.status}` : null;
+  const issue = !book ? "BTC status unavailable" : !book.workerOnline ? "Worker offline or heartbeat missing" : !feedFresh || book.stale ? "Delta prices are stale" : book.workerStatus !== "RECEIVING_DELTA_BTCUSD" ? `Worker: ${book.workerStatus}` : !book.enabled ? "Paper entries are switched off" : !normalStatuses.includes(book.status) ? `Engine: ${book.status}` : book.health?.databaseStatus === "RETRYING" ? "Database sync is retrying; local price monitoring continues." : null;
   async function toggle() {
     setBusy(true); setError("");
     try { const r = await accountFetch("/api/algo/paper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ market: "BTC", enabled: legacyEnabled, btcBreakoutEnabled: !book?.enabled }) }); const v = await r.json(); if (!r.ok) throw new Error(v.error); onSaved(); }
@@ -48,6 +48,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
       <div><b>{checking ? "Checking latest BTC status..." : issue ? "RED · BTC needs attention" : "GREEN · BTC engine ready"}</b><p className="text-sm">{checking ? "Refreshing panel snapshot; connection not yet verified." : issue || (p ? "Position open · monitoring exits" : book?.setup ? "Signal received · waiting for breakout" : "Prices fresh · entries armed · waiting for a signal")}</p></div>
     </div>
     <p className="text-xs text-slate-500">Last TradingView signal: {t(book?.lastSignalAt)}. Engine health does not verify the TradingView alert is enabled.</p>
+    {book?.health && <dl className="algo-rule-list"><div><dt>Database sync</dt><dd>{book.health.databaseStatus === "SYNCED" ? "Synced" : "Retrying · local records retained"}</dd></div><div><dt>Last signal check</dt><dd>{t(book.health.lastSignalPollAt)}</dd></div><div><dt>Last trade sync</dt><dd>{t(book.health.lastLedgerSyncAt)}</dd></div><div><dt>Feed reconnects · current run</dt><dd>{book.health.reconnects}</dd></div></dl>}
     <p className="text-xs text-slate-500">PAPER · Request 0.1 BTC · partial fills allowed · 100× margin assumption · 24/7 · Last quote {t(book?.lastTickAt)}</p>
     <PaperLifetimeSummary realized={`${n(book?.realized)} USD gross`} openPnl={`${n(book?.unrealized)} USD gross`} closedTrades={book?.tradeCount} />
     <details className="border-b border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>Confirmed 1m high/low cross · valid 10 candles · no range filter</dd></div><div><dt>Entry fills</dt><dd>Observed Delta depth · maximum $5 adverse price difference · unfilled remainder canceled</dd></div><div><dt>Stop / target</dt><dd>Signal candle stop · at +2R move stop to average entry · target 3R</dd></div><div><dt>Other exits</dt><dd>Opposite signal · estimated isolated-margin breach</dd></div></dl></details>

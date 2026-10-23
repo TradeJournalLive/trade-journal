@@ -46,7 +46,8 @@ export async function loadPaperBooks(secret: string) {
       const optionTrades = (ledgerTrades.length ? ledgerTrades : options.trades).map(trade => ({ ...trade, ...tradeSignalTimes(events, trade.signalId, trade.indexSymbol, trade.openedAt) }));
       const optionPosition = options.position ? { ...options.position, ...tradeSignalTimes(events, options.position.signalId, options.position.indexSymbol, options.position.openedAt) } : null;
       const deleted = new Set(events.map(event => (event.raw.paperControl as { deleteTrade?: string } | undefined)?.deleteTrade).filter(Boolean));
-      const btcTrades = btcLedger.map(row => row.raw_payload?.trade).filter(Boolean) as BtcTrade[];
+      const recordedBtcTrades = [...(btcWorker?.raw_payload?.saved?.state?.trades || []), ...btcLedger.map(row => row.raw_payload?.trade).filter(Boolean)] as BtcTrade[];
+      const btcTrades = [...new Map(recordedBtcTrades.map(trade => [`${trade.id}:${trade.openedAt}`, trade])).values()];
       const removed = btcTrades.filter(trade => deleted.has(`${trade.id}:${trade.openedAt}`) && !trade.monitoringGap);
       const view = btcWorker?.raw_payload?.saved?.state ? btcView(btcWorker.raw_payload.saved.state, now) : null;
       const decisions = new Map<string, NonNullable<ReturnType<typeof btcView>["decisions"]>[number]>();
@@ -54,7 +55,7 @@ export async function loadPaperBooks(secret: string) {
         const d = value as NonNullable<ReturnType<typeof btcView>["decisions"]>[number];
         if (d?.id && (!decisions.has(d.id) || Date.parse(d.decidedAt) >= Date.parse(decisions.get(d.id)!.decidedAt))) decisions.set(d.id, d);
       }
-      const delta = view ? { ...view, decisions: [...decisions.values()].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)), realized: view.realized - removed.reduce((sum, trade) => sum + trade.pnl, 0), tradeCount: view.tradeCount - removed.length, trades: btcTrades.filter(trade => !deleted.has(`${trade.id}:${trade.openedAt}`)), workerOnline: Date.parse(now) - Date.parse(btcWorker!.received_at) < 15000 && !String(btcWorker!.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker!.raw_payload.workerStatus, trial: { startedAt: btcWorker!.raw_payload.saved.startedAt, endsAt: btcWorker!.raw_payload.saved.endsAt } } : null;
+      const delta = view ? { ...view, decisions: [...decisions.values()].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)), realized: view.realized - removed.reduce((sum, trade) => sum + trade.pnl, 0), tradeCount: view.tradeCount - removed.length, trades: btcTrades.filter(trade => !deleted.has(`${trade.id}:${trade.openedAt}`)), workerOnline: Date.parse(now) - Date.parse(btcWorker!.received_at) < 15000 && !String(btcWorker!.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker!.raw_payload.workerStatus, health: btcWorker!.raw_payload.health as { databaseStatus: string; snapshotAt: string; lastSignalPollAt: string | null; lastLedgerSyncAt: string | null; reconnects: number } | undefined, trial: { startedAt: btcWorker!.raw_payload.saved.startedAt, endsAt: btcWorker!.raw_payload.saved.endsAt } } : null;
       return Object.fromEntries(markets.map(market => [market, { ...books[market], trades: books[market].trades.map(trade => ({ ...trade, ...tradeSignalTimes(events, trade.signalId, trade.symbol, trade.openedAt) })), valuation: paperValuation(books[market], events, now), ...(market === "BTC" ? { delta } : {}), ...(market === "GOLD" ? { mt5 } : {}), ...(market === "NIFTY" ? { options: { ...publicOptions, trades: optionTrades, position: optionPosition, workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
     }
   }

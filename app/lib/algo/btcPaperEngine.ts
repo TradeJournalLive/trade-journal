@@ -98,6 +98,7 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   if (last?.second === second) { last.last = at; last.low = Math.min(last.low, tick.price); last.high = Math.max(last.high, tick.price); last.gap = Math.max(last.gap, gap); }
   else history.push({ second, first: at, last: at, low: tick.price, high: tick.price, gap });
   s.priceHistory = history;
+  if (s.status === "STORAGE_LEASE_UNVERIFIED") s.status = s.position ? "OPEN" : s.setup ? "WAITING_FOR_BREAKOUT" : s.enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
   if (s.pendingExit === "COMPLETED_15M_TRAIL" || s.pendingExit === "MONITORING_INTERRUPTED") s.pendingExit = null;
   if (s.previousTick && Date.parse(tick.timestamp) - Date.parse(s.previousTick.timestamp) > 15000) {
     if (s.setup) decision(s, s.setup, "MONITORING_INTERRUPTED", "Price monitoring was interrupted before entry.", tick.timestamp);
@@ -170,6 +171,27 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   s.previousTick = tick;
   if (!s.position && !s.setup && s.enabled && !["MISSED_BREAKOUT", "MISSED_BREAKOUT_UNFILLED", "UNVERIFIABLE_BREAKOUT_HISTORY", "SETUP_EXPIRED"].includes(s.status)) s.status = "WAITING_FOR_SIGNAL";
   return s;
+}
+
+// Preserve observed history while ownership is uncertain, without simulating fills.
+export function btcObserveTick(state: BtcState, tick: BtcTick): BtcState {
+  const observed = btcTick({ ...emptyBtcState(), previousTick: state.previousTick, priceHistory: state.priceHistory }, tick);
+  if (observed.previousTick?.timestamp !== tick.timestamp) return state;
+  const s = { ...state, previousTick: observed.previousTick, priceHistory: observed.priceHistory };
+  if (s.position) s.position = { ...s.position, monitoringGap: { from: s.position.monitoringGap?.from ?? state.previousTick?.timestamp ?? tick.timestamp, to: tick.timestamp } };
+  if (s.setup && (s.setup.action === "BUY" ? tick.price > s.setup.high : tick.price < s.setup.low)) {
+    s.decisions = [...(s.decisions || [])];
+    decision(s, s.setup, "MISSED_BREAKOUT_EXECUTION_PAUSED", "The level crossed while worker ownership could not be verified; no late entry.", tick.timestamp);
+    s.setup = null;
+  }
+  s.status = "STORAGE_LEASE_UNVERIFIED";
+  return s;
+}
+export function btcCompactTrades(state: BtcState, persisted: Set<string>): BtcState {
+  const flushed = state.trades.filter(t => persisted.has(`${t.id}:${t.openedAt}`));
+  if (!flushed.length) return state;
+  const verified = flushed.filter(t => !t.monitoringGap);
+  return { ...state, trades: state.trades.filter(t => !persisted.has(`${t.id}:${t.openedAt}`)), realizedBase: state.realizedBase + verified.reduce((sum, t) => sum + t.pnl, 0), tradeCountBase: state.tradeCountBase + verified.length };
 }
 export function btcView(s: BtcState, now = new Date().toISOString()) {
   const t = s.previousTick, age = t ? Date.parse(now) - Date.parse(t.timestamp) : NaN;

@@ -36,14 +36,38 @@ Run `npm run paper:btc` from the project directory. The Mac deployment uses the 
 `com.1to2.btc-paper` launch agent. It does not restart or share runtime state with NIFTY.
 The Mac must remain awake and connected for continuous 24/7 operation.
 
-Recovery: use a 5-second launch-agent throttle instead of 60 seconds. The feed
-watchdog runs independently of database polling and reconnects stale quotes
-after 5 seconds. Temporary signal-query errors retry without stopping the feed;
-storage operations have bounded timeouts. Heartbeat retries stop before the
-15-second ownership lease expires, and execution pauses after 12 seconds without
-verified ownership. A failed ownership comparison still stops the worker.
+Recovery: use a 5-second launch-agent throttle instead of 60 seconds. Heartbeat
+renewal, signal polling, ledger flushing, panel snapshots and local checkpoints
+run independently, with at most one in-flight request per task. Routine heartbeat
+renewals update only the timestamp; larger snapshots use a separate worker-ID
+fence and cannot replace a newer owner's state. Transient storage errors retry
+in place without tearing down the Delta connection. Ambiguous heartbeat writes
+are reconciled before deciding that ownership was lost.
+
+The feed watchdog reconnects stale quotes after 5 seconds. Execution still pauses
+after 12 seconds without verified ownership (the shared lease expires at 15).
+During this pause prices and history continue to be captured locally, but fills
+are not invented. A breakout during the pause is missed, not chased later; an open
+position is marked unverified if exits could not be managed. Actual takeover by
+another worker remains fatal. Signal delivery still depends on database access;
+late signals never override the missed-breakout checks.
+
+Critical execution, stop-change and decision records save locally before remote
+sync. Confirmed trade records compact into lifetime totals only after idempotent
+ledger writes succeed. Unflushed records survive checkpoints and are retained in
+panel snapshots. Ordinary price audit records aggregate extrema, count and gap
+per second; full execution snapshots remain unchanged. The engine itself still
+processes every price update. On macOS, caffeinate prevents idle sleep while the
+worker runs; it cannot prevent lid closure, shutdown or lost connectivity.
+
+Full breakout history remains in the local checkpoint, not each panel upload.
+Remote snapshots omit historical price windows and redundant depth/decision data;
+unsynced trades/decisions remain included. Recovery without a valid local checkpoint
+must warm up observed breakout history again, rather than invent missing coverage.
+
 `STORAGE_HEALTH`, `FEED_HEALTH`, and timestamped `WORKER_STOP` audits distinguish
-database trouble from feed interruptions. Genuine missing-history signals remain
+storage trouble from feed interruptions. Panel database-sync and signal-poll
+timestamps are separate from feed health. Genuine missing-history signals remain
 excluded; these changes do not backfill missed entries or guarantee uptime.
 
 Private runtime files are under ignored `.paper-worker/btc/`; production credentials remain

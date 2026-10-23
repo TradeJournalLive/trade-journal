@@ -1,12 +1,12 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), ts = require('typescript'), Module = require('node:module'), path = require('node:path');
-function fixture(failPage = false) {
+function fixture(failPage = false, pending = false) {
   const btc = { id: 'btc-one', signalReceivedAt: '2026-10-21T05:00:01Z', signalClosedAt: '2026-10-21T05:00:00Z', openedAt: '2026-10-21T05:00:02Z', pnl: 10 };
   const rows = Array.from({ length: 1005 }, (_, n) => ({ secret_hash: 'owner-a', strategy_id: '__nifty_paper_trade__', received_at: '2026-10-21T05:00:00Z', signal_id: String(n), raw_payload: { trade: { signalId: `s-${n}`, indexSymbol: 'NSE:NIFTY', openedAt: '2026-10-21T05:00:00Z', pnl: n } } }));
   rows.push({ secret_hash: 'owner-b', strategy_id: '__nifty_paper_trade__', raw_payload: { trade: { signalId: 'not-yours' } } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_trade__', raw_payload: { trade: btc } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_decision__', received_at: '2026-10-21T05:00:01Z', signal_id: 'decision', raw_payload: { decision: { id: 'btc-one', receivedAt: '2026-10-21T05:00:01Z', decidedAt: '2026-10-21T05:00:02Z', status: 'PARTIALLY_FILLED', filledBtc: .4, canceledBtc: .6 } } });
   rows.push({ secret_hash: 'owner-b', strategy_id: '__btc_delta_decision__', raw_payload: { decision: { id: 'private-other-owner' } } });
-  rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { saved: { state: {} }, workerStatus: 'RECEIVING_DELTA_BTCUSD' } });
+  rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { saved: { state: { trades: pending ? [btc, { ...btc, id: 'pending-outbox', pnl: 7 }] : [] } }, workerStatus: 'RECEIVING_DELTA_BTCUSD' } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__paper_control__', signal_id: 'delete', received_at: '2026-10-21T06:00:00Z', signal: { id: 'delete', metadata: {} }, raw_payload: { paperControl: { deleteTrade: `${btc.id}:${btc.openedAt}` } } });
   const ranges = [];
   rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { state: { enabled: true, trades: [] } } });
@@ -41,4 +41,10 @@ test('shared paper history loads every ledger page, isolates owners and preserve
 });
 test('ledger pagination failure never presents a truncated successful history', async () => {
   await assert.rejects(fixture(true).api.loadPaperBooks('owner-a'), /complete paper trade ledger/);
+});
+test('BTC snapshot outbox remains visible before ledger sync without duplicating persisted trades', async () => {
+  const books = await fixture(false, true).api.loadPaperBooks('owner-a');
+  assert.deepEqual(books.BTC.delta.trades.map(t => t.id), ['pending-outbox']);
+  assert.equal(books.BTC.delta.trades[0].pnl, 7);
+  assert.equal(books.BTC.delta.realized, 0); // Deleted ledger trade is subtracted exactly once.
 });

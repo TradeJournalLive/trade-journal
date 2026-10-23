@@ -2,6 +2,8 @@ const test = require('node:test'), assert = require('node:assert/strict'), fs = 
 const file = require('node:path').resolve(__dirname, '../app/lib/algo/btcPaperEngine.ts'), copy = new Module(file, module);
 copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, file);
 const { emptyBtcState, btcSignal: rawBtcSignal, btcTick, btcView, btcDepthFill, btcCancelSetup } = copy.exports;
+const { btcObserveTick } = copy.exports;
+const { btcCompactTrades } = copy.exports;
 // Keep the established one-BTC fill/recovery regression fixtures independent of the entry-size default.
 copy.exports.btcRules.quantityBtc = 1;
 const time = n => new Date(Date.UTC(2026, 9, 16, 22, 0, n)).toISOString();
@@ -25,6 +27,40 @@ test('breakout before alert processing is missed even if price returned inside',
 test('missing delivery-period price history is unverifiable', () => {
   const s = rawBtcSignal({ ...emptyBtcState(), enabled: true }, signal());
   assert.equal(s.status, 'UNVERIFIABLE_BREAKOUT_HISTORY'); assert.equal(s.setup, null);
+});
+
+test('ownership pause keeps observed prices but cannot create a late breakout fill', () => {
+  let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
+  s = btcObserveTick(s, tick(2, 80099));
+  assert.ok(s.setup); assert.equal(s.position, null); assert.equal(s.previousTick.timestamp, time(2));
+  s = btcObserveTick(s, tick(3, 80101));
+  assert.equal(s.setup, null); assert.equal(s.position, null);
+  assert.equal(s.decisions.at(-1).status, 'MISSED_BREAKOUT_EXECUTION_PAUSED');
+  assert.equal(btcTick(s, tick(4, 80105)).position, null);
+});
+test('captured history during a pause allows only a future eligible cross after recovery', () => {
+  let s = { ...emptyBtcState(), enabled: true };
+  for (let i = -1; i <= 4; i++) s = btcObserveTick(s, tick(i, 80050));
+  s = rawBtcSignal(s, { ...signal(), receivedAt: time(4) });
+  assert.equal(s.status, 'WAITING_FOR_BREAKOUT');
+  assert.ok(btcTick(s, tick(5, 80101)).position);
+});
+test('ownership pause does not fabricate an exit or hide uncertainty in an open position', () => {
+  const s = entry(), p = s.position;
+  const observed = btcObserveTick(s, tick(4, 79900));
+  assert.equal(observed.trades.length, 0); assert.equal(observed.position.entry, p.entry);
+  assert.ok(observed.position.monitoringGap);
+  assert.equal(observed.previousTick.timestamp, time(4));
+});
+test('compaction removes only persisted trades and retains exact verified lifetime results once', () => {
+  const closed = btcTick(entry(), tick(4, 80410, 80409, 80411)), t = closed.trades[0];
+  const pending = { ...t, id: 'pending', pnl: 50 }, excluded = { ...t, id: 'excluded', pnl: -100, monitoringGap: { from: time(2), to: time(3) } };
+  const s = { ...closed, trades: [t, pending, excluded] }, before = btcView(s, time(4));
+  const flushed = new Set([`${t.id}:${t.openedAt}`, `${excluded.id}:${excluded.openedAt}`]);
+  const compacted = btcCompactTrades(s, flushed), after = btcView(compacted, time(4));
+  assert.equal(compacted.trades.length, 1); assert.equal(compacted.trades[0].id, 'pending');
+  assert.equal(after.realized, before.realized); assert.equal(after.tradeCount, before.tradeCount);
+  assert.deepEqual(btcCompactTrades(compacted, flushed), compacted);
 });
 test('first breakout without sufficient depth is not retried on a re-cross', () => {
   let s = btcSignal({ ...emptyBtcState(), enabled: true }, signal());
