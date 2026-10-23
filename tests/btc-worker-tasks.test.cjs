@@ -27,6 +27,12 @@ test('fixed cadence subtracts request duration and notification hints coalesce w
   finish(); await flush(); assert.equal(c.queue.length, 1); assert.equal(c.delays.at(-1), 0);
   stop(); assert.equal(c.queue.length, 0);
 });
+test('worker does not report replayed signals as newly detected or trust notification bodies', () => {
+  const source = require('node:fs').readFileSync(require('node:path').resolve(__dirname, '../scripts/btc-delta-paper-worker.cjs'), 'utf8');
+  assert.ok(source.indexOf('if (saved.state.seen.includes(v.signal.id)) continue;') < source.indexOf('health.lastSignalDetectionMs ='));
+  assert.ok(source.includes("row?.secret_hash !== owner"));
+  assert.ok(source.includes('health.signalWakeups++; signalTask.trigger();'));
+});
 test('tick audit aggregates all extrema and cross-second gaps instead of synchronous per-frame logs', () => {
   const rows = [], audit = createTickAudit((kind, data) => rows.push({ kind, data }));
   audit.add({ timestamp: '2026-10-23T05:00:00.100Z', price: 100 });

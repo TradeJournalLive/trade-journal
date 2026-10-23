@@ -154,6 +154,7 @@ async function poll() {
     if (control?.market === 'BTC' && typeof control.btcBreakoutEnabled === 'boolean') { if (!control.btcBreakoutEnabled) saved.state = btcCancelSetup(saved.state, now()); saved.state.enabled = control.btcBreakoutEnabled; saved.state.status = saved.state.position ? 'OPEN' : saved.state.enabled ? 'WAITING_FOR_SIGNAL' : 'DISABLED'; save(); continue; }
     const candle = v.signal?.metadata?.btcPaper;
     if (v.signal?.metadata?.diagnostic || v.raw_payload?.automation?.mode !== 'PAPER' || candle?.kind !== 'SIGNAL' || v.signal.timeframe !== '1' || !['BUY', 'SELL'].includes(v.signal.action)) continue;
+    if (saved.state.seen.includes(v.signal.id)) continue;
     const signal = { id: v.signal.id, action: v.signal.action, symbol: v.signal.symbol, receivedAt: v.received_at, closedAt: candle.closedAt, high: candle.high, low: candle.low, signalPrice: v.signal.price };
     const processedAt = now();
     health.lastSignalDetectionMs = Math.max(0, Date.parse(processedAt) - Date.parse(signal.receivedAt));
