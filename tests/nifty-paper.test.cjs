@@ -21,6 +21,23 @@ function tick(second, price, bid = 99) {
 }
 const enabled = { ...event("control", 0, {}), raw: { paperControl: { market: "NIFTY", enabled: false, niftyOptionsEnabled: true } } };
 const buy = event("buy", 1, { kind: "SIGNAL", high: 25010, low: 24990, closedAt: time(0) }, "BUY");
+test("NIFTY accepts the 14:55 signal but rejects later entry setups", () => {
+  const at = minute => `2026-10-16T09:${minute}:00Z`;
+  for (const [minute, accepted] of [["25", true], ["26", false]]) {
+    const signal = { ...buy, receivedAt: at(minute), signal: { ...buy.signal, metadata: { niftyPaper: { ...buy.signal.metadata.niftyPaper, closedAt: at(minute) } } } };
+    const result = buildNiftyOptionsPaper([enabled, signal], at(minute));
+    assert.equal(Boolean(result.checkpoint.setup), accepted);
+    if (!accepted) assert.equal(result.checkpoint.decisions.at(-1).status, "SIGNAL_AFTER_CUTOFF");
+  }
+});
+test("late opposite signals still request an exit without arming a new setup", () => {
+  const open = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011)], time(3));
+  const late = event("late-sell", 4, { kind: "SIGNAL", high: 25020, low: 25000, closedAt: "2026-10-16T09:26:00Z" }, "SELL");
+  late.receivedAt = "2026-10-16T09:26:01Z";
+  const result = buildNiftyOptionsPaper([late], late.receivedAt, open.checkpoint);
+  assert.equal(result.checkpoint.pendingExit, "OPPOSITE_SIGNAL");
+  assert.equal(result.checkpoint.setup, null);
+});
 test("delayed signals remain eligible for a newly observed breakout", () => {
   const delayed = { ...buy, receivedAt: time(12) };
   const result = buildNiftyOptionsPaper([enabled, delayed, tick(13, 25009), tick(14, 25011)], time(15));

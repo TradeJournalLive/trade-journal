@@ -86,6 +86,11 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
         const range = Number(payload.high) - Number(payload.low);
         record(event.signal.id, event.receivedAt, status, Number.isFinite(range) && range > 35 ? `Signal candle range ${range.toFixed(2)} points exceeds the 35-point maximum.` : "Invalid candle data, timeframe or close timestamp."); continue;
       }
+      if (minutesIST(closedAt) > niftyRules.lastSignalMinutesIST) {
+        status = "SIGNAL_AFTER_CUTOFF";
+        record(event.signal.id, event.receivedAt, status, "Last eligible NIFTY signal closes at 14:55 IST. Opposite-position exits remain active until 15:15 IST.");
+        continue;
+      }
       if (enabled) setup = { id: event.signal.id, action: event.signal.action as "BUY" | "SELL", high: payload.high, low: payload.low, closedAt, intervalMinutes: interval, indexSymbol: event.signal.symbol };
       status = "WAITING_FOR_INDEX_BREAK";
       record(event.signal.id, event.receivedAt, setup ? status : "ENTRIES_OFF", setup ? opposite ? "Opposite-position exit requested; new entry requires a fresh index crossing." : "Waiting for the signal high/low crossing within ten candles." : "Paper entries were off; only existing-position exits remain active.");
