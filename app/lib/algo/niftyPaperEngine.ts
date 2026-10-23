@@ -88,7 +88,7 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
       }
       if (minutesIST(closedAt) > niftyRules.lastSignalMinutesIST) {
         status = "SIGNAL_AFTER_CUTOFF";
-        record(event.signal.id, event.receivedAt, status, "Last eligible NIFTY signal closes at 14:55 IST. Opposite-position exits remain active until 15:15 IST.");
+        record(event.signal.id, event.receivedAt, status, "NIFTY session ends at 14:55 IST. No new entries; existing positions require a verified exit quote.");
         continue;
       }
       if (enabled) setup = { id: event.signal.id, action: event.signal.action as "BUY" | "SELL", high: payload.high, low: payload.low, closedAt, intervalMinutes: interval, indexSymbol: event.signal.symbol };
