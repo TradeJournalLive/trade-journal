@@ -13,6 +13,5 @@ test('all active instruments use lifetime sources, not date-filtered trade array
   const read = name => fs.readFileSync(path.resolve(__dirname, `../app/dashboard/${name}.tsx`), 'utf8');
   assert.match(read('BtcDeltaPaper'), /closedTrades=\{book\?\.tradeCount\}/);
   assert.match(read('SignalPaperTrading'), /closedTrades=\{book\?\.options\?\.tradeCount\}/);
-  assert.match(read('GoldMt5Paper'), /closedTrades=\{book\?\.trades\.filter\(t => !t\.unverified\)\.length\}/);
-  for (const name of ['BtcDeltaPaper', 'SignalPaperTrading', 'GoldMt5Paper']) assert.ok(read(name).includes('<PaperLifetimeSummary'));
+  for (const name of ['BtcDeltaPaper', 'SignalPaperTrading']) assert.ok(read(name).includes('<PaperLifetimeSummary'));
 });

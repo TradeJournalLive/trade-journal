@@ -189,6 +189,7 @@ export async function POST(request: Request) {
 
     const { errors, timestampMs } = validatePayload(payload);
     if (errors.length) return jsonError("Webhook validation failed.", 422, errors);
+    if (/GOLD|XAU/i.test(payload.symbol ?? "") || payload.strategyId === "gold_vantage_tracking_v1" || payload.automation?.underlying === "GOLD") return jsonError("Gold module has been removed.", 410);
     if (payload.strategyId?.startsWith("__")) return jsonError("Reserved strategy ID.", 422);
     if (payload.metadata?.niftyPaper && !niftySignalCandle(payload.metadata.niftyPaper, payload.timeframe)) return jsonError("Invalid NIFTY signal candle. Market ticks cannot be submitted by webhook.", 422);
     if (payload.metadata?.btcPaper && (!niftySignalCandle(payload.metadata.btcPaper, payload.timeframe) || payload.timeframe !== "1")) return jsonError("Invalid BTC candle; confirmed 1-minute signal candles only.", 422);

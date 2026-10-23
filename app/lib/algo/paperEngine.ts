@@ -1,6 +1,8 @@
 import type { AlgoSignal } from "./automation";
 
 export const markets = ["BTC", "NIFTY", "GOLD"] as const;
+// Retain historical market types without exposing retired modules for execution.
+export const activeMarkets = ["BTC", "NIFTY"] as const;
 export type PaperMarket = typeof markets[number];
 export type PaperEvent = {
   receivedAt: string;

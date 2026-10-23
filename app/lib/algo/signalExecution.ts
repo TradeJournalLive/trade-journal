@@ -22,18 +22,18 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
     if (!id || !t.openedAt || typeof t.entry !== "number" || !Number.isFinite(t.entry)) return;
     entries.set(key(market, id), market === "NIFTY" ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
   }
-  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__gold_mt5_worker__"]);
+  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__"]);
   if (workers.error) throw Error("Execution history unavailable.");
   for (const row of workers.data || []) {
-    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__gold_mt5_worker__" ? "GOLD" : "BTC";
-    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "GOLD" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
+    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : "BTC";
+    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : row.raw_payload?.saved?.state;
     for (const d of state?.decisions || []) readDecision(market, d);
     if (state?.position) readTrade(market, state.position);
     for (const t of state?.trades || []) readTrade(market, t);
   }
   for (let offset = 0; ; offset += 1000) {
     const page = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner)
-      .in("strategy_id", ["__nifty_paper_decision__", "__btc_delta_decision__", "__nifty_paper_trade__", "__btc_delta_trade__", "__gold_mt5_decision__"])
+      .in("strategy_id", ["__nifty_paper_decision__", "__btc_delta_decision__", "__nifty_paper_trade__", "__btc_delta_trade__"])
       .order("received_at").order("signal_id").range(offset, offset + 999);
     if (page.error) throw Error("Execution history unavailable.");
     for (const row of page.data || []) {

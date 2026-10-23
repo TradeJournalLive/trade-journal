@@ -1,4 +1,6 @@
 // Demo quotes only. No MT5 order API, trading password, or broker requests.
+console.error('GOLD_MODULE_REMOVED');
+process.exit(0);
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), crypto = require('node:crypto'), Module = require('node:module'), ts = require('typescript');
 require('@next/env').loadEnvConfig(process.cwd(), false);
 const { createClient } = require('@supabase/supabase-js');

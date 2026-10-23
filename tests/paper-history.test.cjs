@@ -21,7 +21,7 @@ function fixture(failPage = false, pending = false) {
     }).then(resolve,reject); } }; return q;
   }
   const filename = path.resolve(__dirname, '../app/lib/algo/paperHistory.ts'), copy = new Module(filename, module);
-  copy.require = id => id === './goldPaperEngine' ? { goldView: s => ({ ...s, realized: s.trades.reduce((sum,t) => sum + t.pnl, 0) }) } : id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { markets: ['NIFTY','BTC','GOLD'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
+  copy.require = id => id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { activeMarkets: ['NIFTY','BTC'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
   copy._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, filename);
   return { api: copy.exports, ranges };
 }
@@ -36,8 +36,7 @@ test('shared paper history loads every ledger page, isolates owners and preserve
   assert.equal(books.BTC.delta.decisions.length, 1);
   assert.equal(books.BTC.delta.decisions[0].status, 'PARTIALLY_FILLED');
   assert.equal(books.BTC.delta.decisions[0].filledBtc, .4);
-  assert.equal(books.GOLD.mt5.realized, 30);
-  assert.deepEqual(books.GOLD.mt5.trades.map(t => t.id), ['gold-own']);
+  assert.equal(books.GOLD, undefined);
 });
 test('ledger pagination failure never presents a truncated successful history', async () => {
   await assert.rejects(fixture(true).api.loadPaperBooks('owner-a'), /complete paper trade ledger/);

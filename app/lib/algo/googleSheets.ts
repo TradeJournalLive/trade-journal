@@ -14,7 +14,7 @@ export function sheetsOAuth() {
   if (!sheetsConfigured()) throw new Error("Google Sheets server settings are not configured yet.");
   return new OAuth2Client({ clientId: process.env.GOOGLE_SHEETS_CLIENT_ID, clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET, redirectUri: sheetsCallback(), transporterOptions: { timeout: 10000, retry: false } });
 }
-const tabs = ["NIFTY", "BTC", "GOLD", "Other"] as const;
+const tabs = ["NIFTY", "BTC", "Other"] as const;
 export function signalTab(symbol: string) { return /NIFTY/i.test(symbol) ? "NIFTY" : /BTC/i.test(symbol) ? "BTC" : /GOLD|XAU/i.test(symbol) ? "GOLD" : "Other"; }
 const columns = ["Received date", "Received time (IST)", "Signal date", "Signal time (IST)", "Instrument", "Action", "Signal price", "Timeframe", "Status", "Accepted", "Stage", "Reason", "Strategy", "Signal ID"];
 export function signalRows(events: StoredAlgoEvent[]) {
@@ -63,7 +63,7 @@ async function syncUnlocked(user: string, connection: SheetsConnection) {
   // Rebuild deterministic ranges, rather than append: retries never duplicate signals.
   const reports = [
     ...tabs.map(tab => ({ tab, rows: [columns, ...signalRows(events.filter(e => signalTab(e.signal.symbol) === tab))] })),
-    ...["NIFTY", "BTC", "GOLD"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
+    ...["NIFTY", "BTC"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
   ];
   const metadata = await google(connection, `/${connection.sheetId}?fields=sheets(properties(sheetId,title))`, "GET");
   const existing = new Map<string, number>((metadata.sheets || []).map((sheet: { properties: { title: string; sheetId: number } }) => [sheet.properties.title, sheet.properties.sheetId]));

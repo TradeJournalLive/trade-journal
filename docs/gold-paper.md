@@ -1,5 +1,8 @@
 # Vantage gold paper worker
 
+**Retired:** Gold is disabled in the panel, webhook intake and worker launcher.
+The implementation below is historical reference only. Existing records are retained.
+
 This is simulated trading only. Neither the exporter nor the worker sends broker orders.
 
 ## Feed

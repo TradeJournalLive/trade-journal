@@ -1,9 +1,8 @@
 import { getServerSupabase, hashWebhookSecret } from "./signalStore";
-import { buildPaperBooks, paperValuation, markets, type PaperEvent } from "./paperEngine";
+import { buildPaperBooks, paperValuation, activeMarkets, type PaperEvent } from "./paperEngine";
 import { buildNiftyOptionsPaper } from "./niftyPaperEngine";
 import { btcView, type BtcTrade } from "./btcPaperEngine";
 import { tradeSignalTimes } from "./reportDates";
-import { goldView, type GoldState, type GoldTrade } from "./goldPaperEngine";
 
 async function ledger(secret: string, strategy: string) {
   const db = getServerSupabase(); if (!db) throw new Error("Saved paper trading is unavailable.");
@@ -26,11 +25,6 @@ export async function loadPaperBooks(secret: string) {
   if (btcError) throw new Error("Unable to load Delta BTC paper state.");
   const btcLedger = await ledger(secret, "__btc_delta_trade__");
   const btcDecisionLedger = await ledger(secret, "__btc_delta_decision__");
-  const { data: goldWorker, error: goldError } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__gold_mt5_worker__").eq("signal_id", "state").maybeSingle();
-  if (goldError) throw new Error("Unable to verify gold worker status.");
-  const goldLedger = await ledger(secret, "__gold_mt5_trade__");
-  const goldState = goldWorker?.raw_payload?.state as GoldState | undefined;
-  const mt5 = goldState ? { ...goldView({ ...goldState, trades: goldLedger.map(r => r.raw_payload.trade).filter(Boolean) as GoldTrade[] }), workerOnline: Date.now() - Date.parse(goldWorker!.received_at) < 15000 } : null;
   for (let offset = 0; offset < 100000; offset += 1000) {
     const { data, error } = await db.from("tradingview_signal_events").select("received_at,signal,raw_payload,id")
       .eq("secret_hash", hashWebhookSecret(secret)).neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").neq("strategy_id", "__btc_delta_worker__").neq("strategy_id", "__btc_delta_trade__").neq("strategy_id", "__btc_delta_decision__").neq("strategy_id", "__nifty_paper_decision__").neq("strategy_id", "__gold_mt5_worker__").neq("strategy_id", "__gold_mt5_trade__").neq("strategy_id", "__gold_mt5_decision__").order("received_at").order("id").range(offset, offset + 999);
@@ -56,7 +50,7 @@ export async function loadPaperBooks(secret: string) {
         if (d?.id && (!decisions.has(d.id) || Date.parse(d.decidedAt) >= Date.parse(decisions.get(d.id)!.decidedAt))) decisions.set(d.id, d);
       }
       const delta = view ? { ...view, decisions: [...decisions.values()].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)), realized: view.realized - removed.reduce((sum, trade) => sum + trade.pnl, 0), tradeCount: view.tradeCount - removed.length, trades: btcTrades.filter(trade => !deleted.has(`${trade.id}:${trade.openedAt}`)), workerOnline: Date.parse(now) - Date.parse(btcWorker!.received_at) < 15000 && !String(btcWorker!.raw_payload.workerStatus).startsWith("STOPPED_"), workerStatus: btcWorker!.raw_payload.workerStatus, health: btcWorker!.raw_payload.health as { databaseStatus: string; snapshotAt: string; lastSignalPollAt: string | null; lastLedgerSyncAt: string | null; reconnects: number } | undefined, trial: { startedAt: btcWorker!.raw_payload.saved.startedAt, endsAt: btcWorker!.raw_payload.saved.endsAt } } : null;
-      return Object.fromEntries(markets.map(market => [market, { ...books[market], trades: books[market].trades.map(trade => ({ ...trade, ...tradeSignalTimes(events, trade.signalId, trade.symbol, trade.openedAt) })), valuation: paperValuation(books[market], events, now), ...(market === "BTC" ? { delta } : {}), ...(market === "GOLD" ? { mt5 } : {}), ...(market === "NIFTY" ? { options: { ...publicOptions, trades: optionTrades, position: optionPosition, workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
+      return Object.fromEntries(activeMarkets.map(market => [market, { ...books[market], trades: books[market].trades.map(trade => ({ ...trade, ...tradeSignalTimes(events, trade.signalId, trade.symbol, trade.openedAt) })), valuation: paperValuation(books[market], events, now), ...(market === "BTC" ? { delta } : {}), ...(market === "NIFTY" ? { options: { ...publicOptions, trades: optionTrades, position: optionPosition, workerOnline, trial: worker?.raw_payload?.book?.trial ?? null } } : {}) }]));
     }
   }
   throw new Error("History exceeds the paper engine limit; archive is required before continuing.");
