@@ -36,6 +36,16 @@ Run `npm run paper:btc` from the project directory. The Mac deployment uses the 
 `com.1to2.btc-paper` launch agent. It does not restart or share runtime state with NIFTY.
 The Mac must remain awake and connected for continuous 24/7 operation.
 
+Recovery: use a 5-second launch-agent throttle instead of 60 seconds. The feed
+watchdog runs independently of database polling and reconnects stale quotes
+after 5 seconds. Temporary signal-query errors retry without stopping the feed;
+storage operations have bounded timeouts. Heartbeat retries stop before the
+15-second ownership lease expires, and execution pauses after 12 seconds without
+verified ownership. A failed ownership comparison still stops the worker.
+`STORAGE_HEALTH`, `FEED_HEALTH`, and timestamped `WORKER_STOP` audits distinguish
+database trouble from feed interruptions. Genuine missing-history signals remain
+excluded; these changes do not backfill missed entries or guarantee uptime.
+
 Private runtime files are under ignored `.paper-worker/btc/`; production credentials remain
 in ignored `.env.production.local`. Trades are idempotently saved to the database ledger,
 separately from the heartbeat checkpoint. Old signal-price test trades remain unchanged.

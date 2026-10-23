@@ -2,6 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), Module = require('node:module');
 const ts = require('typescript'), WebSocket = require('ws');
 const { createDeltaDepth } = require('./delta-depth.cjs');
+const { retryablePoll, canRetryPublish, feedNeedsReconnect, reconcileHeartbeat } = require('./btc-worker-health.cjs');
 require('@next/env').loadEnvConfig(process.cwd(), false);
 const { createClient } = require('@supabase/supabase-js');
 const file = path.resolve(__dirname, '../app/lib/algo/btcPaperEngine.ts'), moduleCopy = new Module(file, module);
@@ -14,7 +15,9 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 const directory = path.resolve('.paper-worker/btc'); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
 const checkpoint = path.join(directory, 'checkpoint.json'), now = () => new Date().toISOString();
 let saved, lease, workerStatus = 'STARTING', socket, lastFrame = 0, quote, trade, mark, trail, product, after, lastRejectedLog = 0, depthBook;
+let connectedAt = 0, watchdog;
 const seenRows = new Set(), persisted = new Set(), persistedDecisions = new Map();
+const heartbeatAttempts = new Set();
 function audit(kind, data) { fs.appendFileSync(path.join(directory, `${now().slice(0, 10)}.jsonl`), JSON.stringify({ at: now(), kind, data }) + '\n', { mode: 0o600 }); }
 function save() { if (!saved) return; saved.savedAt = now(); saved.owner = owner; fs.writeFileSync(`${checkpoint}.tmp`, JSON.stringify(saved), { mode: 0o600 }); fs.renameSync(`${checkpoint}.tmp`, checkpoint); }
 function update(next, tick) {
@@ -60,6 +63,8 @@ function onMessage(raw) {
   }
   if (v.sy === 'MARK:BTCUSD' && v.type === 'mark_price') mark = { price: Number(v.p), at: new Date(Number(v.ts) / 1000).toISOString() };
   if (!['ob_l1', 'ob_updates', 'trades', 'mark_price'].includes(v.type) || !quote || !trade) return;
+  // A feed can remain connected while database ownership is uncertain.
+  if (Date.now() - Date.parse(lease) >= 12000) { workerStatus = 'STORAGE_LEASE_UNVERIFIED'; return; }
   const timestamp = now();
   const tick = { timestamp, executionVersion: 2, contractBtc: Number(product.contract_value), depth: depthBook.snapshot(), tradeAt: trade.at, quoteAt: quote.at, price: trade.price, bid: quote.bid, ask: quote.ask, bidBtc: quote.bidBtc, askBtc: quote.askBtc, mark: mark?.price ?? 0, markAt: mark?.at ?? '', maintenanceRate: Number(product.maintenance_margin) / 100, previous15m: trail };
   const next = btcTick(saved.state, tick);
@@ -71,6 +76,7 @@ function onMessage(raw) {
   update(next, tick);
 }
 function connect() {
+  connectedAt = Date.now(); lastFrame = 0;
   quote = undefined;
   trade = undefined; mark = undefined; depthBook.reset();
   socket = new WebSocket('wss://public-socket.india.delta.exchange');
@@ -84,25 +90,37 @@ async function publish() {
   const at = now(), snapshot = structuredClone(saved), view = btcView(snapshot.state, at);
   const pending = view.trades.filter(t => !persisted.has(`${t.id}:${t.openedAt}`));
   if (pending.length) {
-    const r = await db.from(table).upsert(pending.map(t => ({ ...rowBase(hash(`${t.id}:${t.openedAt}`), t.closedAt, '__btc_delta_trade__'), raw_payload: { trade: t } })), { onConflict: 'secret_hash,strategy_id,signal_id' });
+    const r = await db.from(table).upsert(pending.map(t => ({ ...rowBase(hash(`${t.id}:${t.openedAt}`), t.closedAt, '__btc_delta_trade__'), raw_payload: { trade: t } })), { onConflict: 'secret_hash,strategy_id,signal_id' }).abortSignal(AbortSignal.timeout(4000));
     if (r.error) throw new Error('BTC_LEDGER_UNAVAILABLE');
     pending.forEach(t => persisted.add(`${t.id}:${t.openedAt}`));
   }
   const decisions = (snapshot.state.decisions || []).filter(d => persistedDecisions.get(d.id) !== JSON.stringify(d));
   if (decisions.length) {
-    const result = await db.from(table).upsert(decisions.map(d => ({ ...rowBase(hash(d.id), d.receivedAt, '__btc_delta_decision__'), raw_payload: { decision: d } })), { onConflict: 'secret_hash,strategy_id,signal_id' });
+    const result = await db.from(table).upsert(decisions.map(d => ({ ...rowBase(hash(d.id), d.receivedAt, '__btc_delta_decision__'), raw_payload: { decision: d } })), { onConflict: 'secret_hash,strategy_id,signal_id' }).abortSignal(AbortSignal.timeout(4000));
     if (result.error) throw new Error('BTC_DECISION_STORAGE_UNAVAILABLE');
     decisions.forEach(d => persistedDecisions.set(d.id, JSON.stringify(d)));
   }
   const partial = snapshot.state.position && !snapshot.state.position.monitoringGap ? snapshot.state.position.realizedPnl || 0 : 0;
   snapshot.state = { ...snapshot.state, trades: [], decisions: (snapshot.state.decisions || []).slice(-100), realizedBase: view.realized - partial, tradeCountBase: view.tradeCount };
-  const r = await db.from(table).update({ received_at: at, raw_payload: { workerId, saved: snapshot, workerStatus, executionVersion: 2, book: { ...view, decisions: (view.decisions || []).slice(-100), trades: [] } } }).eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').eq('received_at', lease).select('id');
-  if (r.error || r.data?.length !== 1) throw new Error('BTC_LEASE_OR_STORAGE_LOST');
-  lease = at; save();
+  heartbeatAttempts.add(at);
+  let acknowledgedAt = at;
+  const r = await db.from(table).update({ received_at: at, raw_payload: { workerId, saved: snapshot, workerStatus, executionVersion: 2, book: { ...view, decisions: (view.decisions || []).slice(-100), trades: [] } } }).eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').eq('received_at', lease).select('id').abortSignal(AbortSignal.timeout(4000));
+  if (r.error || r.data?.length !== 1) {
+    // A timed-out request may still have committed. Verify ownership before retrying.
+    const check = await db.from(table).select('received_at,raw_payload').eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').maybeSingle().abortSignal(AbortSignal.timeout(4000));
+    if (check.error) throw new Error('BTC_HEARTBEAT_STORAGE_UNAVAILABLE');
+    const outcome = reconcileHeartbeat(check.data, workerId, [...heartbeatAttempts], lease);
+    audit('STORAGE_HEALTH', { reason: `HEARTBEAT_RECONCILED_${outcome}` });
+    if (outcome === 'LOST') throw new Error('BTC_LEASE_OR_STORAGE_LOST');
+    if (outcome === 'UNCHANGED') throw new Error('BTC_HEARTBEAT_STORAGE_UNAVAILABLE');
+    acknowledgedAt = check.data.received_at;
+  }
+  heartbeatAttempts.clear(); lease = acknowledgedAt; save();
 }
 async function poll() {
-  const r = await db.from(table).select('id,received_at,signal,raw_payload').eq('secret_hash', owner).in('strategy_id', ['btc_delta_breakout_v1', '__paper_control__']).gte('received_at', after).order('received_at').order('id').limit(1000);
-  if (r.error || r.data?.length === 1000) throw new Error('BTC_SIGNAL_BACKLOG_OR_STORAGE_ERROR');
+  const r = await db.from(table).select('id,received_at,signal,raw_payload').eq('secret_hash', owner).in('strategy_id', ['btc_delta_breakout_v1', '__paper_control__']).gte('received_at', after).order('received_at').order('id').limit(1000).abortSignal(AbortSignal.timeout(4000));
+  if (r.error) throw new Error('BTC_SIGNAL_STORAGE_UNAVAILABLE');
+  if (r.data?.length === 1000) throw new Error('BTC_SIGNAL_BACKLOG_OR_STORAGE_ERROR');
   for (const v of r.data || []) {
     if (seenRows.has(v.id)) continue; seenRows.add(v.id);
     const control = v.raw_payload?.paperControl;
@@ -121,7 +139,7 @@ async function poll() {
   if (r.data?.length) after = new Date(Date.parse(r.data[r.data.length - 1].received_at) - 60000).toISOString();
 }
 async function main() {
-  const old = await db.from(table).select('received_at,raw_payload').eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').maybeSingle();
+  const old = await db.from(table).select('received_at,raw_payload').eq('secret_hash', owner).eq('strategy_id', strategy).eq('signal_id', 'state').maybeSingle().abortSignal(AbortSignal.timeout(4000));
   if (old.error) throw new Error('BTC_STORAGE_UNAVAILABLE');
   if (old.data && Date.now() - Date.parse(old.data.received_at) < 15000) throw new Error('BTC_ANOTHER_WORKER_ACTIVE');
   saved = old.data?.raw_payload?.saved;
@@ -135,16 +153,33 @@ async function main() {
   product = await publicGet('products/BTCUSD');
   if (product.symbol !== 'BTCUSD' || product.contract_type !== 'perpetual_futures' || product.notional_type !== 'vanilla' || product.state !== 'live' || product.trading_status !== 'operational' || Math.abs(1 / Number(product.contract_value) - Math.round(1 / Number(product.contract_value))) > 1e-8 || Number(product.initial_margin) > 1) throw new Error('BTC_CONTRACT_NOT_SUPPORTED');
   depthBook = createDeltaDepth(Number(product.contract_value));
-  connect(); let published = 0;
+  connect(); let published = Date.now();
+  // Keep feed recovery independent of awaited database requests.
+  watchdog = setInterval(() => {
+    if (!feedNeedsReconnect({ readyState: socket.readyState, openState: WebSocket.OPEN, connectingState: WebSocket.CONNECTING, quoteAt: quote?.at, lastFrame, connectedAt })) return;
+    audit('FEED_HEALTH', { reason: 'WATCHDOG_RECONNECT', quoteAgeMs: quote ? Date.now() - Date.parse(quote.at) : null, readyState: socket.readyState });
+    socket.removeAllListeners(); socket.on('error', () => {}); socket.terminate();
+    workerStatus = 'RECONNECTING_DELTA_FEED'; connect();
+  }, 1000);
   console.log('Delta BTC public-data paper worker started. No order API.');
   while (true) {
-    await new Promise(r => setTimeout(r, 1000)); await poll();
-    if (socket.readyState === WebSocket.CLOSED) connect();
-    else if (socket.readyState === WebSocket.OPEN && quote && Date.now() - Date.parse(quote.at) > 20000) { workerStatus = 'QUOTES_STALE_RECONNECTING'; audit('FEED_HEALTH', { reason: workerStatus, quoteAgeMs: Date.now() - Date.parse(quote.at), tradeAgeMs: trade ? Date.now() - Date.parse(trade.at) : null }); socket.terminate(); }
-    else if (lastFrame && Date.now() - lastFrame > 35000) socket.terminate();
-    if (Date.now() - published > 5000) { await publish(); published = Date.now(); }
+    await new Promise(r => setTimeout(r, 1000));
+    if (Date.now() - published > 3000) {
+      try { await publish(); published = Date.now(); }
+      catch (error) {
+        audit('STORAGE_HEALTH', { reason: error.message, leaseAgeMs: Date.now() - Date.parse(lease) });
+        save();
+        if (!canRetryPublish(error, lease)) throw error;
+        continue;
+      }
+    }
+    try { await poll(); }
+    catch (error) {
+      if (!retryablePoll(error)) throw error;
+      audit('STORAGE_HEALTH', { reason: error.message }); save();
+    }
   }
 }
 process.on('SIGTERM', () => { save(); process.exit(0); });
 process.on('SIGINT', () => { save(); process.exit(0); });
-main().then(() => process.exit(0)).catch(async e => { workerStatus = `STOPPED_${/^[A-Z_]+$/.test(e.message) ? e.message : 'UNEXPECTED_ERROR'}`; console.error(workerStatus); if (saved && lease) { try { await publish(); } catch {} } process.exit(1); });
+main().then(() => process.exit(0)).catch(async e => { clearInterval(watchdog); workerStatus = `STOPPED_${/^[A-Z_]+$/.test(e.message) ? e.message : 'UNEXPECTED_ERROR'}`; console.error(`${now()} ${workerStatus}`); audit('WORKER_STOP', { reason: workerStatus }); save(); process.exit(1); });

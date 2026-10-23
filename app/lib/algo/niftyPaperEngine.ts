@@ -2,7 +2,7 @@ import type { PaperEvent } from "./paperEngine";
 import { niftyRules, nextNiftySize, niftyBreakout, niftyExit, niftyTargets, niftyEntryFill, premiumStopDistance, type NiftySetup, type NiftyDepthLevel } from "./niftyRules";
 
 type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE"; lotSize: number; bid: number; ask: number; timestamp: string; bidSize?: number; askSize?: number; asks?: NiftyDepthLevel[]; depthAt?: string };
-type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: number; indexSymbol: string };
+type Setup = NiftySetup & { id: string; closedAt: string; intervalMinutes: number; indexSymbol: string; entryAttempt?: { contractId: string; initialAsk: number; startedAt: string; sawDepth: boolean } };
 type Position = { contract: Contract; lots: number; quantity: number; entry: number; openedAt: string; signalId: string; indexSymbol: string; targets?: ReturnType<typeof niftyTargets>; initialLots?: number; initialQuantity?: number; realizedPnl?: number; entryFill?: NonNullable<ReturnType<typeof niftyEntryFill>>; exitFills?: { price: number; quantity: number; at: string; reason: string }[] };
 type Trade = Position & { exit: number; closedAt: string; reason: string; pnl: number };
 type Decision = { id: string; receivedAt: string; decidedAt: string; status: string; reason: string };
@@ -140,26 +140,40 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
       const candle = Math.floor(elapsed / (setup.intervalMinutes * 60000)) + 1;
       if (candle > 10 || dayIST(tick.timestamp) !== dayIST(setup.closedAt) || minutesIST(tick.timestamp) >= niftyRules.cutoffMinutesIST) { record(setup.id, tick.timestamp, "SETUP_EXPIRED", "No eligible entry before the ten-candle/session cutoff."); setup = null; status = "SETUP_EXPIRED"; }
       else if (elapsed >= 0 && previousTick && fresh(previousTick.timestamp, tick.timestamp)) {
-        const side = niftyBreakout(setup, previousTick.price, tick.price, candle, minutesIST(tick.timestamp));
-        if (side) {
+        const attempt = setup.entryAttempt;
+        const side = attempt ? setup.action === "BUY" ? "CE" : "PE" : niftyBreakout(setup, previousTick.price, tick.price, candle, minutesIST(tick.timestamp));
+        if (attempt && (Date.parse(tick.timestamp) - Date.parse(attempt.startedAt) > niftyRules.entryDepthWaitMs
+          || (setup.action === "BUY" ? tick.price <= setup.high : tick.price >= setup.low))) {
+          status = attempt.sawDepth ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "ENTRY_SKIPPED_DEPTH_UNAVAILABLE";
+          record(setup.id, tick.timestamp, status, attempt.sawDepth ? "The bounded fill attempt ended without full quantity inside the original ask + ₹4 limit; no later re-entry." : "Synchronized full depth was unavailable during the bounded fill attempt; market liquidity is unknown. No later re-entry.");
+          setup = null;
+        }
+        if (side && setup) {
           {
             const chain = quotes.filter(contract => contract.expiry === tick.nearestExpiry);
             // Quote freshness must not change the ATM reference or strike selection.
             const strikes = [...new Set(tick.contracts.filter(contract => contract.expiry === tick.nearestExpiry && positive(contract.strike)).map(contract => contract.strike))].sort((a, b) => a - b);
             const atm = strikes.reduce((best, strike) => Math.abs(strike - tick.price) < Math.abs(best - tick.price) ? strike : best, strikes[0]);
             const index = strikes.indexOf(atm) + (side === "CE" ? 1 : -1);
-            const contract = chain.find(item => item.side === side && item.strike === strikes[index]);
+            const contract = attempt ? chain.find(item => item.id === attempt.contractId) : chain.find(item => item.side === side && item.strike === strikes[index]);
             const quantity = contract ? size.lots * contract.lotSize : 0;
+            if (contract && tick.executionVersion === 2 && !setup.entryAttempt) setup.entryAttempt = { contractId: contract.id, initialAsk: contract.ask, startedAt: tick.timestamp, sawDepth: false };
+            const initialAsk = setup.entryAttempt?.initialAsk ?? contract?.ask ?? 0;
+            const synchronized = Boolean(contract?.asks && contract.depthAt && fresh(contract.depthAt, tick.timestamp) && contract.asks[0]?.price === contract.ask);
+            if (setup.entryAttempt && synchronized) setup.entryAttempt.sawDepth = true;
             const fill = contract && tick.executionVersion === 2 ? niftyEntryFill(contract.ask, quantity,
-              contract.asks && contract.depthAt && fresh(contract.depthAt, tick.timestamp) ? contract.asks :
-              Number.isSafeInteger(contract.askSize) && contract.askSize! > 0 ? [{ price: contract.ask, quantity: contract.askSize! }] : []) : null;
+              synchronized ? contract.asks! :
+              Number.isSafeInteger(contract.askSize) && contract.askSize! > 0 ? [{ price: contract.ask, quantity: contract.askSize! }] : [], initialAsk) : null;
             if (contract && (tick.executionVersion === 2 ? Boolean(fill) : contract.askSize === undefined || (Number.isFinite(contract.askSize) && contract.askSize >= quantity))) {
               const entry = fill?.price ?? contract.ask;
               position = { contract, lots: size.lots, quantity, entry, openedAt: tick.timestamp, signalId: setup.id, indexSymbol: tick.indexSymbol,
                 ...(fill ? { targets: niftyTargets(entry, size.lots, contract.lotSize), initialLots: size.lots, initialQuantity: quantity, entryFill: fill } : {}) };
               record(setup.id, tick.timestamp, "ENTERED", `Entered ${size.lots} lot(s) of ${contract.id} at average premium ${entry.toFixed(2)}.`);
               mark = contract.bid; setup = null; status = "OPEN";
-            } else { status = contract ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; record(setup.id, tick.timestamp, status, contract ? "Full entry quantity was not available at observed asks within ₹4 of the initial ask; setup discarded." : "A fresh nearest-expiry 1 OTM contract quote was unavailable; setup discarded."); setup = null; }
+            } else if (setup.entryAttempt && Date.parse(tick.timestamp) - Date.parse(setup.entryAttempt.startedAt) < niftyRules.entryDepthWaitMs) {
+              status = "WAITING_FOR_ENTRY_DEPTH";
+              record(setup.id, tick.timestamp, status, `Breakout observed; waiting up to ${niftyRules.entryDepthWaitMs} ms for full quantity in ${setup.entryAttempt.contractId}, capped at ₹${(initialAsk + niftyRules.maxEntrySlippage).toFixed(2)}. No fill assumed.`);
+            } else { status = contract ? synchronized ? "ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS" : "ENTRY_SKIPPED_DEPTH_UNAVAILABLE" : "MISSING_NEAREST_EXPIRY_OTM_CONTRACT"; record(setup.id, tick.timestamp, status, contract ? synchronized ? "Observed depth could not fill the full quantity inside the original ask + ₹4 limit during the bounded attempt." : "Synchronized depth was unavailable; this does not establish insufficient market liquidity." : "A fresh nearest-expiry 1 OTM contract quote was unavailable; setup discarded."); setup = null; }
           }
         }
       }

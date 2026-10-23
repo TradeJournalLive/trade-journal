@@ -164,7 +164,7 @@ test("new entry sweeps recorded asks within four points and targets its average 
   assert.equal(result.position.targets[0].price, 262); assert.equal(result.position.targets[1].price, 327.5);
   entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks[1].price = 134.05; });
   const skipped = buildNiftyOptionsPaper([buy, v2(2, 25009), entry], time(3), seed);
-  assert.equal(skipped.position, null); assert.equal(skipped.status, 'ENTRY_SKIPPED_INSUFFICIENT_DEPTH_WITHIN_4_POINTS');
+  assert.equal(skipped.position, null); assert.equal(skipped.status, 'WAITING_FOR_ENTRY_DEPTH');
 });
 test("stale depth or unreported quantity cannot fabricate a new fill", () => {
   const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 2;
@@ -194,4 +194,34 @@ test('NIFTY reports the existing 15-minute entry gate explicitly',()=>{
   const result=buildNiftyOptionsPaper([enabled,buy,first],time(3));
   assert.equal(result.position,null);
   assert.equal(result.checkpoint.decisions.find(d=>d.id==='buy').status,'WAITING_FOR_COMPLETED_15M_CANDLE');
+});
+
+test('late synchronized depth fills the locked contract without another index crossing', () => {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 11;
+  const waiting = buildNiftyOptionsPaper([buy, v2(2, 25009), v2(3, 25011, 111.5, 390)], time(3), seed);
+  assert.equal(waiting.position, null); assert.equal(waiting.status, 'WAITING_FOR_ENTRY_DEPTH');
+  const next = v2(4, 25012, 111.3, 195);
+  next.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks = [{ price: 112.3, quantity: 195 }, { price: 112.35, quantity: 715 }]; c.depthAt = time(4); });
+  const filled = buildNiftyOptionsPaper([next], time(4), waiting.checkpoint);
+  assert.equal(filled.position.quantity, 715);
+  assert.equal(filled.position.entryFill.initialAsk, 112.5);
+  assert.equal(filled.position.openedAt, time(4));
+  assert.equal(filled.position.contract.id, '25050-CE');
+});
+test('bounded attempt expires, survives restart, and cannot re-enter on a later crossing', () => {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 2;
+  const waiting = buildNiftyOptionsPaper([buy, v2(2, 25009), v2(3, 25011, 99, 65)], time(3), seed);
+  const expired = buildNiftyOptionsPaper([v2(5, 25012, 99, 1000)], time(5), waiting.checkpoint);
+  assert.equal(expired.setup, null); assert.equal(expired.position, null);
+  assert.equal(expired.checkpoint.decisions.at(-1).status, 'ENTRY_SKIPPED_DEPTH_UNAVAILABLE');
+  assert.equal(buildNiftyOptionsPaper([v2(6, 25009), v2(7, 25011, 99, 1000)], time(7), expired.checkpoint).position, null);
+});
+test('waiting never moves the original four-point limit or fills after index reversal', () => {
+  const seed = buildNiftyOptionsPaper([enabled], time(1)).checkpoint; seed.size.lots = 2;
+  const waiting = buildNiftyOptionsPaper([buy, v2(2, 25009), v2(3, 25011, 99, 65)], time(3), seed);
+  const expensive = v2(4, 25012, 104, 1000);
+  expensive.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks = [{ price: 105, quantity: 1000 }]; c.depthAt = time(4); });
+  assert.equal(buildNiftyOptionsPaper([expensive], time(4), waiting.checkpoint).position, null);
+  const reversed = buildNiftyOptionsPaper([v2(4, 25009, 99, 1000), v2(5, 25011, 99, 1000)], time(5), waiting.checkpoint);
+  assert.equal(reversed.position, null); assert.equal(reversed.setup, null);
 });

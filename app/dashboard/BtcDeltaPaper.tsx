@@ -1,6 +1,7 @@
 "use client";
 import { accountFetch } from "../lib/accountFetch";
 import { useEffect, useState } from "react";
+import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
 export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; trial: { startedAt: string; endsAt: string } };
@@ -48,7 +49,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
     </div>
     <p className="text-xs text-slate-500">Last TradingView signal: {t(book?.lastSignalAt)}. Engine health does not verify the TradingView alert is enabled.</p>
     <p className="text-xs text-slate-500">PAPER · Request 0.1 BTC · partial fills allowed · 100× margin assumption · 24/7 · Last quote {t(book?.lastTickAt)}</p>
-    <div className="grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-3">{[["Lifetime realized · USD gross", n(book?.realized)], ["Open P&L · USD gross", n(book?.unrealized)], ["Lifetime closed trades", book?.tradeCount ?? 0]].map(([label, value]) => <div key={label} className="space-y-2"><span className="block text-xs text-slate-500">{label}</span><strong className="block text-xl">{value}</strong></div>)}</div>
+    <PaperLifetimeSummary realized={`${n(book?.realized)} USD gross`} openPnl={`${n(book?.unrealized)} USD gross`} closedTrades={book?.tradeCount} />
     <details className="border-b border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>Confirmed 1m high/low cross · valid 10 candles · no range filter</dd></div><div><dt>Entry fills</dt><dd>Observed Delta depth · maximum $5 adverse price difference · unfilled remainder canceled</dd></div><div><dt>Stop / target</dt><dd>Signal candle stop · at +2R move stop to average entry · target 3R</dd></div><div><dt>Other exits</dt><dd>Opposite signal · estimated isolated-margin breach</dd></div></dl></details>
     <p className="text-xs text-slate-500">Gross USD before fees and funding. Liquidation is an isolated-margin estimate, not an actual broker liquidation price.</p>
     {p && <div className="algo-rule-list"><div><span>Position</span><b>{p.side} · {p.quantityBtc} BTC</b></div><div><span>Signal close / received</span><b>{t(p.signalClosedAt)} / {t(p.signalReceivedAt)}</b></div><div><span>Signal close price / breakout</span><b>{n(p.signalPrice)} / {n(p.trigger)}</b></div><div><span>Actual simulated entry / time</span><b>{n(p.entry)} / {t(p.openedAt)}</b></div><div><span>Entry difference vs breakout</span><b>{n(p.entryDifference)} USD</b></div><div><span>Stop / target</span><b>{n(p.stop)} / {n(p.target)}</b></div><div><span>Capital used · USD margin / estimated liquidation</span><b>{n(p.initialMargin)} / {n(p.estimatedLiquidation)}</b></div></div>}

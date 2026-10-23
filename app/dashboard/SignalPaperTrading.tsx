@@ -10,6 +10,7 @@ import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import GoldMt5Paper from "./GoldMt5Paper";
+import PaperLifetimeSummary from "./PaperLifetimeSummary";
 
 type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
@@ -120,7 +121,8 @@ export default function SignalPaperTrading() {
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
       <p className="text-xs text-slate-500">Last index tick: {book?.options?.lastTickAt ? time(book.options.lastTickAt) : "--"}</p>
       <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
-      <div className="algo-rule-list"><div><span>Engine status</span><b>{book?.options?.status ?? "Loading"}</b></div><div><span>Market feed</span><b>{book?.options?.stale === false ? "Receiving" : "Missing or stale"}</b></div><div><span>Next size</span><b>{book?.options?.size.lots ?? 1} lots</b></div><div><span>Options booked P&amp;L · INR</span><b>{pnl(book?.options?.realized)}</b></div><div><span>Options open P&amp;L · INR</span><b>{pnl(book?.options?.unrealized)}</b></div></div>
+      <PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR gross`} openPnl={`${pnl(book?.options?.unrealized)} INR gross`} closedTrades={book?.options?.tradeCount} />
+      <div className="algo-rule-list"><div><span>Engine status</span><b>{book?.options?.status ?? "Loading"}</b></div><div><span>Market feed</span><b>{book?.options?.stale === false ? "Receiving" : "Missing or stale"}</b></div><div><span>Next size</span><b>{book?.options?.size.lots ?? 1} lots</b></div></div>
       <details className="border-y border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list">
         <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
         <div><dt>Contract</dt><dd>{niftyRules.selection} · nearest expiry</dd></div>

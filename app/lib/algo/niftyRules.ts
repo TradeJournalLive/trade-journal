@@ -11,6 +11,7 @@ export const niftyRules = {
   sizeReset: false,
   targetR: 1.5,
   maxEntrySlippage: 4,
+  entryDepthWaitMs: 1500,
 } as const;
 
 export function niftyTargets(entry: number, lots: number, lotSize: number) {
@@ -20,17 +21,17 @@ export function niftyTargets(entry: number, lots: number, lotSize: number) {
 }
 
 export type NiftyDepthLevel = { price: number; quantity: number };
-export function niftyEntryFill(ask: number, quantity: number, levels: NiftyDepthLevel[]) {
+export function niftyEntryFill(ask: number, quantity: number, levels: NiftyDepthLevel[], initialAsk = ask) {
   if (!Number.isFinite(ask) || ask <= 0 || !Number.isSafeInteger(quantity) || quantity <= 0 || !levels.length) return null;
   const sorted = [...levels].sort((a, b) => a.price - b.price);
   if (sorted[0].price !== ask || sorted.some((l, i) => !Number.isFinite(l.price) || l.price <= 0 || !Number.isSafeInteger(l.quantity) || l.quantity <= 0 || (i > 0 && l.price === sorted[i - 1].price))) return null;
   let remaining = quantity, cost = 0;
   const fills: NiftyDepthLevel[] = [];
   for (const level of sorted) {
-    if (level.price > ask + niftyRules.maxEntrySlippage + 1e-9) break;
+    if (level.price > initialAsk + niftyRules.maxEntrySlippage + 1e-9) break;
     const taken = Math.min(remaining, level.quantity);
     fills.push({ price: level.price, quantity: taken }); cost += taken * level.price; remaining -= taken;
-    if (!remaining) return { price: cost / quantity, initialAsk: ask, slippage: cost / quantity - ask, fills };
+    if (!remaining) return { price: cost / quantity, initialAsk, slippage: cost / quantity - initialAsk, fills };
   }
   return null;
 }
