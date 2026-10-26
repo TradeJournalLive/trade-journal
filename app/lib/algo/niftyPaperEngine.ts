@@ -38,6 +38,8 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
   let enabled = saved?.enabled ?? false;
   let setup: Setup | null = saved?.setup ?? null;
   let position: Position | null = saved?.position ?? null;
+  // On an authorized rule upgrade, preserve fills/P&L but replace remaining target allocation.
+  if (position?.targets) position.targets = niftyTargets(position.entry, position.quantity / position.contract.lotSize, position.contract.lotSize);
   let previousTick: Tick | null = saved?.previousTick ?? null;
   let size = saved?.size ?? { lots: 1, consecutiveLosses: 0 };
   let pendingExit: string | null = saved?.pendingExit ?? null;
@@ -109,20 +111,13 @@ export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().to
       mark = quote?.bid ?? null;
       if (quote) {
         // Missing trail history blocks new entries, never premium or timed exits.
-        let reason = dayIST(tick.timestamp) > dayIST(position.openedAt) ? "DELAYED_SESSION_EXIT" : pendingExit || niftyExit({ side: position.contract.side, entryPremium: position.entry, premium: quote.bid, index: tick.price, previous15m: completed15m ? tick.previous15m! : { high: Infinity, low: -Infinity }, oppositeSignal: false, minutesIST: minutesIST(tick.timestamp), premiumTargets: Boolean(position.targets) });
-        let available = quote.bidSize ?? 0;
-        const reached = !reason ? position.targets?.filter(target => {
-          if (target.filled || quote.bid < target.price || available < target.quantity) return false;
-          available -= target.quantity; return true;
-        }) ?? [] : [];
-        const exitQuantity = reason ? position.quantity : reached.reduce((sum, target) => sum + target.quantity, 0);
-        if (!reason && reached.length) reason = reached.length > 1 || reached[0].price === position.entry * 2.5 ? "TARGET_2_5X" : "TARGET_2X";
+        const reason = dayIST(tick.timestamp) > dayIST(position.openedAt) ? "DELAYED_SESSION_EXIT" : pendingExit || niftyExit({ side: position.contract.side, entryPremium: position.entry, premium: quote.bid, index: tick.price, previous15m: { high: Infinity, low: -Infinity }, oppositeSignal: false, minutesIST: minutesIST(tick.timestamp) });
+        const exitQuantity = reason ? position.quantity : 0;
         const enough = quote.bidSize === undefined ? !position.targets : Number.isFinite(quote.bidSize) && quote.bidSize >= exitQuantity;
         if (reason && exitQuantity > 0 && enough) {
           const pnl = (position.realizedPnl ?? 0) + (quote.bid - position.entry) * exitQuantity;
           const exitFills = [...(position.exitFills ?? []), { price: quote.bid, quantity: exitQuantity, at: tick.timestamp, reason }];
           if (exitQuantity < position.quantity) {
-            reached.forEach(target => { target.filled = true; });
             position = { ...position, quantity: position.quantity - exitQuantity, lots: (position.quantity - exitQuantity) / position.contract.lotSize, realizedPnl: pnl, exitFills };
             status = "PARTIAL_TARGET_FILLED";
           } else {

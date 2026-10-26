@@ -10,15 +10,13 @@ export const niftyRules = {
   startingLots: 1,
   maxLots: null,
   sizeReset: false,
-  targetR: 1.5,
+  targetR: 10,
   maxEntrySlippage: 4,
   entryDepthWaitMs: 1500,
 } as const;
 
 export function niftyTargets(entry: number, lots: number, lotSize: number) {
-  const first = lots === 1 ? 1 : lots === 2 ? 1 : Math.min(lots - 1, Math.max(1, Math.round(lots * 0.8)));
-  return [{ price: entry * 2, quantity: first * lotSize, filled: false },
-    ...(lots > first ? [{ price: entry * 2.5, quantity: (lots - first) * lotSize, filled: false }] : [])];
+  return [{ price: entry + niftyRules.targetR * premiumStopDistance(entry), quantity: lots * lotSize, filled: false }];
 }
 
 export type NiftyDepthLevel = { price: number; quantity: number };
@@ -71,8 +69,6 @@ export function niftyExit(input: {
   if (input.minutesIST >= niftyRules.cutoffMinutesIST) return "TIME_EXIT";
   if (input.oppositeSignal) return "OPPOSITE_SIGNAL";
   if (input.premium > 0 && input.premium <= input.entryPremium - premiumStopDistance(input.entryPremium)) return "PREMIUM_SL";
-  if (!input.premiumTargets && input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_1_5R";
-  if (input.side === "CE" && input.index < input.previous15m.low) return "INDEX_15M_TRAIL";
-  if (input.side === "PE" && input.index > input.previous15m.high) return "INDEX_15M_TRAIL";
+  if (input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_10R";
   return null;
 }

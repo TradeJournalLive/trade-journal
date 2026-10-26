@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "market": "NIFTY",
+  "baseline": "889510ed7b72f16fc891328b1b0804561ec231b0",
+  "files": [
+    {
+      "path": "scripts/nifty-paper-worker.cjs",
+      "sha256": "53c2781ce7b4f8c219887448f1f56406439403abf1fcd2e410addc5e2fd27dde"
+    },
+    {
+      "path": "scripts/nifty-depth.cjs",
+      "sha256": "d2a142f2ed04afb756424527f7972b297a6cebb22433d7cc3ea065e1a0da9dd1"
+    },
+    {
+      "path": "app/lib/algo/niftyPaperEngine.ts",
+      "sha256": "efdebf2a899d59e449590f67189da8c89285b5ff55215e1de7acfe040dc7394a"
+    },
+    {
+      "path": "app/lib/algo/niftyRules.ts",
+      "sha256": "1a165845e9cd66eefbfdabfd66593f2f25760bf35a11468290f9791ad2e76705"
+    },
+    {
+      "path": "package.json",
+      "sha256": "3e8bcbf97e9c99adb2fd3767c521a8ec283a9efa3e1c2a8297d619bd426e3963"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "9344de93215908b0c0e65dd8062507054fdd1090746aa38798d77e11488d6d28"
+    }
+  ],
+  "authorizedRevision": "NIFTY_10R_NO_15M_TRAIL"
+}
