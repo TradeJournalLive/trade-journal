@@ -10,7 +10,7 @@ export const niftyRules = {
   startingLots: 1,
   maxLots: null,
   sizeReset: false,
-  targetR: 10,
+  targetR: 5,
   maxEntrySlippage: 4,
   entryDepthWaitMs: 1500,
 } as const;
@@ -69,6 +69,6 @@ export function niftyExit(input: {
   if (input.minutesIST >= niftyRules.cutoffMinutesIST) return "TIME_EXIT";
   if (input.oppositeSignal) return "OPPOSITE_SIGNAL";
   if (input.premium > 0 && input.premium <= input.entryPremium - premiumStopDistance(input.entryPremium)) return "PREMIUM_SL";
-  if (input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_10R";
+  if (input.premium >= input.entryPremium + niftyRules.targetR * premiumStopDistance(input.entryPremium)) return "TARGET_5R";
   return null;
 }

@@ -17,7 +17,7 @@
     },
     {
       "path": "app/lib/algo/niftyRules.ts",
-      "sha256": "1a165845e9cd66eefbfdabfd66593f2f25760bf35a11468290f9791ad2e76705"
+      "sha256": "64c3a0bdf7907def7be0d4695a5c12074080fc59541f1b18257cb409e0548137"
     },
     {
       "path": "package.json",
@@ -28,5 +28,5 @@
       "sha256": "9344de93215908b0c0e65dd8062507054fdd1090746aa38798d77e11488d6d28"
     }
   ],
-  "authorizedRevision": "NIFTY_10R_NO_15M_TRAIL"
+  "authorizedRevision": "NIFTY_5R_NO_15M_TRAIL"
 }

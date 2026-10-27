@@ -1,5 +1,9 @@
 # Authorized NIFTY Exit Change
 
+## Superseding 5R Revision
+
+The user subsequently changed the target to 1:5 and requested deployment. The active intended policy is now target = actual average entry + 5 times the original premium stop distance, for all remaining lots. Entry 100 with SL 80 has target 200. No 15-minute trailing exit or 2x/2.5x allocation remains. The original 10R description below is historical context, superseded by this revision.
+
 User requested removal of the 15-minute trailing SL and premium-multiple partial targets, replacing them with a single 1:10 risk/reward target. Normal premium SL, opposite signal exit and existing time cutoff remain unchanged. The unrelated completed-15-minute entry-history gate is retained because only trailing exits were requested to change.
 
 Initial risk per unit remains min(20 premium points, 20% of entry). Target = actual average entry + 10 times that initial risk. All remaining lots share the target; observed exit liquidity is still required. An entry of 100 has stop 80 and target 300, not 1000.

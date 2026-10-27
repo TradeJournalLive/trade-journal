@@ -51,10 +51,10 @@ test("delayed delivery never extends the ten-candle validity window", () => {
   assert.equal(result.position, null);
   assert.equal(result.setup, null);
 });
-test("full position exits at 10R without partial-lot allocation", () => {
-  const result = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 300)], time(5));
-  assert.equal(result.trades[0].reason, "TARGET_10R");
-  assert.equal(result.realized, 200 * 65); assert.equal(result.position, null);
+test("full position exits at 5R without partial-lot allocation", () => {
+  const result = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 200)], time(5));
+  assert.equal(result.trades[0].reason, "TARGET_5R");
+  assert.equal(result.realized, 100 * 65); assert.equal(result.position, null);
 });
 test("breakout buys nearest-expiry OTM at ask and premium SL exits bid; raises size", () => {
   const events = [enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 79)];
@@ -78,14 +78,14 @@ test("opposite signal closes only on fresh premium and never immediately reverse
   assert.deepEqual(buildNiftyOptionsPaper([...events, events[4]], time(6)), result);
 });
 test("checkpoint restart matches full replay without duplicating a trade", () => {
-  const events = [enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 300)];
+  const events = [enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 200)];
   const first = buildNiftyOptionsPaper(events.slice(0, 4), time(3));
   const restarted = buildNiftyOptionsPaper(events.slice(4), time(5), first.checkpoint);
   assert.deepEqual(restarted, buildNiftyOptionsPaper(events, time(5)));
   assert.equal(buildNiftyOptionsPaper([events[4]], time(5), restarted.checkpoint).trades.length, 1);
 });
 test("compacted checkpoint retains lifetime P&L without replaying the trade ledger", () => {
-  const closed = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 300)], time(5));
+  const closed = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011), tick(4, 25012, 200)], time(5));
   const compact = { ...closed.checkpoint, trades: [], realizedBase: closed.realized, tradeCountBase: closed.tradeCount };
   const restored = buildNiftyOptionsPaper([], time(6), compact);
   assert.equal(restored.realized, closed.realized);
@@ -135,14 +135,14 @@ function newBook(lots) {
   seed.size.lots = lots;
   return buildNiftyOptionsPaper([buy, v2(2, 25009), v2(3, 25011)], time(3), seed);
 }
-test("new single-lot trade ignores old targets and exits at 10R", () => {
+test("new single-lot trade exits all quantity at 5R", () => {
   const open = newBook(1);
   const held = buildNiftyOptionsPaper([v2(4, 25012, 130)], time(4), open.checkpoint);
   assert.ok(held.position); assert.equal(held.trades.length, 0);
-  const closed = buildNiftyOptionsPaper([v2(5, 25012, 300)], time(5), held.checkpoint);
-  assert.equal(closed.trades[0].reason, 'TARGET_10R'); assert.equal(closed.realized, 13000);
+  const closed = buildNiftyOptionsPaper([v2(5, 25012, 200)], time(5), held.checkpoint);
+  assert.equal(closed.trades[0].reason, 'TARGET_5R'); assert.equal(closed.realized, 6500);
 });
-test("legacy open position uses 10R while preserving original entry and stop", () => {
+test("legacy open position uses 5R while preserving original entry and stop", () => {
   const old = buildNiftyOptionsPaper([enabled, buy, tick(2, 25009), tick(3, 25011)], time(3));
   const result = buildNiftyOptionsPaper([v2(4, 25012, 130)], time(4), old.checkpoint);
   assert.equal(result.trades.length, 0); assert.equal(result.position.entry, 100);
@@ -156,10 +156,10 @@ test("old partial allocation upgrades only remaining target without losing booke
   const before = structuredClone(checkpoint);
   const upgraded = buildNiftyOptionsPaper([], time(5), checkpoint);
   assert.deepEqual(checkpoint, before);
-  assert.deepEqual(upgraded.position.targets, [{ price: 300, quantity: 65, filled: false }]);
+  assert.deepEqual(upgraded.position.targets, [{ price: 200, quantity: 65, filled: false }]);
   assert.equal(upgraded.position.realizedPnl, 6500);
-  const closed = buildNiftyOptionsPaper([v2(6, 25012, 300)], time(6), upgraded.checkpoint);
-  assert.equal(closed.realized, 19500); assert.equal(closed.trades[0].exitFills.length, 2);
+  const closed = buildNiftyOptionsPaper([v2(6, 25012, 200)], time(6), upgraded.checkpoint);
+  assert.equal(closed.realized, 13000); assert.equal(closed.trades[0].exitFills.length, 2);
 });
 test("15-minute level no longer exits but opposite signal still closes", () => {
   const open = newBook(2), trail = v2(4, 24899, 110);
@@ -167,23 +167,23 @@ test("15-minute level no longer exits but opposite signal still closes", () => {
   const sell = event('sell-new', 4, { kind: 'SIGNAL', high: 25020, low: 25000, closedAt: time(4) }, 'SELL');
   assert.equal(buildNiftyOptionsPaper([sell, v2(5, 25012, 110)], time(5), open.checkpoint).trades[0].reason, 'OPPOSITE_SIGNAL');
 });
-test("two lots ignore 2x and 2.5x and close together at 10R across restart", () => {
+test("two lots close together at 5R across restart without partial allocation", () => {
   const open = newBook(2);
-  const partial = buildNiftyOptionsPaper([v2(4, 25012, 200)], time(4), open.checkpoint);
+  const partial = buildNiftyOptionsPaper([v2(4, 25012, 150)], time(4), open.checkpoint);
   assert.equal(partial.position.quantity, 130); assert.equal(partial.position.lots, 2);
   assert.equal(partial.realized, 0); assert.equal(partial.trades.length, 0);
   const compact = { ...partial.checkpoint, trades: [], realizedBase: partial.realized - (partial.position.realizedPnl ?? 0) };
-  const repeated = buildNiftyOptionsPaper([v2(5, 25012, 200)], time(5), compact);
+  const repeated = buildNiftyOptionsPaper([v2(5, 25012, 150)], time(5), compact);
   assert.equal(repeated.position.quantity, 130); assert.equal(repeated.realized, 0);
-  const below = buildNiftyOptionsPaper([v2(6, 25012, 250)], time(6), repeated.checkpoint);
+  const below = buildNiftyOptionsPaper([v2(6, 25012, 199)], time(6), repeated.checkpoint);
   assert.ok(below.position);
-  const final = buildNiftyOptionsPaper([v2(7, 25012, 300)], time(7), below.checkpoint);
-  assert.equal(final.position, null); assert.equal(final.realized, 26000); assert.equal(final.tradeCount, 1);
-  assert.equal(final.trades[0].exit, 300); assert.equal(final.trades[0].quantity, 130);
+  const final = buildNiftyOptionsPaper([v2(7, 25012, 200)], time(7), below.checkpoint);
+  assert.equal(final.position, null); assert.equal(final.realized, 13000); assert.equal(final.tradeCount, 1);
+  assert.equal(final.trades[0].exit, 200); assert.equal(final.trades[0].quantity, 130);
   assert.equal(final.trades[0].exitFills.length, 1); assert.equal(final.size.lots, 2);
 });
-test("unreached 10R keeps original premium stop and sizes once on exit", () => {
-  const partial = buildNiftyOptionsPaper([v2(4, 25012, 200)], time(4), newBook(2).checkpoint);
+test("unreached 5R keeps original premium stop and sizes once on exit", () => {
+  const partial = buildNiftyOptionsPaper([v2(4, 25012, 150)], time(4), newBook(2).checkpoint);
   const final = buildNiftyOptionsPaper([v2(5, 25012, 79)], time(5), partial.checkpoint);
   assert.equal(final.trades[0].reason, 'PREMIUM_SL'); assert.equal(final.realized, -21 * 130);
   assert.equal(final.size.lots, 3);
@@ -194,7 +194,7 @@ test("new entry sweeps recorded asks within four points and targets its average 
   entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks = [{ price: 130, quantity: 65 }, { price: 132, quantity: 65 }]; c.depthAt = time(3); });
   const result = buildNiftyOptionsPaper([buy, v2(2, 25009), entry], time(3), seed);
   assert.equal(result.position.entry, 131); assert.equal(result.position.entryFill.slippage, 1);
-  assert.equal(result.position.targets[0].price, 331); assert.equal(result.position.targets.length, 1);
+  assert.equal(result.position.targets[0].price, 231); assert.equal(result.position.targets.length, 1);
   entry.signal.metadata.niftyPaper.contracts.forEach(c => { c.asks[1].price = 134.05; });
   const skipped = buildNiftyOptionsPaper([buy, v2(2, 25009), entry], time(3), seed);
   assert.equal(skipped.position, null); assert.equal(skipped.status, 'WAITING_FOR_ENTRY_DEPTH');
@@ -207,7 +207,7 @@ test("stale depth or unreported quantity cannot fabricate a new fill", () => {
   const unknown = v2(3, 25011); unknown.signal.metadata.niftyPaper.contracts.forEach(c => { delete c.askSize; });
   assert.equal(buildNiftyOptionsPaper([buy, v2(2, 25009), unknown], time(3), seed).position, null);
 });
-test("10R exit requires enough observed bid quantity for the whole position", () => {
+test("5R exit requires enough observed bid quantity for the whole position", () => {
   const open = newBook(2), exit = v2(4, 25012, 310);
   exit.signal.metadata.niftyPaper.contracts.forEach(c => { c.bidSize = 65; });
   const held = buildNiftyOptionsPaper([exit], time(4), open.checkpoint);
