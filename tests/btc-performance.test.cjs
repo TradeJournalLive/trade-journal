@@ -2,7 +2,18 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module'), ts = require('typescript');
 const file = path.resolve(__dirname, '../app/lib/algo/btcPerformance.ts'), copy = new Module(file, module);
 copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, file);
-const { isPointOneBtc, pointOneBtcPerformance } = copy.exports;
+const { isPointOneBtc, btcProgressionPerformance: pointOneBtcPerformance, btcDateRange, inBtcPerformanceScope } = copy.exports;
+test('new progression sizes are included but untagged earlier sizes stay excluded', () => {
+  assert(inBtcPerformanceScope({ quantityBtc: 0.2, requestedQuantityBtc: 0.2, sizingPolicy: 'SL_STEP_0_1_CAP_0_8_V1' }));
+  assert.equal(inBtcPerformanceScope({ quantityBtc: 0.2 }), false);
+  assert.equal(inBtcPerformanceScope({ quantityBtc: 0.9, requestedQuantityBtc: 0.9, sizingPolicy: 'SL_STEP_0_1_CAP_0_8_V1' }), false);
+});
+test('date range includes both boundaries in IST, supports all dates and rejects reversed range', () => {
+  const rows = [{ openedAt: '2026-10-27T18:29:59Z' }, { openedAt: '2026-10-27T18:30:00Z' }, { openedAt: '2026-10-28T18:29:59Z' }, { openedAt: '2026-10-28T18:30:00Z' }];
+  assert.deepEqual(btcDateRange(rows, '2026-10-28', '2026-10-28'), rows.slice(1, 3));
+  assert.equal(btcDateRange(rows, '', '').length, 4);
+  assert.equal(btcDateRange(rows, '2026-10-29', '2026-10-28').length, 0);
+});
 test('0.1 request scope includes its partial fills but never a partial fill of an older 1 BTC request', () => {
   assert(isPointOneBtc({ quantityBtc: 0.1 }));
   assert(isPointOneBtc({ quantityBtc: 0.02, entryQuantityBtc: 0.04, canceledEntryBtc: 0.06 }));

@@ -110,7 +110,7 @@ export default function SignalPaperTrading() {
     <GoogleSheetsConnection />
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
       <div role="tablist" aria-label="Paper markets" className="flex gap-2">{activeMarkets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
-      <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />
+      {market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}

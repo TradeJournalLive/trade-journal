@@ -1,11 +1,23 @@
-export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
+export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, sizeStepBtc: 0.1, maxQuantityBtc: 0.8, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
+export const btcSizingPolicy = "SL_STEP_0_1_CAP_0_8_V1";
+export function btcRequestedQuantity(state: { nextQuantityBtc?: number }) {
+  const size = state.nextQuantityBtc;
+  return typeof size === "number" && Number.isFinite(size) && size >= btcRules.quantityBtc && size <= btcRules.maxQuantityBtc
+    && Math.abs(size / btcRules.sizeStepBtc - Math.round(size / btcRules.sizeStepBtc)) < 1e-9 ? size : btcRules.quantityBtc;
+}
+export function btcNextQuantity(size: number, reason: string) {
+  const current = btcRequestedQuantity({ nextQuantityBtc: size });
+  if (reason === "SIGNAL_CANDLE_STOP") return Math.min(btcRules.maxQuantityBtc, Math.round((current + btcRules.sizeStepBtc) * 1e12) / 1e12);
+  if (reason === "TARGET_3R" || reason === "TARGET_1_5R") return btcRules.quantityBtc;
+  return current;
+}
 export type BtcLevel = { price: number; quantityBtc: number };
 export type BtcFill = { price: number; quantityBtc: number; initialQuote: number; slippage: number; fills: BtcLevel[]; liquidityId: string };
-export type BtcDecision = { id: string; action: string; receivedAt: string; signalClosedAt: string; decidedAt: string; status: string; reason: string; filledBtc?: number; canceledBtc?: number; entry?: number; slippage?: number };
+export type BtcDecision = { id: string; action: string; receivedAt: string; signalClosedAt: string; decidedAt: string; status: string; reason: string; requestedBtc?: number; filledBtc?: number; canceledBtc?: number; entry?: number; slippage?: number };
 function decision(s: BtcState, signal: BtcSignal, status: string, reason: string, at = signal.receivedAt, fill?: BtcFill) {
   s.decisions ??= [];
   const value: BtcDecision = { id: signal.id, action: signal.action, receivedAt: signal.receivedAt, signalClosedAt: signal.closedAt, decidedAt: at, status, reason,
-    ...(fill ? { filledBtc: fill.quantityBtc, canceledBtc: Math.max(0, Math.round((btcRules.quantityBtc - fill.quantityBtc) * 1e12) / 1e12), entry: fill.price, slippage: fill.slippage } : {}) };
+    ...(fill ? { requestedBtc: btcRequestedQuantity(s), filledBtc: fill.quantityBtc, canceledBtc: Math.max(0, Math.round((btcRequestedQuantity(s) - fill.quantityBtc) * 1e12) / 1e12), entry: fill.price, slippage: fill.slippage } : {}) };
   const index = s.decisions.findIndex(item => item.id === signal.id);
   if (index < 0) s.decisions.push(value); else s.decisions[index] = value;
 }
@@ -40,10 +52,10 @@ function executionFill(tick: BtcTick, buy: boolean, quantity: number, limit = In
 export type BtcSignal = { id: string; action: "BUY" | "SELL"; symbol: string; receivedAt: string; closedAt: string; high: number; low: number; signalPrice: number; breakoutVerified?: boolean };
 type PriceWindow = { second: number; first: number; last: number; low: number; high: number; gap: number };
 export type BtcTick = { timestamp: string; tradeAt: string; quoteAt: string; price: number; bid: number; ask: number; bidBtc: number; askBtc: number; mark: number; markAt: string; maintenanceRate: number; executionVersion?: 2; contractBtc?: number; depth?: { at: string; sequence: number; bids: BtcLevel[]; asks: BtcLevel[] }; previous15m?: { high: number; low: number; closedAt: string } };
-export type BtcPosition = { id: string; side: "LONG" | "SHORT"; quantityBtc: number; leverage: number; entry: number; openedAt: string; stop: number; initialRisk?: number; breakEven?: boolean; monitoringGap?: { from: string; to: string }; target: number; trigger: number; signalPrice: number; signalClosedAt: string; signalReceivedAt: string; entryDifference: number; initialMargin: number; estimatedLiquidation: number; entryFill?: BtcFill; entryQuantityBtc?: number; canceledEntryBtc?: number; realizedPnl?: number; lastExitLiquidityId?: string; exitFills?: (BtcLevel & { at: string; reason: string; liquidityId?: string })[] };
+export type BtcPosition = { sizingPolicy?: string; requestedQuantityBtc?: number; id: string; side: "LONG" | "SHORT"; quantityBtc: number; leverage: number; entry: number; openedAt: string; stop: number; initialRisk?: number; breakEven?: boolean; monitoringGap?: { from: string; to: string }; target: number; trigger: number; signalPrice: number; signalClosedAt: string; signalReceivedAt: string; entryDifference: number; initialMargin: number; estimatedLiquidation: number; entryFill?: BtcFill; entryQuantityBtc?: number; canceledEntryBtc?: number; realizedPnl?: number; lastExitLiquidityId?: string; exitFills?: (BtcLevel & { at: string; reason: string; liquidityId?: string })[] };
 export type BtcTrade = BtcPosition & { exit: number; closedAt: string; reason: string; pnl: number; exitReference: number | null; exitDifference: number | null };
-export type BtcState = { enabled: boolean; setup: BtcSignal | null; position: BtcPosition | null; previousTick: BtcTick | null; priceHistory?: PriceWindow[]; status: string; pendingExit: string | null; seen: string[]; trades: BtcTrade[]; realizedBase: number; tradeCountBase: number; lastSignalAt: string | null; decisions?: BtcDecision[] };
-export function emptyBtcState(): BtcState { return { enabled: false, setup: null, position: null, previousTick: null, status: "DISABLED", pendingExit: null, seen: [], trades: [], realizedBase: 0, tradeCountBase: 0, lastSignalAt: null }; }
+export type BtcState = { nextQuantityBtc?: number; enabled: boolean; setup: BtcSignal | null; position: BtcPosition | null; previousTick: BtcTick | null; priceHistory?: PriceWindow[]; status: string; pendingExit: string | null; seen: string[]; trades: BtcTrade[]; realizedBase: number; tradeCountBase: number; lastSignalAt: string | null; decisions?: BtcDecision[] };
+export function emptyBtcState(): BtcState { return { nextQuantityBtc: btcRules.quantityBtc, enabled: false, setup: null, position: null, previousTick: null, status: "DISABLED", pendingExit: null, seen: [], trades: [], realizedBase: 0, tradeCountBase: 0, lastSignalAt: null }; }
 export function btcCancelSetup(state: BtcState, at: string) {
   const s = structuredClone(state);
   if (s.setup) decision(s, s.setup, "CANCELED", "Paper entries were switched off before entry.", at);
@@ -138,6 +150,7 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
           const original = p.entryQuantityBtc ?? p.quantityBtc;
           const exit = exitFills.reduce((sum, level) => sum + level.price * level.quantityBtc, 0) / original;
           s.trades.push({ ...p, quantityBtc: original, initialMargin: p.entry * original / p.leverage, exit, exitFills, closedAt: tick.timestamp, reason, pnl, exitReference: reference, exitDifference: reference === null ? null : (long ? reference - exit : exit - reference) });
+          if (p.sizingPolicy === btcSizingPolicy && !p.monitoringGap) s.nextQuantityBtc = btcNextQuantity(btcRequestedQuantity(s), reason);
           s.position = null; s.pendingExit = null; exited = true; s.status = s.enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
         }
       }
@@ -151,17 +164,18 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
       const long = setup.action === "BUY", trigger = long ? setup.high : setup.low;
       const crossed = long ? s.previousTick.price <= trigger && tick.price > trigger : s.previousTick.price >= trigger && tick.price < trigger;
       if (crossed) {
-        const fill = tick.executionVersion === 2 ? executionFill(tick, long, btcRules.quantityBtc, btcRules.maxEntrySlippageUsd) : null;
+        const requested = btcRequestedQuantity(s);
+        const fill = tick.executionVersion === 2 ? executionFill(tick, long, requested, btcRules.maxEntrySlippageUsd) : null;
         const entry = fill?.price ?? (long ? tick.ask : tick.bid), stop = long ? setup.low : setup.high, risk = long ? entry - stop : stop - entry;
         const depth = long ? tick.askBtc : tick.bidBtc, mm = tick.maintenanceRate;
         let skipReason = "";
         if (!positive(risk) || !Number.isFinite(mm) || mm < 0 || mm >= 1 / 100 || !positive(tick.mark) || !fresh(tick.markAt, tick.timestamp)) { s.status = "MISSING_CONTRACT_OR_MARK_DATA"; skipReason = "Invalid stop distance or missing fresh mark/contract data."; }
-        else if (tick.executionVersion === 2 ? !fill : !Number.isFinite(depth) || depth < btcRules.quantityBtc) { s.status = "INSUFFICIENT_ENTRY_DEPTH"; skipReason = "No executable contract quantity within the entry price limit."; }
+        else if (tick.executionVersion === 2 ? !fill : !Number.isFinite(depth) || depth < requested) { s.status = "INSUFFICIENT_ENTRY_DEPTH"; skipReason = "No executable contract quantity within the entry price limit."; }
         else {
-          const quantity = fill?.quantityBtc ?? btcRules.quantityBtc;
-          s.position = { id: setup.id, side: long ? "LONG" : "SHORT", quantityBtc: quantity, leverage: 100, entry, openedAt: tick.timestamp, stop, initialRisk: risk, breakEven: false, target: entry + (long ? 1 : -1) * btcRules.targetR * risk, trigger, signalPrice: setup.signalPrice, signalClosedAt: setup.closedAt, signalReceivedAt: setup.receivedAt, entryDifference: long ? entry - trigger : trigger - entry, initialMargin: entry * quantity / 100, estimatedLiquidation: long ? entry * (1 - 1 / 100) / (1 - mm) : entry * (1 + 1 / 100) / (1 + mm),
-            ...(fill ? { entryFill: fill, entryQuantityBtc: quantity, canceledEntryBtc: Math.max(0, Math.round((btcRules.quantityBtc - quantity) * 1e12) / 1e12) } : {}) };
-          decision(s, setup, quantity < btcRules.quantityBtc ? "PARTIALLY_FILLED" : "ENTERED", quantity < btcRules.quantityBtc ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.", tick.timestamp, fill ?? undefined);
+          const quantity = fill?.quantityBtc ?? requested;
+          s.position = { sizingPolicy: btcSizingPolicy, requestedQuantityBtc: requested, id: setup.id, side: long ? "LONG" : "SHORT", quantityBtc: quantity, leverage: 100, entry, openedAt: tick.timestamp, stop, initialRisk: risk, breakEven: false, target: entry + (long ? 1 : -1) * btcRules.targetR * risk, trigger, signalPrice: setup.signalPrice, signalClosedAt: setup.closedAt, signalReceivedAt: setup.receivedAt, entryDifference: long ? entry - trigger : trigger - entry, initialMargin: entry * quantity / 100, estimatedLiquidation: long ? entry * (1 - 1 / 100) / (1 - mm) : entry * (1 + 1 / 100) / (1 + mm),
+            ...(fill ? { entryFill: fill, entryQuantityBtc: quantity, canceledEntryBtc: Math.max(0, Math.round((requested - quantity) * 1e12) / 1e12) } : {}) };
+          decision(s, setup, quantity < requested ? "PARTIALLY_FILLED" : "ENTERED", quantity < requested ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.", tick.timestamp, fill ?? undefined);
           s.setup = null; s.status = "OPEN";
         }
         if (!s.position) { decision(s, setup, "MISSED_BREAKOUT_UNFILLED", `${skipReason} First breakout skipped; no later re-entry.`, tick.timestamp); s.setup = null; s.status = "MISSED_BREAKOUT_UNFILLED"; }
@@ -197,7 +211,7 @@ export function btcView(s: BtcState, now = new Date().toISOString()) {
   const t = s.previousTick, age = t ? Date.parse(now) - Date.parse(t.timestamp) : NaN;
   const stale = !Number.isFinite(age) || age < 0 || age > 15000;
   const mark = t && s.position ? s.position.side === "LONG" ? t.bid : t.ask : null;
-  return { ...s, seen: undefined, previousTick: undefined, priceHistory: undefined, stale, mark, lastTickAt: t?.timestamp ?? null,
+  return { ...s, nextQuantityBtc: btcRequestedQuantity(s), seen: undefined, previousTick: undefined, priceHistory: undefined, stale, mark, lastTickAt: t?.timestamp ?? null,
     realized: s.realizedBase + s.trades.filter(v => !v.monitoringGap).reduce((sum, v) => sum + v.pnl, 0) + (s.position && !s.position.monitoringGap ? s.position.realizedPnl ?? 0 : 0), tradeCount: s.tradeCountBase + s.trades.filter(v => !v.monitoringGap).length,
     unrealized: mark !== null && s.position && !s.position.monitoringGap ? (mark - s.position.entry) * s.position.quantityBtc * (s.position.side === "LONG" ? 1 : -1) : null,
     model: "Gross USD; fees/funding excluded; isolated liquidation estimate, not broker liquidation", rules: btcRules };
