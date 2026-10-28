@@ -1,7 +1,7 @@
 import { getServerSupabase, hashWebhookSecret } from "./signalStore";
 
 export type SignalExecution = { status: string; reason: string; source: "Recorded" | "Rule check" | "Not recorded" | "Unavailable"; at?: string };
-type Event = { receivedAt: string; signal: { id: string; symbol: string; metadata?: Record<string, unknown> } };
+type Event = { receivedAt: string; signal: { id: string; symbol: string; strategyId?: string; metadata?: Record<string, unknown> } };
 type Decision = { id: string; status: string; reason: string; decidedAt: string };
 type Trade = { signalId?: string; id?: string; openedAt?: string; entry?: number; initialLots?: number; lots?: number; contract?: { id?: string }; entryQuantityBtc?: number; quantityBtc?: number };
 
@@ -18,15 +18,19 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
   }
   function readTrade(market: string, t: Trade) {
     if (market === "GOLD") return;
-    const id = market === "NIFTY" ? t?.signalId : t?.id;
+    const options = market === "NIFTY" || market === "NIFTY_HAMS";
+    const id = options ? t?.signalId : t?.id;
     if (!id || !t.openedAt || typeof t.entry !== "number" || !Number.isFinite(t.entry)) return;
-    entries.set(key(market, id), market === "NIFTY" ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
+    entries.set(key(market, id), options ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
   }
-  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__"]);
+  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__hams_final_worker__"]);
   if (workers.error) throw Error("Execution history unavailable.");
   for (const row of workers.data || []) {
-    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : "BTC";
-    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : row.raw_payload?.saved?.state;
+    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__hams_final_worker__" ? "NIFTY_HAMS" : "BTC";
+    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "NIFTY_HAMS" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
+    if (market === "NIFTY_HAMS") for (const d of row.raw_payload?.decisions || []) {
+      readDecision(market, { ...d, reason: d.reason || String(d.status).replaceAll("_", " "), decidedAt: d.decidedAt || d.receivedAt });
+    }
     for (const d of state?.decisions || []) readDecision(market, d);
     if (state?.position) readTrade(market, state.position);
     for (const t of state?.trades || []) readTrade(market, t);
@@ -45,7 +49,7 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
   }
   return events.map(event => {
     if (event.signal.metadata?.trackingOnly === true && event.signal.symbol !== "VANTAGE:XAUUSD") return { ...event, execution: { status: "TRACKING_ONLY", reason: "Saved for separate signal tracking. Paper and live execution are disabled.", source: "Recorded" as const } };
-    const market = event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : event.signal.symbol === "VANTAGE:XAUUSD" ? "GOLD" : "OTHER";
+    const market = event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY_HAMS" : event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : event.signal.symbol === "VANTAGE:XAUUSD" ? "GOLD" : "OTHER";
     const k = key(market, event.signal.id), d = decisions.get(k), entry = entries.get(k);
     let execution: SignalExecution;
     if (entry && (!d || !["ENTERED", "PARTIALLY_FILLED"].includes(d.status))) execution = { status: "ENTERED", reason: entry, source: "Recorded" };

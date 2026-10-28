@@ -42,3 +42,16 @@ test('Signals defaults to a visible Trade Reasons tab with execution evidence',(
   assert.match(html,/aria-selected="true"[^>]*>Trade Reasons/);
   assert.match(html,/132.65 points exceeds 35/);assert.match(html,/Rule check/);assert.match(html,/Webhook Delivery/);
 });
+test('HAMS decisions and fills use their own namespace, even if a signal ID matches NIFTY',async()=>{
+  const f=load([
+    {secret_hash:'a',strategy_id:'__nifty_paper_decision__',raw_payload:{decision:{id:'same',status:'SETUP_EXPIRED',reason:'old breakout expired',decidedAt:'2026-10-28T04:00:00Z'}}},
+    {secret_hash:'a',strategy_id:'__hams_final_worker__',signal_id:'state',raw_payload:{state:{position:{signalId:'same',openedAt:'2026-10-28T04:00:01Z',entry:100,lots:1,contract:{id:'hams-option'}}},decisions:[{id:'same',status:'OPEN',receivedAt:'2026-10-28T04:00:00Z'},{id:'rejected',status:'INSUFFICIENT_VIRTUAL_CAPITAL',receivedAt:'2026-10-28T04:03:00Z'}]}},
+    {secret_hash:'b',strategy_id:'__hams_final_worker__',signal_id:'state',raw_payload:{decisions:[{id:'private',status:'OPEN',receivedAt:'2026-10-28T04:03:00Z'}]}}
+  ]);
+  const hams=id=>({...event(id),signal:{...event(id).signal,strategyId:'nifty_hams_final_3m_v1'}});
+  const r=await f.addSignalExecutions('a',[event('same'),hams('same'),hams('rejected'),hams('private')]);
+  assert.equal(r[0].execution.status,'SETUP_EXPIRED');
+  assert.equal(r[1].execution.status,'ENTERED');assert.match(r[1].execution.reason,/hams-option/);
+  assert.equal(r[2].execution.status,'INSUFFICIENT_VIRTUAL_CAPITAL');assert.equal(r[2].execution.reason,'INSUFFICIENT VIRTUAL CAPITAL');
+  assert.equal(r[3].execution.source,'Not recorded');
+});
