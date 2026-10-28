@@ -1,12 +1,13 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
-import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload } from "../../../../lib/algo/automation";
+import { evaluateAlgoSignal, recordAlgoEvent, type AlgoAutomationPayload, type AlgoDecision } from "../../../../lib/algo/automation";
 import { persistAlgoSignalEvent } from "../../../../lib/algo/signalStore";
 import { hashWebhookSecret } from "../../../../lib/algo/signalStore";
 import { niftySignalCandle } from "../../../../lib/algo/niftySignal";
 import { waitUntil } from "@vercel/functions";
 import { syncWebhookSheet } from "../../../../lib/algo/googleSheets";
 import { isolateTrackingSignal } from "../../../../lib/algo/trackingSignals";
+import { isolateHamsSignal } from "../../../../lib/algo/hamsSignal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
 
     let payload: TradingViewWebhookPayload;
     try {
-      payload = isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload);
+      payload = isolateHamsSignal(isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload));
     } catch {
       return jsonError("Invalid JSON payload.");
     }
@@ -213,7 +214,9 @@ export async function POST(request: Request) {
     }
 
     const signal = normalizeSignal(payload);
-    const decision = evaluateAlgoSignal(signal, payload.automation ?? {});
+    const decision: AlgoDecision = signal.strategyId === "nifty_hams_final_3m_v1"
+      ? { accepted: true, executionMode: "PAPER", stage: "READY_FOR_PAPER", reasons: ["Saved for the isolated HAMS Final paper worker; receipt is not an entry fill."], checks: [{ label: "Dedicated paper route", ok: true, message: "HAMS Final only; live execution disabled." }] }
+      : evaluateAlgoSignal(signal, payload.automation ?? {});
     const event = { receivedAt: new Date(receivedAt).toISOString(), signal, decision };
     recordAlgoEvent(event);
     const persistence = await persistAlgoSignalEvent({

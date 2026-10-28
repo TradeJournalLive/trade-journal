@@ -10,6 +10,7 @@ import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
+import HamsFinalPaper from "./HamsFinalPaper";
 
 type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
@@ -18,6 +19,7 @@ const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZo
 
 export default function SignalPaperTrading() {
   const [market, setMarket] = useState<PaperMarket>("NIFTY");
+  const [hams, setHams] = useState(false);
   const [tradeDate, setTradeDate] = useState(() => istDay(new Date().toISOString()));
   const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
@@ -109,10 +111,12 @@ export default function SignalPaperTrading() {
   return <div className="space-y-4">
     <GoogleSheetsConnection />
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-      <div role="tablist" aria-label="Paper markets" className="flex gap-2">{activeMarkets.map(item => <button key={item} type="button" role="tab" aria-selected={market === item} onClick={() => setMarket(item)} className={`algo-action ${market === item ? "primary" : "secondary"}`}>{item === "NIFTY" ? "NIFTY Index" : "Bitcoin"}</button>)}</div>
-      {market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
+      <div role="tablist" aria-label="Paper markets" className="flex flex-wrap gap-2">{activeMarkets.map(item => <button key={item} type="button" role="tab" aria-selected={!hams && market === item} onClick={() => { setMarket(item); setHams(false); }} className={`algo-action ${!hams && market === item ? "primary" : "secondary"}`}>{item === "NIFTY" ? "NIFTY Current" : "Bitcoin"}</button>)}<button type="button" role="tab" aria-selected={hams} onClick={() => setHams(true)} className={`algo-action ${hams ? "primary" : "secondary"}`}>NIFTY HAMS Final</button></div>
+      {!hams && market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    {hams && <HamsFinalPaper />}
+    <div hidden={hams}>
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
@@ -162,5 +166,6 @@ export default function SignalPaperTrading() {
     <div className="algo-os-card"><div className="algo-card-head"><h3>Open position</h3><span className="algo-pill pending">PAPER</span></div>{position ? <div className="algo-rule-list"><div><span>{position.symbol}</span><b>{position.side}</b></div><div><span>Entry</span><b>{number(position.entry)}</b></div><div><span>Capital used</span><b>Not recorded · price-only test</b></div><div><span>Opened</span><b>{time(position.openedAt)}</b></div><div><span>Last signal price</span><b>{book?.lastPrice == null ? "--" : number(book.lastPrice)}</b></div></div> : <div className="algo-empty-state">{book?.enabled ? "Waiting for the next signal." : "Paper trading is off."}</div>}{book?.pendingSessionClose && <div role="alert" className="algo-alert-box"><b>Session exit pending</b><span>No closing price was received at 15:15 IST. This position is excluded from closed-trade results until a verified exit price is available.</span></div>}</div>
     <div className="algo-os-card"><div className="algo-card-head"><h3>Trade results · {tradeDate || "All dates"}</h3><span className="text-xs text-slate-500">{book?.lastSignalAt ? `Last signal ${time(book.lastSignalAt)}` : "No signal yet"}</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Symbol</th><th>Side</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry</th><th>Capital used</th><th>Exit date</th><th>Exit time · IST</th><th>Exit</th><th>Points</th><th>Exit reason</th></tr></thead><tbody>{trades.length ? [...trades].reverse().map(trade => <tr key={trade.id}><td>{istDay(trade.openedAt)}</td><td>{trade.symbol}</td><td>{trade.side}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td title="Quantity and margin are not recorded for this signal-price test">Not recorded</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td className={trade.points < 0 ? "text-red-600" : "text-emerald-600"}>{number(trade.points)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={13}>No completed trades for this entry date.</td></tr>}</tbody></table></div></div>
     </div></details>}
+    </div>
   </div>;
 }

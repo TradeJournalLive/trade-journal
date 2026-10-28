@@ -7,6 +7,7 @@ function route(relative) {
     : id.endsWith('/connection') ? { sameOrigin: () => true, connectionSecret: async () => 'test-owner' }
     : id.endsWith('/paperEngine') ? { markets: ['BTC', 'NIFTY', 'GOLD'] }
     : id.endsWith('/trackingSignals') ? { isolateTrackingSignal: value => value }
+    : id.endsWith('/hamsSignal') ? { isolateHamsSignal: value => value }
     : {};
   copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, file);
   return copy.exports;
