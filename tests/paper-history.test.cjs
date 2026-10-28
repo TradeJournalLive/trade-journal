@@ -9,6 +9,7 @@ function fixture(failPage = false, pending = false) {
   rows.push({ secret_hash: 'owner-a', strategy_id: '__btc_delta_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { saved: { state: { trades: pending ? [btc, { ...btc, id: 'pending-outbox', pnl: 7 }] : [] } }, workerStatus: 'RECEIVING_DELTA_BTCUSD' } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__paper_control__', signal_id: 'delete', received_at: '2026-10-21T06:00:00Z', signal: { id: 'delete', metadata: {} }, raw_payload: { paperControl: { deleteTrade: `${btc.id}:${btc.openedAt}` } } });
   const ranges = [];
+  for (const strategy_id of ['__hams_final_worker__','__hams_final_control__','nifty_hams_final_3m_v1']) rows.push({secret_hash:'owner-a',strategy_id,signal_id:'hams-internal',signal:{},raw_payload:{},received_at:'2026-10-28T05:00:00Z'});
   rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { state: { enabled: true, trades: [] } } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_trade__', received_at: '2026-10-22T16:00:00Z', signal_id: 'gold', raw_payload: { trade: { id: 'gold-own', pnl: 30 } } });
   rows.push({ secret_hash: 'owner-b', strategy_id: '__gold_mt5_trade__', raw_payload: { trade: { id: 'gold-private', pnl: 100 } } });
@@ -21,7 +22,13 @@ function fixture(failPage = false, pending = false) {
     }).then(resolve,reject); } }; return q;
   }
   const filename = path.resolve(__dirname, '../app/lib/algo/paperHistory.ts'), copy = new Module(filename, module);
+  function safeBooks(events) {
+    assert.equal(events.some(e => e.signal?.id === 'hams-internal'), false, 'HAMS internal rows must never reach legacy replay');
+    return Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }]));
+  }
   copy.require = id => id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { activeMarkets: ['NIFTY','BTC'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
+  const originalRequire = copy.require;
+  copy.require = id => id === './paperEngine' ? { ...originalRequire(id), buildPaperBooks: safeBooks } : originalRequire(id);
   copy._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, filename);
   return { api: copy.exports, ranges };
 }

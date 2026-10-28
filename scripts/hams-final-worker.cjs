@@ -29,6 +29,10 @@ function save() {
 }
 function owned() { return !stopped && Date.now()-ack < 10000; }
 function decide(signal, result) {
+  if (result !== 'LOADING_COMPLETED_3M_OPTION_CANDLE') {
+    const key = `${signal.strategyId}:${signal.id}`;
+    if (!state.seen.includes(key)) state.seen.push(key);
+  }
   const value = { id: signal.id, receivedAt: signal.receivedAt, status: result };
   const i = decisions.findIndex(d => d.id === signal.id);
   if (i < 0) decisions.push(value); else decisions[i] = value;
@@ -66,7 +70,7 @@ async function api(endpoint) {
   const body = await response.json(); if (!response.ok || body.s !== 'ok') throw new Error('FYERS_DATA_UNAVAILABLE'); return body;
 }
 function row(id, at, raw, strategy = STRATEGY) {
-  return { secret_hash: owner, strategy_id: strategy, signal_id: id, symbol: 'NIFTY', action: 'EXIT', received_at: at, signal_timestamp: at, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: {}, decision: {}, raw_payload: raw };
+  return { secret_hash: owner, strategy_id: strategy, signal_id: id, symbol: 'NIFTY', action: 'EXIT', received_at: at, signal_timestamp: at, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: {id,strategyId:strategy,symbol:'NSE:NIFTY',action:'EXIT',timestamp:at,metadata:{internal:true}}, decision: {}, raw_payload: raw };
 }
 async function publish() {
   if (publishing || stopped) return;
