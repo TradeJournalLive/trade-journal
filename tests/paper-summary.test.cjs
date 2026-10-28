@@ -11,7 +11,8 @@ test('shared lifetime summary renders exact labels, zero and unavailable values 
 });
 test('all active instruments use lifetime sources, not date-filtered trade arrays', () => {
   const read = name => fs.readFileSync(path.resolve(__dirname, `../app/dashboard/${name}.tsx`), 'utf8');
-  assert.match(read('BtcDeltaPaper'), /closedTrades=\{book\?\.tradeCount\}/);
+  assert.match(read('BtcDeltaPaper'), /closedTrades=\{performance\?\.tradeCount\}/);
+  assert.match(read('BtcDeltaPaper'), /pointOneBtcPerformance\(book\)/);
   assert.match(read('SignalPaperTrading'), /closedTrades=\{book\?\.options\?\.tradeCount\}/);
   for (const name of ['BtcDeltaPaper', 'SignalPaperTrading']) assert.ok(read(name).includes('<PaperLifetimeSummary'));
 });

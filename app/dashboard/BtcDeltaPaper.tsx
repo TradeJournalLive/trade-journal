@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
+import { pointOneBtcPerformance } from "../lib/algo/btcPerformance";
 export type BtcDeltaBook = ReturnType<typeof btcView> & { workerOnline: boolean; workerStatus: string; health?: { databaseStatus: string; snapshotAt: string; lastSignalPollAt: string | null; lastLedgerSyncAt: string | null; reconnects: number }; trial: { startedAt: string; endsAt: string } };
 const n = (v: number | null | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const q = (v: number | undefined) => v == null ? "--" : v.toLocaleString("en-US", { maximumFractionDigits: 8 });
@@ -34,7 +35,8 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
     finally { setBusy(false); }
   }
   const p = book?.position;
-  const history = onTradeDate(book?.trades ?? [], tradeDate);
+  const performance = book ? pointOneBtcPerformance(book) : null;
+  const history = onTradeDate(performance?.trades ?? [], tradeDate);
   const decisions = (book?.decisions ?? []).filter(d => !tradeDate || istDay(d.receivedAt) === tradeDate);
   const checking = refreshing && Boolean(issue);
   return <section className="algo-os-card">
@@ -50,7 +52,8 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
     <p className="text-xs text-slate-500">Last TradingView signal: {t(book?.lastSignalAt)}. Engine health does not verify the TradingView alert is enabled.</p>
     {book?.health && <dl className="algo-rule-list"><div><dt>Database sync</dt><dd>{book.health.databaseStatus === "SYNCED" ? "Synced" : "Retrying · local records retained"}</dd></div><div><dt>Last signal check</dt><dd>{t(book.health.lastSignalPollAt)}</dd></div><div><dt>Last trade sync</dt><dd>{t(book.health.lastLedgerSyncAt)}</dd></div><div><dt>Feed reconnects · current run</dt><dd>{book.health.reconnects}</dd></div></dl>}
     <p className="text-xs text-slate-500">PAPER · Request 0.1 BTC · partial fills allowed · 100× margin assumption · 24/7 · Last quote {t(book?.lastTickAt)}</p>
-    <PaperLifetimeSummary realized={`${n(book?.realized)} USD gross`} openPnl={`${n(book?.unrealized)} USD gross`} closedTrades={book?.tradeCount} />
+    <p className="text-xs text-slate-500">Performance scope: 0.1 BTC requests only. Earlier position sizes and legacy price-only tests are excluded; records are retained.</p>
+    <PaperLifetimeSummary realized={`${n(performance?.realized)} USD gross`} openPnl={`${n(performance?.unrealized)} USD gross`} closedTrades={performance?.tradeCount} />
     <details className="border-b border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>Confirmed 1m high/low cross · valid 10 candles · no range filter</dd></div><div><dt>Entry fills</dt><dd>Observed Delta depth · maximum $5 adverse price difference · unfilled remainder canceled</dd></div><div><dt>Stop / target</dt><dd>Signal candle stop · at +2R move stop to average entry · target 3R</dd></div><div><dt>Other exits</dt><dd>Opposite signal · estimated isolated-margin breach</dd></div></dl></details>
     <p className="text-xs text-slate-500">Gross USD before fees and funding. Liquidation is an isolated-margin estimate, not an actual broker liquidation price.</p>
     {p && <div className="algo-rule-list"><div><span>Position</span><b>{p.side} · {p.quantityBtc} BTC</b></div><div><span>Signal close / received</span><b>{t(p.signalClosedAt)} / {t(p.signalReceivedAt)}</b></div><div><span>Signal close price / breakout</span><b>{n(p.signalPrice)} / {n(p.trigger)}</b></div><div><span>Actual simulated entry / time</span><b>{n(p.entry)} / {t(p.openedAt)}</b></div><div><span>Entry difference vs breakout</span><b>{n(p.entryDifference)} USD</b></div><div><span>Stop / target</span><b>{n(p.stop)} / {n(p.target)}</b></div><div><span>Capital used · USD margin / estimated liquidation</span><b>{n(p.initialMargin)} / {n(p.estimatedLiquidation)}</b></div></div>}
