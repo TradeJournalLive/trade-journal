@@ -1,4 +1,5 @@
 // Independent paper-only reducer. No existing NIFTY state or broker-order path is used.
+import type { LimitState } from "./niftyLimitPaper";
 export const hamsFinalRules = Object.freeze({
   strategyId: "nifty_hams_final_3m_v1", namespace: "hamsFinalPaper",
   initialCapital: 500000, intervalMinutes: 3, stopBuffer: 5, targetR: 3,
@@ -9,8 +10,8 @@ export type HamsSignal = { strategyId: string; id: string; action: "BUY" | "SELL
 export type HamsQuote = { id: string; expiry: string; strike: number; side: Side; lotSize: number; at: string; bid: number; ask: number; bidSize: number; askSize: number; asks?: { price: number; quantity: number }[]; bids?: { price: number; quantity: number }[]; depthAt?: string };
 export type HamsCandle = { contractId: string; openedAt: string; closedAt: string; low: number };
 export type HamsPosition = { contract: HamsQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number };
-export type HamsTrade = HamsPosition & { exit: number; closedAt: string; reason: "SL" | "TARGET_3R" | "OPPOSITE_SIGNAL" | "TIME_EXIT"; pnl: number };
-export type HamsState = { enabled: boolean; balance: number; nextLots: number; position: HamsPosition | null; trades: HamsTrade[]; seen: string[]; status: string; pendingExit: HamsTrade["reason"] | null; lastQuoteAt: string | null };
+export type HamsTrade = HamsPosition & { ruleVersion?: number; grossPnl?:number; costs?:{total:number}; exit: number; closedAt: string; reason: string; pnl: number };
+export type HamsState = { rulesV2?:LimitState; enabled: boolean; balance: number; nextLots: number; position: HamsPosition | null; trades: HamsTrade[]; seen: string[]; status: string; pendingExit: HamsTrade["reason"] | null; lastQuoteAt: string | null };
 export function emptyHamsState(): HamsState {
   return { enabled: false, balance: hamsFinalRules.initialCapital, nextLots: 1, position: null, trades: [], seen: [], status: "DISABLED", pendingExit: null, lastQuoteAt: null };
 }
@@ -53,6 +54,7 @@ export function hamsContract(spot: number, side: Side, chain: HamsQuote[], at: s
   return valid.find(q => q.expiry === expiry && q.side === side && q.strike === strike) ?? null;
 }
 export function setHamsEnabled(previous: HamsState, enabled: boolean): HamsState {
+  if(previous.rulesV2){const copy=structuredClone(previous);copy.enabled=enabled;copy.rulesV2!.enabled=enabled;if(!enabled)copy.rulesV2!.setup=null;copy.status=copy.position?"OPEN":enabled?"WAITING_FOR_SIGNAL":"DISABLED";return copy;}
   return { ...structuredClone(previous), enabled, status: previous.position ? "OPEN" : enabled ? "WAITING_FOR_SIGNAL" : "DISABLED" };
 }
 export function enterHams(previous: HamsState, signal: HamsSignal, data: { at: string; spot: number; chain: HamsQuote[]; candle: HamsCandle | null }): HamsState {

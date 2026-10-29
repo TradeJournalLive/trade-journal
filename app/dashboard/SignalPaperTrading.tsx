@@ -3,7 +3,6 @@ import { accountFetch } from "../lib/accountFetch";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { activeMarkets, type PaperMarket } from "../lib/algo/paperEngine";
-import { niftyRules } from "../lib/algo/niftyRules";
 import BtcDeltaPaper, { type BtcDeltaBook } from "./BtcDeltaPaper";
 import type { loadPaperBooks } from "../lib/algo/paperHistory";
 import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
@@ -120,27 +119,36 @@ export default function SignalPaperTrading() {
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
-      <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Simulated fills only · Gross P&amp;L before fees</p>
+      <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Paper LIMIT orders · New-rule P&amp;L includes estimated charges; earlier results unchanged</p>
       <p className="text-xs text-slate-500">Last index tick: {book?.options?.lastTickAt ? time(book.options.lastTickAt) : "--"}</p>
       <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
-      <PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR gross`} openPnl={`${pnl(book?.options?.unrealized)} INR gross`} closedTrades={book?.options?.tradeCount} />
+      <PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} />
       <div className="algo-rule-list"><div><span>Engine status</span><b>{book?.options?.status ?? "Loading"}</b></div><div><span>Market feed</span><b>{book?.options?.stale === false ? "Receiving" : "Missing or stale"}</b></div><div><span>Next size</span><b>{book?.options?.size.lots ?? 1} lots</b></div></div>
       <details className="border-y border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list">
         <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
-        <div><dt>Contract</dt><dd>{niftyRules.selection} · nearest expiry</dd></div>
+        <div><dt>Contract</dt><dd>ATM · nearest weekly expiry · ₹10,00,000 initial capital</dd></div>
         <div><dt>Validity</dt><dd>Next 10 candles · signal range ≤35 points</dd></div>
-        <div><dt>Premium stop</dt><dd>min(20 points, 20% of entry premium)</dd></div>
+        <div><dt>Premium stop</dt><dd>min(20 points, 25% of entry premium)</dd></div>
         <div><dt>Index trail</dt><dd>Disabled</dd></div>
-        <div><dt>Last signal</dt><dd>14:55 IST · inclusive</dd></div>
-        <div><dt>Exit</dt><dd>Opposite signal or 14:55 IST</dd></div>
-        <div><dt>Size</dt><dd>Start 1 lot · +1 after SL or two consecutive other losses · no size reset or cap</dd></div>
+        <div><dt>Session</dt><dd>09:17–14:50 IST</dd></div>
+        <div><dt>Exit</dt><dd>Opposite breakout, stop, target or 14:50 IST · limit only</dd></div>
+        <div><dt>Size</dt><dd>Start 1 · +1 after loss · cap 20 · profitable trade and positive cumulative net resets to 1</dd></div>
         <div><dt>Entry fill</dt><dd>Available ask depth · maximum ₹4 above initial ask · average fill price</dd></div>
-        <div><dt>Target</dt><dd>1:5 R:R · entire position at entry + 5 × initial premium stop distance</dd></div>
+        <div><dt>Target</dt><dd>Entry + min(100 premium points, 100% of entry)</dd></div>
+        <div><dt>Reversal</dt><dd>Exit fill confirmed first, then opposite ATM entry · bid − ₹4 / ask + ₹4 limits</dd></div>
       </dl></details>
-      {book?.options?.position && <div className="algo-rule-list"><div><span>Open contract</span><b>{book.options.position.contract.id}</b></div><div><span>Capital used · INR premium</span><b>{number(book.options.position.entry * book.options.position.quantity)}</b></div><div><span>Remaining lots / quantity</span><b>{book.options.position.lots} / {book.options.position.quantity}</b></div><div><span>Average entry / current bid</span><b>{number(book.options.position.entry)} / {book.options.mark == null ? "--" : number(book.options.mark)}</b></div><div><span>Premium stop</span><b>{number(book.options.position.entry - (book.options.stopDistance ?? 0))}</b></div><div><span>Target · 5R</span><b>{number(book.options.position.entry + niftyRules.targetR * (book.options.stopDistance ?? 0))}</b></div>{book.options.position.entryFill && <div><span>Initial ask / slippage per unit</span><b>{number(book.options.position.entryFill.initialAsk)} / {number(book.options.position.entryFill.slippage)}</b></div>}<div><span>Booked partial P&amp;L · INR</span><b>{pnl(book.options.position.realizedPnl ?? 0)}</b></div></div>}
+      {book?.options?.position && <div className="algo-rule-list">
+        <div><span>Open contract</span><b>{book.options.position.contract.id}</b></div>
+        <div><span>Capital used · INR premium</span><b>{number(book.options.position.entry * book.options.position.quantity)}</b></div>
+        <div><span>Lots / quantity</span><b>{book.options.position.lots} / {book.options.position.quantity}</b></div>
+        <div><span>Average entry / current bid</span><b>{number(book.options.position.entry)} / {book.options.mark == null ? "--" : number(book.options.mark)}</b></div>
+        <div><span>Premium stop</span><b>{number(book.options.position.entry - (book.options.stopDistance ?? 0))}</b></div>
+        <div><span>Premium target</span><b>{number(book.options.position.entry + Math.min(100,book.options.position.entry))}</b></div>
+        <div><span>Order type</span><b>LIMIT · no market fallback</b></div>
+      </div>}
       {book?.options?.pendingExit && <div role="alert" className="algo-alert-box"><b>Exit awaiting verified quote</b><span>{book.options.pendingExit}</span></div>}
-      <div className="flex flex-wrap gap-4 py-3 text-sm"><span>{optionTrades.length} closed trades · {tradeDate || "All dates"}</span><span>Selected gross INR: {pnl(optionTrades.reduce((sum, trade) => sum + trade.pnl, 0))}</span></div>
-      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Contract</th><th>Lots</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry ask</th><th>Capital used · INR</th><th>Exit date</th><th>Exit time · IST</th><th>Exit bid</th><th>Gross INR</th><th>Reason</th></tr></thead><tbody>{optionTrades.length ? [...optionTrades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{istDay(trade.openedAt)}</td><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{number(trade.entry * trade.quantity)}</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={13}>No completed options paper trades for this entry date.</td></tr>}</tbody></table></div>
+      <div className="flex flex-wrap gap-4 py-3 text-sm"><span>{optionTrades.length} closed trades · {tradeDate || "All dates"}</span><span>Selected P&amp;L · new net / legacy gross INR: {pnl(optionTrades.reduce((sum, trade) => sum + trade.pnl, 0))}</span></div>
+      <div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Entry date</th><th>Contract</th><th>Lots</th><th>Received time · IST</th><th>Signal time · IST</th><th>Entry time · IST</th><th>Entry fill</th><th>Capital used · INR</th><th>Exit date</th><th>Exit time · IST</th><th>Exit fill</th><th>P&amp;L · INR</th><th>Charges · INR</th><th>Reason</th></tr></thead><tbody>{optionTrades.length ? [...optionTrades].reverse().map(trade => <tr key={`${trade.signalId}-${trade.openedAt}`}><td>{istDay(trade.openedAt)}</td><td>{trade.contract.id}</td><td>{trade.lots}</td><td>{istTime(trade.signalReceivedAt) || "--"}</td><td>{istTime(trade.signalClosedAt) || "--"}</td><td>{istTime(trade.openedAt)}</td><td>{number(trade.entry)}</td><td>{number(trade.entry * trade.quantity)}</td><td>{istDay(trade.closedAt)}</td><td>{istTime(trade.closedAt)}</td><td>{number(trade.exit)}</td><td>{pnl(trade.pnl)} {"costs" in trade ? "net" : "legacy gross"}</td><td>{"costs" in trade ? number((trade.costs as {total:number}).total) : "--"}</td><td>{trade.reason}</td></tr>) : <tr><td colSpan={14}>No completed options paper trades for this entry date.</td></tr>}</tbody></table></div>
     </section>}
     {market !== "BTC" && <details key={market} className="border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-500">Previous signal-price test &amp; history</summary><div className="mt-4 space-y-4">
     <label className="flex items-center gap-3 text-sm"><input aria-label={`${market} paper trading`} type="checkbox" role="switch" checked={book?.enabled ?? false} disabled={!books || busy} onChange={() => void toggle()} />Legacy test entries · {book?.enabled ? "On" : "Off"}</label>

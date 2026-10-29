@@ -15,6 +15,7 @@ function loadAlgo(name) {
 }
 const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = loadAlgo('hamsFinalPaper');
 const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
+const { initializeHamsLimits, receiveHamsLimit, markHamsLimit } = loadAlgo('hamsLimitAdapter');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
 const root = path.resolve('.paper-worker'), directory = path.join(root, 'hams-final');
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -130,7 +131,7 @@ function onMessage(message) {
       }
       if (spot && Date.now()-spot.at <= 5000) feedAt = new Date(spot.at).toISOString();
       if (!executionAllowed()) continue;
-      if (state.position && r.symbol === state.position.contract.id) {
+      if (!state.rulesV2 && state.position && r.symbol === state.position.contract.id) {
         const q = contractQuotes(at).find(c => c.id === r.symbol);
         if (q) {
           const before = state.trades.length;
@@ -145,6 +146,16 @@ function onMessage(message) {
   } catch { status = 'PROCESSING_ERROR'; stopped = true; }
 }
 function tryEntry() {
+  if(state.rulesV2){
+    if(!executionAllowed()||!spot||Date.now()-spot.at>5000)return;
+    const at=now(),before=state.position,closed=state.trades.length;
+    state=markHamsLimit(state,{at,spot:spot.price,chain:contractQuotes(at)});
+    decisions=state.rulesV2.decisions;
+    mark=state.rulesV2.mark;
+    if(state.trades.length!==closed){save();audit('TRADE',state.trades.at(-1));}
+    if(!before&&state.position){save();audit('ENTRY',state.position);}
+    return;
+  }
   if (!pending?.candle || !executionAllowed() || state.position) return;
   const at = now();
   if (!spot || Date.now()-spot.at > 5000) return;
@@ -160,6 +171,11 @@ function tryEntry() {
   if(entered)audit('ENTRY',state.position);
 }
 async function prepare(signal) {
+  if(state.rulesV2){
+    if(signal.symbol!=='NSE:NIFTY'||signal.timeframe!=='3') { decide(signal,'INVALID_SIGNAL');return; }
+    if(reviewRequired()){decide(signal,'RECOVERY_REVIEW_REQUIRED');return;}
+    state=receiveHamsLimit(state,{...signal,interval:3});decisions=state.rulesV2.decisions;save();return;
+  }
   if (pending) { decide(pending.signal,'SUPERSEDED'); pending=null; }
   if (state.seen.includes(`${signal.strategyId}:${signal.id}`)) return;
   if (reviewRequired()) { decide(signal,'RECOVERY_REVIEW_REQUIRED'); return; }
@@ -206,7 +222,7 @@ async function poll() {
       } else {
         const s=value.signal, candle=s?.metadata?.hamsFinalPaper;
         if(candle?.kind==='SIGNAL' && s.timeframe==='3' && ['BUY','SELL'].includes(s.action)) {
-          const signal={ strategyId:s.strategyId,id:s.id,action:s.action,symbol:s.symbol,timeframe:s.timeframe,closedAt:candle.closedAt,receivedAt:value.received_at };
+          const signal={ strategyId:s.strategyId,id:s.id,action:s.action,symbol:s.symbol,timeframe:s.timeframe,closedAt:candle.closedAt,receivedAt:value.received_at,high:candle.high,low:candle.low };
           try { await prepare(signal); } catch { decide(signal,'FYERS_CANDLE_REQUEST_FAILED'); }
         }
       }
@@ -252,6 +268,11 @@ async function main() {
     if(!incidents.some(i=>i.id===id||i.position?.signalId===state.position.signalId))incidents.push({id,signalId:state.position.signalId,at:now(),status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Position preserved after restart. The unobserved price path cannot establish a verified exit.'});
   }
   if(reviewRequired())state.status='RECOVERY_REVIEW_REQUIRED';
+  if(!reviewRequired()){
+    const upgrading=!state.rulesV2;
+    state=initializeHamsLimits(state,now());
+    if(upgrading)state.rulesV2.decisions=structuredClone(decisions);
+  }
   pollAfter=saved?.pollAfter || previous.data?.received_at || now();
   connection=await credentials();
   const response=await fetch('https://public.fyers.in/sym_details/NSE_FO.csv',{signal:AbortSignal.timeout(20000)});

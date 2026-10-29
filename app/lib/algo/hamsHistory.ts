@@ -28,7 +28,7 @@ export function hamsRecoveryView(saved: HamsState | null, storedIncidents: HamsI
   }
   const excluded = new Set([...incidents.values()].filter(i => i.acknowledgedAt).map(i => i.signalId));
   state.trades = [...trades.values()].sort((a,b) => a.closedAt.localeCompare(b.closedAt));
-  state.balance = 500000 + state.trades.reduce((sum,t) => sum + t.pnl, 0);
+  state.balance = state.rulesV2 ? state.rulesV2.balance : 500000 + state.trades.reduce((sum,t) => sum + t.pnl, 0);
   const lastTrade = state.trades.at(-1), savedLastTrade = saved?.trades.at(-1);
   if (lastTrade && (!savedLastTrade || lastTrade.closedAt > savedLastTrade.closedAt)) state.nextLots = nextHamsLots(lastTrade.lots, lastTrade.reason);
   if (state.position && (trades.has(key(state.position)) || excluded.has(state.position.signalId))) state.position = null;

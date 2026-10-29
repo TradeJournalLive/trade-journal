@@ -1,4 +1,6 @@
 import type { PaperEvent } from "./paperEngine";
+import { buildNiftyLimitPaper } from "./niftyLimitAdapter";
+import type { LimitState } from "./niftyLimitPaper";
 import { niftyRules, nextNiftySize, niftyBreakout, niftyExit, niftyTargets, niftyEntryFill, premiumStopDistance, type NiftySetup, type NiftyDepthLevel } from "./niftyRules";
 
 type Contract = { id: string; expiry: string; strike: number; side: "CE" | "PE"; lotSize: number; bid: number; ask: number; timestamp: string; bidSize?: number; askSize?: number; asks?: NiftyDepthLevel[]; depthAt?: string };
@@ -7,7 +9,7 @@ type Position = { contract: Contract; lots: number; quantity: number; entry: num
 type Trade = Position & { exit: number; closedAt: string; reason: string; pnl: number };
 type Decision = { id: string; receivedAt: string; decidedAt: string; status: string; reason: string };
 type Tick = { indexSymbol: string; timestamp: string; price: number; nearestExpiry: string; chainComplete: boolean; executionVersion?: 2; previous15m?: { high: number; low: number; closedAt: string }; contracts: Contract[] };
-export type NiftyPaperCheckpoint = { enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number; decisions?: Decision[] };
+export type NiftyPaperCheckpoint = { rulesV2?: LimitState; enabled: boolean; setup: Setup | null; position: Position | null; previousTick: Tick | null; size: { lots: number; consecutiveLosses: number }; pendingExit: string | null; status: string; lastTickAt: string | null; mark: number | null; trades: Trade[]; seen: string[]; realizedBase?: number; tradeCountBase?: number; decisions?: Decision[] };
 
 function minutesIST(timestamp: string) {
   const date = new Date(Date.parse(timestamp) + 330 * 60000);
@@ -34,6 +36,7 @@ function validQuote(contract: Contract, tick: Tick) {
 
 // This reducer has no broker-order path. It replays persisted, timestamped market snapshots.
 export function buildNiftyOptionsPaper(events: PaperEvent[], now = new Date().toISOString(), initial?: NiftyPaperCheckpoint) {
+  if(initial?.rulesV2)return buildNiftyLimitPaper(events,now,initial);
   const saved = initial ? structuredClone(initial) : undefined;
   let enabled = saved?.enabled ?? false;
   let setup: Setup | null = saved?.setup ?? null;

@@ -11,6 +11,6 @@ function withDepth(quote, depth, now) {
   if (!quote || !depth || Date.parse(now) - Date.parse(depth.depthAt) < 0 || Date.parse(now) - Date.parse(depth.depthAt) > 5000
     || quote.ask !== depth.asks[0].price || quote.bid !== depth.bids[0].price) return quote;
   // Never add the best ask twice or combine depth from different snapshots.
-  return { ...quote, asks: depth.asks, depthAt: depth.depthAt };
+  return { ...quote, asks: depth.asks, bids: depth.bids, depthAt: depth.depthAt };
 }
 module.exports = { readDepth, withDepth };

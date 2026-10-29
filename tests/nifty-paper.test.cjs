@@ -7,7 +7,7 @@ const path = require("node:path");
 function load(name) {
   const file = path.resolve(__dirname, `../app/lib/algo/${name}.ts`);
   const copy = new Module(file, module);
-  copy.require = id => id === "./niftyRules" ? load("niftyRules") : require(id);
+  copy.require = id => id.startsWith("./") ? load(id.slice(2)) : require(id);
   copy._compile(ts.transpileModule(fs.readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, file);
   return copy.exports;
 }

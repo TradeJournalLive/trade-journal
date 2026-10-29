@@ -16,6 +16,7 @@ function load(name) {
   return copy.exports;
 }
 const { buildNiftyOptionsPaper } = load('niftyPaperEngine');
+const { buildNiftyLimitPaper } = load('niftyLimitAdapter');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__nifty_paper_worker__';
 const indexSymbol = 'NSE:NIFTY50-INDEX';
 const hash = text => crypto.createHash('sha256').update(text).digest('hex');
@@ -53,7 +54,7 @@ function advance(events) {
   const before = book?.trades.length ?? 0;
   const previousPosition = book?.position?.openedAt;
   const previousQuantity = book?.position?.quantity;
-  book = buildNiftyOptionsPaper(events, now(), state.checkpoint);
+  book = buildNiftyLimitPaper(events, now(), state.checkpoint);
   state.checkpoint = book.checkpoint;
   for (const trade of book.trades.slice(before)) audit('TRADE', trade);
   if (before !== book.trades.length || previousPosition !== book.position?.openedAt || previousQuantity !== book.position?.quantity) saveLocal();
@@ -148,7 +149,7 @@ async function subscriptions() {
 }
 function summary(value = state) {
   const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), value.checkpoint);
-  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: false };
+  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: Boolean(checkpoint.rulesV2) };
 }
 async function publish() {
   const at = now();
@@ -172,7 +173,7 @@ async function publish() {
     unpersisted.forEach(trade => persistedTrades.add(`${trade.signalId}:${trade.openedAt}`));
   }
   // Historical fills live in their own immutable-key ledger, not every heartbeat.
-  snapshot.checkpoint = { ...result.checkpoint, decisions: (result.checkpoint.decisions || []).slice(-100), trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
+  snapshot.checkpoint = result.checkpoint.rulesV2 ? result.checkpoint : { ...result.checkpoint, decisions: (result.checkpoint.decisions || []).slice(-100), trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
   const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (error || data?.length !== 1) throw new Error('WORKER_LEASE_OR_STORAGE_LOST');
   lease = at; lastPublish = Date.now(); saveLocal();
@@ -226,7 +227,6 @@ async function main() {
     if (Date.now() >= Date.parse(state.endsAt)) advance([{ ...event('trial-end', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: false } } }]);
     if (Date.now() - lastHistory > 30000) {
       lastHistory = Date.now();
-      try { await history(); } catch { status = 'HISTORY_UNAVAILABLE'; }
       try { await subscriptions(); } catch { status = 'SUBSCRIPTION_REFRESH_FAILED'; }
     }
     if (Date.now() - lastCredentials > 60000) {
