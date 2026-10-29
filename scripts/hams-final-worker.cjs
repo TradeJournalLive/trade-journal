@@ -6,9 +6,15 @@ const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
 const { readDepth } = require('./nifty-depth.cjs');
-const file = path.resolve(__dirname, '../app/lib/algo/hamsFinalPaper.ts'), mod = new Module(file, module);
-mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, file);
-const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = mod.exports;
+const { HamsJournal, selectSnapshot, flushHamsRecords, confirmHamsPublish, digest } = require('./hams-journal.cjs');
+function loadAlgo(name) {
+  const file=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),copy=new Module(file,module);
+  copy.require=id=>id.startsWith('./')?loadAlgo(id.slice(2)):require(id);
+  copy._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);
+  return copy.exports;
+}
+const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = loadAlgo('hamsFinalPaper');
+const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
 const root = path.resolve('.paper-worker'), directory = path.join(root, 'hams-final');
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -21,19 +27,23 @@ const now = () => new Date().toISOString();
 const day = at => new Date(Date.parse(at) + 330*60000).toISOString().slice(0,10);
 let state = emptyHamsState(), decisions = [], pending = null, connection, socket, master = [], spot = null;
 let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = false, busy = false, publishing = false, pollAfter;
+let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 const quotes = new Map(), depths = new Map(), processed = new Set();
 function audit(type, value) { fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, value })+'\n', { mode: 0o600 }); }
 function save() {
-  fs.writeFileSync(checkpoint+'.tmp', JSON.stringify({ owner, state, decisions, pending, savedAt: now(), pollAfter }), { mode: 0o600 });
-  fs.renameSync(checkpoint+'.tmp', checkpoint);
+  if (!initialized || !claimed) return;
+  const committed = journal.save({ owner, state, decisions, incidents, lastControl, pending, pollAfter });
+  revision = committed.revision;
 }
 function owned() { return !stopped && Date.now()-ack < 10000; }
+function reviewRequired() { return incidents.some(i => !i.acknowledgedAt); }
+function executionAllowed() { return owned() && !reviewRequired(); }
 function decide(signal, result) {
   if (result !== 'LOADING_COMPLETED_3M_OPTION_CANDLE') {
     const key = `${signal.strategyId}:${signal.id}`;
     if (!state.seen.includes(key)) state.seen.push(key);
   }
-  const value = { id: signal.id, receivedAt: signal.receivedAt, status: result };
+  const value = { id: signal.id, receivedAt: signal.receivedAt, decidedAt: now(), status: result };
   const i = decisions.findIndex(d => d.id === signal.id);
   if (i < 0) decisions.push(value); else decisions[i] = value;
   audit('DECISION', value); save();
@@ -76,11 +86,27 @@ async function publish() {
   if (publishing || stopped) return;
   publishing = true;
   try {
-    const at = now(), snapshot = { workerId, state: structuredClone(state), decisions: structuredClone(decisions), pending, feedAt, mark, workerStatus: status };
+    save();
+    const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
     const r = await db.from(TABLE).update(row('state',at,snapshot)).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).select('id');
-    if (r.error || r.data?.length !== 1) throw new Error('LEASE_OR_STORAGE_LOST');
+    await confirmHamsPublish(r,()=>db.from(TABLE).select('received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
     lease = at; ack = Date.parse(at); save();
   } finally { publishing = false; }
+}
+async function flushLedger() {
+  if (flushing || !claimed || stopped) return;
+  flushing = true;
+  try {
+    await flushHamsRecords(journal, async records => {
+      const rows = records.map(r => row(`ledger:${r.id}`, r.record.at, { record:r.record, recordHash:digest(r.record) }));
+      const result = await db.from(TABLE).upsert(rows,{onConflict:'secret_hash,strategy_id,signal_id',ignoreDuplicates:true});
+      if(result.error)throw Error('HAMS_LEDGER_STORAGE_UNAVAILABLE');
+      const check = await db.from(TABLE).select('signal_id,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).in('signal_id',rows.map(r=>r.signal_id));
+      if(check.error || check.data?.length!==rows.length)throw Error('HAMS_LEDGER_ACK_UNAVAILABLE');
+      for(const r of rows)if(check.data.find(v=>v.signal_id===r.signal_id)?.raw_payload?.recordHash!==r.raw_payload.recordHash)throw Error('HAMS_LEDGER_CONFLICT');
+    });
+    if(status==='HAMS_LEDGER_SYNC_RETRY'&&socket?.isConnected())status='READY';
+  } finally { flushing = false; }
 }
 function contractQuotes(at) {
   return master.map(c => {
@@ -103,7 +129,7 @@ function onMessage(message) {
         else if (Number(r.bid_price)>0 && Number(r.ask_price)>=Number(r.bid_price)) quotes.set(r.symbol,{ at:new Date(t).toISOString(),bid:Number(r.bid_price),ask:Number(r.ask_price),bidSize:Number(r.bid_size),askSize:Number(r.ask_size) });
       }
       if (spot && Date.now()-spot.at <= 5000) feedAt = new Date(spot.at).toISOString();
-      if (!owned()) continue;
+      if (!executionAllowed()) continue;
       if (state.position && r.symbol === state.position.contract.id) {
         const q = contractQuotes(at).find(c => c.id === r.symbol);
         if (q) {
@@ -111,7 +137,7 @@ function onMessage(message) {
           // Receipt-time depth can update within an exchange second; persist both sources.
           if (q.depthAt) q.at = new Date(Math.max(Date.parse(q.at),Date.parse(q.depthAt))).toISOString();
           state = markHams(state,q,at); mark = q.bid;
-          if (state.trades.length !== before) { audit('TRADE',state.trades.at(-1)); save(); }
+          if (state.trades.length !== before) { save(); audit('TRADE',state.trades.at(-1)); }
         }
       }
       tryEntry();
@@ -119,7 +145,7 @@ function onMessage(message) {
   } catch { status = 'PROCESSING_ERROR'; stopped = true; }
 }
 function tryEntry() {
-  if (!pending?.candle || !owned() || state.position) return;
+  if (!pending?.candle || !executionAllowed() || state.position) return;
   const at = now();
   if (!spot || Date.now()-spot.at > 5000) return;
   const chain = contractQuotes(at), selected = chain.find(q => q.id === pending.candle.contractId);
@@ -129,11 +155,14 @@ function tryEntry() {
   const bounded = chain.map(q=>q.id===selected.id && q.asks ? {...q,asks:q.asks.filter(l=>l.price<=pending.initialAsk+4)} : q);
   const next = enterHams(state,pending.signal,{at,spot:pending.spot,chain:bounded,candle:pending.candle});
   if (next.status === 'INSUFFICIENT_OBSERVED_ASK_DEPTH' && Date.now()-pending.attemptAt<1500) return;
+  const entered = !state.position && next.position;
   state=next; decide(pending.signal,state.status); pending=null; save();
+  if(entered)audit('ENTRY',state.position);
 }
 async function prepare(signal) {
   if (pending) { decide(pending.signal,'SUPERSEDED'); pending=null; }
   if (state.seen.includes(`${signal.strategyId}:${signal.id}`)) return;
+  if (reviewRequired()) { decide(signal,'RECOVERY_REVIEW_REQUIRED'); return; }
   if (state.position) {
     state=enterHams(state,signal,{at:now(),spot:spot?.price || 1,chain:[],candle:null});
     decide(signal,state.status);
@@ -161,7 +190,19 @@ async function poll() {
     for(const value of r.data||[]) {
       if(processed.has(value.id)) continue;
       if(value.strategy_id==='__hams_final_control__') {
-        if(typeof value.raw_payload?.enabled==='boolean') { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; save(); }
+        if(lastControl && (Date.parse(value.received_at)<Date.parse(lastControl.at) || (value.received_at===lastControl.at && value.id===lastControl.id))) { processed.add(value.id);continue; }
+        if(value.raw_payload?.acknowledgeRecovery===true) {
+          const at=now();
+          const unresolved=new Set(incidents.filter(i=>!i.acknowledgedAt).map(i=>i.signalId));
+          incidents=incidents.map(i=>i.acknowledgedAt?i:{...i,acknowledgedAt:at,status:'EXCLUDED_UNVERIFIED'});
+          decisions=decisions.map(d=>unresolved.has(d.id)?{...d,status:'EXCLUDED_UNVERIFIED',reason:'Unverified result explicitly excluded after recovery review; no exit or P&L invented.',decidedAt:at}:d);
+          if(state.position && incidents.some(i=>i.position?.signalId===state.position.signalId&&i.acknowledgedAt)) { state.position=null;state.pendingExit=null;mark=null; }
+          state.status=state.position?'OPEN':state.enabled?'WAITING_FOR_SIGNAL':'DISABLED';pending=null;
+        }
+        if(typeof value.raw_payload?.enabled==='boolean') { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
+        lastControl={id:value.id,at:value.received_at,enabled:state.enabled};
+        if(reviewRequired())state.status='RECOVERY_REVIEW_REQUIRED';
+        save();
       } else {
         const s=value.signal, candle=s?.metadata?.hamsFinalPaper;
         if(candle?.kind==='SIGNAL' && s.timeframe==='3' && ['BUY','SELL'].includes(s.action)) {
@@ -175,14 +216,42 @@ async function poll() {
   } finally { busy=false; }
 }
 async function main() {
+  journal = new HamsJournal(directory,owner);
+  const durable = journal.read();
   const previous=await db.from(TABLE).select('received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle();
   if(previous.error)throw new Error('STATE_STORAGE_UNAVAILABLE');
   if(previous.data && Date.now()-Date.parse(previous.data.received_at)<15000)throw new Error('ANOTHER_HAMS_WORKER_ACTIVE');
-  let saved=previous.data?.raw_payload;
-  if(fs.existsSync(checkpoint)) { const local=JSON.parse(fs.readFileSync(checkpoint,'utf8')); if(local.owner===owner && Date.parse(local.savedAt)>Date.parse(previous.data?.received_at||'1970-01-01'))saved=local; }
-  if(saved?.state) { state=saved.state; decisions=saved.decisions||[]; }
-  // A restart never assumes missed price-path exits or revives an old pending entry.
-  if(state.position) { state.status='RESTART_REQUIRES_REVIEW'; throw new Error('OPEN_POSITION_REQUIRES_REVIEW'); }
+  const cloud=previous.data?.raw_payload?.state ? {...previous.data.raw_payload,owner,savedAt:previous.data.raw_payload.savedAt||previous.data.received_at} : null;
+  const local=!durable&&fs.existsSync(checkpoint)?JSON.parse(fs.readFileSync(checkpoint,'utf8')):null;
+  const saved=selectSnapshot([durable,cloud,local],owner);
+  if(saved) { state=saved.state; decisions=saved.decisions||[]; incidents=saved.incidents||[];lastControl=saved.lastControl||null;revision=saved.revision||0; }
+  const records=await loadHamsRecords(db,owner);
+  const recovered=hamsRecoveryView(state,incidents,records);
+  state=recovered.state;incidents=recovered.incidents;
+  // Restore the most recent explicit switch, not an empty default from an old failed startup.
+  if(!lastControl) {
+    const controls=await db.from(TABLE).select('id,received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id','__hams_final_control__').order('received_at',{ascending:false}).order('id',{ascending:false}).limit(1);
+    if(controls.error)throw Error('HAMS_CONTROL_STORAGE_UNAVAILABLE');
+    const control=controls.data?.[0];
+    if(control&&typeof control.raw_payload?.enabled==='boolean'){state=setHamsEnabled(state,control.raw_payload.enabled);lastControl={id:control.id,at:control.received_at,enabled:state.enabled};}
+  }
+  // Preserve evidence of legacy entries whose detailed checkpoint was already lost.
+  for(const name of fs.readdirSync(directory).filter(f=>/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f))) {
+    for(const line of fs.readFileSync(path.join(directory,name),'utf8').split('\n').filter(Boolean)) {
+      let e;try{e=JSON.parse(line);}catch{continue;}
+      if(e.type==='DECISION'&&e.value?.status==='OPEN'&&state.position?.signalId!==e.value.id&& !state.trades.some(t=>t.signalId===e.value.id)) {
+        const id=`legacy-entry:${hash(e.value.id)}`;
+        if(!incidents.some(i=>i.id===id))incidents.push({id,signalId:e.value.id,at:e.at,status:'ENTRY_RECORD_LOST',reason:'An entry was recorded before the legacy state-loss bug. Entry details and exit are unavailable; P&L is unverified.'});
+        if(!decisions.some(d=>d.id===e.value.id))decisions.push({id:e.value.id,receivedAt:e.value.receivedAt||e.at,decidedAt:now(),status:incidents.find(i=>i.id===id).acknowledgedAt?'EXCLUDED_UNVERIFIED':'ENTRY_RECORD_LOST',reason:'Legacy entry evidence preserved; no verified exit or P&L is available.'});
+        const key=`${hamsFinalRules.strategyId}:${e.value.id}`;if(!state.seen.includes(key))state.seen.push(key);
+      }
+    }
+  }
+  if(state.position) {
+    const id=`interrupted:${hash(state.position.signalId+state.position.openedAt)}`;
+    if(!incidents.some(i=>i.id===id||i.position?.signalId===state.position.signalId))incidents.push({id,signalId:state.position.signalId,at:now(),status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Position preserved after restart. The unobserved price path cannot establish a verified exit.'});
+  }
+  if(reviewRequired())state.status='RECOVERY_REVIEW_REQUIRED';
   pollAfter=saved?.pollAfter || previous.data?.received_at || now();
   connection=await credentials();
   const response=await fetch('https://public.fyers.in/sym_details/NSE_FO.csv',{signal:AbortSignal.timeout(20000)});
@@ -194,11 +263,16 @@ async function main() {
   if(!symbols.length)throw new Error('NO_OPTION_SUBSCRIPTIONS');
   if(process.argv.includes('--check')) { console.log(JSON.stringify({accountBindingVerified:true,fyersDataAccess:true,optionSymbols:symbols.length,mode:'PAPER',stateWritten:false})); return; }
   lease=now();
-  const claim=row('state',lease,{workerId,state,decisions,workerStatus:'CONNECTING'});
-  const claimed=previous.data ? await db.from(TABLE).update(claim).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',previous.data.received_at).select('id') : await db.from(TABLE).insert(claim).select('id');
-  if(claimed.error || claimed.data?.length!==1)throw new Error('LEASE_CLAIM_FAILED');
+  const claim=row('state',lease,{workerId,owner,state,decisions,incidents,lastControl,pollAfter,revision,savedAt:saved?.savedAt||now(),workerStatus:'CONNECTING'});
+  const claimResult=previous.data ? await db.from(TABLE).update(claim).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',previous.data.received_at).select('id') : await db.from(TABLE).insert(claim).select('id');
+  if(claimResult.error || claimResult.data?.length!==1)throw new Error('LEASE_CLAIM_FAILED');
+  claimed = true;
+  journal.initialize({owner,state,decisions,incidents,lastControl,revision,savedAt:saved?.savedAt||now()});
+  initialized = true;
   ack=Date.parse(lease);
-  if(process.argv.includes('--arm'))state=setHamsEnabled(state,true);
+  if(process.argv.includes('--arm')){state=setHamsEnabled(state,true);lastControl={id:`cli-arm:${workerId}`,at:now(),enabled:true};}
+  save();
+  await flushLedger();
   socket=fyersDataSocket.getInstance(`${connection.appId}:${connection.accessToken}`,directory,false);
   socket.on('connect',()=>{status='READY';quotes.clear();depths.clear();spot=null;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);});
   socket.on('message',onMessage);socket.on('error',()=>{status='FEED_ERROR';feedAt=null;});socket.on('close',()=>{status='FEED_DISCONNECTED';feedAt=null;});
@@ -208,16 +282,23 @@ async function main() {
   while(!stopped) {
     await new Promise(r=>setTimeout(r,250));
     if(Date.now()-ack>2000&&!publishing) void publish().catch(()=>{status='LEASE_OR_STORAGE_LOST';stopped=true;});
+    if(!flushing)void flushLedger().catch(()=>{status='HAMS_LEDGER_SYNC_RETRY';});
     if(!busy) void poll().catch(()=>{status='SIGNAL_STORAGE_UNAVAILABLE';});
     tryEntry();
     if(pending && Date.now()-Date.parse(pending.signal.closedAt)>=180000) { decide(pending.signal,'MISSED_SIGNAL_CLOSE');pending=null;save(); }
     if(Date.now()-lastRefresh>60000&&!busy) {
       lastRefresh=Date.now();
-      const updated=await credentials(); if(updated.accessToken!==connection.accessToken)throw new Error('FYERS_SESSION_CHANGED_RESTART');
-      const updatedChain=await api(`data/options-chain-v3?symbol=${encodeURIComponent(INDEX)}&strikecount=12`);
-      const ids=(updatedChain.data?.optionsChain||[]).filter(r=>['CE','PE'].includes(r.option_type)).map(r=>r.symbol);
-      if(state.position)ids.push(state.position.contract.id);
-      if(socket.isConnected()&&ids.length){socket.subscribe([...new Set(ids)]);socket.subscribe([...new Set(ids)],true);}
+      try {
+        const updated=await credentials(); if(updated.accessToken!==connection.accessToken)throw new Error('FYERS_SESSION_CHANGED_RESTART');
+        const updatedChain=await api(`data/options-chain-v3?symbol=${encodeURIComponent(INDEX)}&strikecount=12`);
+        const ids=(updatedChain.data?.optionsChain||[]).filter(r=>['CE','PE'].includes(r.option_type)).map(r=>r.symbol);
+        if(state.position)ids.push(state.position.contract.id);
+        if(socket.isConnected()&&ids.length){socket.subscribe([...new Set(ids)]);socket.subscribe([...new Set(ids)],true);}
+        if(socket.isConnected())status='READY';
+      } catch(e) {
+        if(e.message==='FYERS_SESSION_CHANGED_RESTART')throw e;
+        status='CREDENTIAL_OR_SUBSCRIPTION_REFRESH_RETRY';
+      }
     }
   }
   throw new Error('HAMS_WORKER_STOPPED');

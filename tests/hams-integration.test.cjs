@@ -15,7 +15,7 @@ test('existing signals are unchanged and foreign strategies cannot submit HAMS d
 function route(secret='account-a',origin=true){
   const filters=[], file=path.resolve(__dirname,'../app/api/algo/hams-final/route.ts'),m=new Module(file,module);
   const query={select(){return this;},eq(k,v){filters.push([k,v]);return this;},async maybeSingle(){return {data:null,error:null};},async insert(){return {error:null};}};
-  m.require=id=>id==='next/server'?{NextResponse:{json:(body,init={})=>({body,status:init.status||200,headers:init.headers})}}:id.endsWith('/connection')?{connectionSecret:async()=>secret,sameOrigin:()=>origin}:id.endsWith('/signalStore')?{getServerSupabase:()=>({from:()=>query}),hashWebhookSecret:s=>`hash:${s}`}:id.endsWith('/hamsFinalPaper')?load('hamsFinalPaper'):require(id);
+  m.require=id=>id==='next/server'?{NextResponse:{json:(body,init={})=>({body,status:init.status||200,headers:init.headers})}}:id.endsWith('/connection')?{connectionSecret:async()=>secret,sameOrigin:()=>origin}:id.endsWith('/signalStore')?{getServerSupabase:()=>({from:()=>query}),hashWebhookSecret:s=>`hash:${s}`}:id.endsWith('/hamsHistory')?{...load('hamsHistory'),loadHamsRecords:async()=>[]}:id.endsWith('/hamsFinalPaper')?load('hamsFinalPaper'):require(id);
   m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return {api:m.exports,filters};
 }
 test('HAMS API denies signed-out users and scopes books to the verified account',async()=>{
