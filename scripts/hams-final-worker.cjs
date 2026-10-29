@@ -212,7 +212,10 @@ async function poll() {
           const unresolved=new Set(incidents.filter(i=>!i.acknowledgedAt).map(i=>i.signalId));
           incidents=incidents.map(i=>i.acknowledgedAt?i:{...i,acknowledgedAt:at,status:'EXCLUDED_UNVERIFIED'});
           decisions=decisions.map(d=>unresolved.has(d.id)?{...d,status:'EXCLUDED_UNVERIFIED',reason:'Unverified result explicitly excluded after recovery review; no exit or P&L invented.',decidedAt:at}:d);
-          if(state.position && incidents.some(i=>i.position?.signalId===state.position.signalId&&i.acknowledgedAt)) { state.position=null;state.pendingExit=null;mark=null; }
+          if(state.position && incidents.some(i=>i.position?.signalId===state.position.signalId&&i.acknowledgedAt)) {
+            state.position=null;state.pendingExit=null;mark=null;
+            if(state.rulesV2){state.rulesV2.position=null;state.rulesV2.pendingExit=null;state.rulesV2.setup=null;state.rulesV2.mark=null;state.rulesV2.status=state.enabled?'WAITING_FOR_SIGNAL':'DISABLED';}
+          }
           state.status=state.position?'OPEN':state.enabled?'WAITING_FOR_SIGNAL':'DISABLED';pending=null;
         }
         if(typeof value.raw_payload?.enabled==='boolean') { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
