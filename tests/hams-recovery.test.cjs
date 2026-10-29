@@ -3,6 +3,15 @@ const {HamsJournal,selectSnapshot,flushHamsRecords,confirmHamsPublish}=require('
 function load(name){const file=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),m=new Module(file,module);m.require=id=>id.startsWith('./')?load(id.slice(2)):require(id);m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}
 const {emptyHamsState}=load('hamsFinalPaper'),{hamsRecoveryView,loadHamsRecords}=load('hamsHistory');
 const owner='test-owner',at='2026-10-29T03:51:05.000Z';
+test('JSONB object-key reordering is idempotent, but changed ledger content is rejected',()=>{
+ const f=fixture();try{
+ const s={...snapshot(),incidents:[{id:'legacy',signalId:'lost',at,status:'EXCLUDED_UNVERIFIED',reason:'Unknown',acknowledgedAt:at}]};
+ f.journal.initialize(s);f.journal.save(s);
+ const reordered={...s,incidents:[Object.fromEntries(Object.entries(s.incidents[0]).reverse())]};
+ assert.doesNotThrow(()=>f.journal.save(reordered));
+ assert.throws(()=>f.journal.save({...reordered,incidents:[{...reordered.incidents[0],reason:'Changed evidence'}]}),/HAMS_LEDGER_CONFLICT/);
+ }finally{f.close();}
+});
 const position={signalId:'s1',signalClosedAt:'2026-10-29T03:51:00.000Z',receivedAt:at,openedAt:at,entry:100,stop:85,target:145,lots:1,quantity:65,contract:{id:'testCE',side:'CE',strike:22500,expiry:'2026-11-03',lotSize:65}};
 const snapshot=()=>({owner,savedAt:at,state:{...emptyHamsState(),enabled:true,status:'OPEN',position},decisions:[],incidents:[],lastControl:{id:'on',at,enabled:true}});
 function fixture(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hams-journal-')),journal=new HamsJournal(dir,owner);return {dir,journal,close(){this.journal.close();fs.rmSync(dir,{recursive:true,force:true});}};}

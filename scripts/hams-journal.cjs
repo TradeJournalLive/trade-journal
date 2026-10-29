@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const tradeKey = t => `${t.signalId}:${t.openedAt}`;
@@ -76,7 +77,8 @@ class HamsJournal {
       const insert = this.db.prepare('INSERT INTO records(id,payload) VALUES(?,?) ON CONFLICT(id) DO NOTHING');
       for(const record of records){
         const existing = this.db.prepare('SELECT payload FROM records WHERE id=?').get(record.id);
-        if(existing && existing.payload!==JSON.stringify(record))throw Error('HAMS_LEDGER_CONFLICT');
+        // JSONB can reorder object keys without changing the immutable record.
+        if(existing && !isDeepStrictEqual(JSON.parse(existing.payload),record))throw Error('HAMS_LEDGER_CONFLICT');
         insert.run(record.id,JSON.stringify(record));
       }
       this.db.prepare('INSERT INTO snapshot(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(JSON.stringify(snapshot));
