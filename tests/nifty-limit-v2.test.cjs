@@ -67,3 +67,9 @@ test('HAMS adapter uses independent 3-minute unlimited-range state, retains lega
  s=markHamsLimit(s,{at:at(2),spot:22531,chain:[quote('CE',2),quote('PE',2)]});assert.equal(s.position.contract.id,'CE');assert.equal(s.rulesV2.interval,3);assert.equal(s.balance,1000000);assert.equal(s.trades[0].signalId,'old');
 });
 test('duplicate signal and pre-upgrade alerts cannot create new positions',()=>{const s=opened();assert.equal(receiveLimitSignal(s,signal()).trades.length,0);const late=receiveLimitSignal(ready(),{...signal(),closedAt:at(-120)});assert.equal(late.position,null);assert.equal(late.status,'SETUP_EXPIRED');});
+test('HAMS durable v2 ledger restores net capital and lot progression ahead of an older heartbeat',()=>{
+ const {hamsRecoveryView}=load('hamsHistory'),{emptyHamsState}=load('hamsFinalPaper');const v=tick(opened(),3,22512,79,80),trade=v.trades[0];
+ const saved={...emptyHamsState(),rulesV2:newLimitState(at(-60),3,false,true),enabled:true,balance:1000000};
+ const view=hamsRecoveryView(saved,[],[{id:'closed',type:'TRADE',at:trade.closedAt,value:trade}]);
+ assert.equal(view.state.balance,1000000+trade.pnl);assert.equal(view.state.nextLots,2);assert.equal(view.state.rulesV2.trades.length,1);assert.equal(view.state.rulesV2.balance,view.state.balance);
+});

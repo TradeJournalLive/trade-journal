@@ -28,9 +28,15 @@ export function hamsRecoveryView(saved: HamsState | null, storedIncidents: HamsI
   }
   const excluded = new Set([...incidents.values()].filter(i => i.acknowledgedAt).map(i => i.signalId));
   state.trades = [...trades.values()].sort((a,b) => a.closedAt.localeCompare(b.closedAt));
-  state.balance = state.rulesV2 ? state.rulesV2.balance : 500000 + state.trades.reduce((sum,t) => sum + t.pnl, 0);
+  state.balance = state.rulesV2 ? 1000000 + state.trades.filter(t=>t.ruleVersion===2).reduce((sum,t)=>sum+t.pnl,0) : 500000 + state.trades.reduce((sum,t) => sum + t.pnl, 0);
   const lastTrade = state.trades.at(-1), savedLastTrade = saved?.trades.at(-1);
   if (lastTrade && (!savedLastTrade || lastTrade.closedAt > savedLastTrade.closedAt)) state.nextLots = nextHamsLots(lastTrade.lots, lastTrade.reason);
+  if(state.rulesV2){
+    let net=0,lots=1;
+    for(const t of state.trades.filter(t=>t.ruleVersion===2)){net+=t.pnl;lots=t.pnl>0&&net>0?1:Math.min(20,t.lots+1);}
+    state.nextLots=lots;state.rulesV2.balance=state.balance;state.rulesV2.nextLots=lots;
+    state.rulesV2.trades=state.trades.filter(t=>t.ruleVersion===2) as typeof state.rulesV2.trades;
+  }
   if (state.position && (trades.has(key(state.position)) || excluded.has(state.position.signalId))) state.position = null;
   const unresolved = [...entries.values()].filter(p => !trades.has(key(p)) && !excluded.has(p.signalId));
   if (!state.position && unresolved.length) {
@@ -40,6 +46,7 @@ export function hamsRecoveryView(saved: HamsState | null, storedIncidents: HamsI
     if (!incidents.has(id)) incidents.set(id,{id,signalId:p.signalId,at:p.openedAt,status:"ENTRY_AWAITING_RECONCILIATION",position:p,reason:"The entry is preserved in the durable ledger but the latest worker snapshot has not reconciled it. No exit or P&L is assumed."});
   }
   const reviewRequired = [...incidents.values()].some(i => !i.acknowledgedAt);
+  if(state.rulesV2){state.rulesV2.position=state.position as typeof state.rulesV2.position;if(!state.position)state.rulesV2.pendingExit=null;}
   if (reviewRequired) state.status = "RECOVERY_REVIEW_REQUIRED";
   else if(!state.position && ["OPEN","EXIT_AWAITING_QUOTE","EXIT_AWAITING_DEPTH"].includes(state.status)) state.status=state.enabled?"WAITING_FOR_SIGNAL":"DISABLED";
   return { state, incidents:[...incidents.values()], reviewRequired };
