@@ -8,6 +8,7 @@ import { waitUntil } from "@vercel/functions";
 import { syncWebhookSheet } from "../../../../lib/algo/googleSheets";
 import { isolateTrackingSignal } from "../../../../lib/algo/trackingSignals";
 import { isolateHamsSignal } from "../../../../lib/algo/hamsSignal";
+import { captureDeliveryTiming } from "../../../../lib/algo/signalTiming";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ type TradingViewWebhookPayload = {
   timeframe?: string;
   action?: TradingViewAction;
   timestamp?: string;
+  alertFiredAt?: string;
   price?: number | string;
   quantity?: number | string;
   strike?: number;
@@ -217,6 +219,7 @@ export async function POST(request: Request) {
     const decision: AlgoDecision = signal.strategyId === "nifty_hams_final_3m_v1"
       ? { accepted: true, executionMode: "PAPER", stage: "READY_FOR_PAPER", reasons: ["Saved for the isolated HAMS Final paper worker; receipt is not an entry fill."], checks: [{ label: "Dedicated paper route", ok: true, message: "HAMS Final only; live execution disabled." }] }
       : evaluateAlgoSignal(signal, payload.automation ?? {});
+    signal.metadata.deliveryTiming=captureDeliveryTiming(payload.alertFiredAt,new Date(receivedAt).toISOString(),new Date().toISOString());
     const event = { receivedAt: new Date(receivedAt).toISOString(), signal, decision };
     recordAlgoEvent(event);
     const persistence = await persistAlgoSignalEvent({

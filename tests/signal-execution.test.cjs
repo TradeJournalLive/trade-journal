@@ -35,7 +35,7 @@ test('actual entry evidence wins over a stale waiting decision; storage failure 
 });
 test('Signals defaults to a visible Trade Reasons tab with execution evidence',()=>{
   const file=path.resolve(__dirname,'../app/dashboard/SignalExecutionTable.tsx'),m=new Module(file,module);
-  m.require=id=>id==='../lib/algo/reportDates'?{istDay:()=> '2026-10-22',istTime:()=> '09:16:00',signalTime:e=>e.signal.timestamp}:require(id);
+  m.require=id=>id==='../lib/algo/reportDates'?{istDay:()=> '2026-10-22',istTime:()=> '09:16:00',signalTime:e=>e.signal.timestamp}:id==='../lib/algo/signalTiming'?{signalTiming:()=>({}),timingTime:()=> '--',timingDuration:()=> '--'}:require(id);
   m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX}}).outputText,file);
   const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
   const html=renderToStaticMarkup(React.createElement(m.exports.default,{events:[{...event('range'),signal:{...event('range').signal,timestamp:'2026-10-22T03:46:00Z',action:'SELL',status:'VALIDATED'},decision:{reasons:['received']},execution:{status:'CANDLE_RANGE_EXCEEDED',reason:'132.65 points exceeds 35',source:'Rule check'}}]}));
