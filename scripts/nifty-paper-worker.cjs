@@ -115,7 +115,7 @@ function marketTick(message) {
     if (row.symbol === indexSymbol && Number(row.ltp) > 0) index = { price: Number(row.ltp), at: timestamp };
     else if (Number(row.bid_price) > 0 && Number(row.ask_price) >= Number(row.bid_price)) quotes.set(row.symbol, { bid: Number(row.bid_price), ask: Number(row.ask_price), timestamp: new Date(timestamp).toISOString(), bidSize: Number(row.bid_size), askSize: Number(row.ask_size) });
     if (row.symbol !== indexSymbol && row.symbol !== book?.position?.contract.id) continue;
-    if (!index || Date.now() - index.at > 5000) continue;
+    if (!index || (!book?.checkpoint?.rulesV2?.emergency?.pending && Date.now() - index.at > 5000)) continue;
     const timestampISO = now();
     if (minutes(timestampISO) < 555 || minutes(timestampISO) > 930) continue;
     status = 'RECEIVING_FYERS_TICKS';

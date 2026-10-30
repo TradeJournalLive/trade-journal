@@ -15,7 +15,7 @@ function loadAlgo(name) {
 }
 const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = loadAlgo('hamsFinalPaper');
 const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
-const { initializeHamsLimits, receiveHamsLimit, markHamsLimit } = loadAlgo('hamsLimitAdapter');
+const { initializeHamsLimits, receiveHamsLimit, markHamsLimit, emergencyHamsLimit } = loadAlgo('hamsLimitAdapter');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
 const root = path.resolve('.paper-worker'), directory = path.join(root, 'hams-final');
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -152,7 +152,7 @@ function onMessage(message) {
 }
 function tryEntry() {
   if(state.rulesV2){
-    if(!executionAllowed()||!spot||Date.now()-spot.at>5000)return;
+    if(!executionAllowed()||!spot||(!state.rulesV2.emergency?.pending&&Date.now()-spot.at>5000))return;
     const at=now(),before=state.position,closed=state.trades.length;
     state=markHamsLimit(state,{at,spot:spot.price,chain:state.position||state.rulesV2.setup?contractQuotes(at):[]});
     decisions=state.rulesV2.decisions;
@@ -223,7 +223,8 @@ async function poll() {
           }
           state.status=state.position?'OPEN':state.enabled?'WAITING_FOR_SIGNAL':'DISABLED';pending=null;
         }
-        if(typeof value.raw_payload?.enabled==='boolean') { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
+        if(typeof value.raw_payload?.emergencyId==='string'&&state.rulesV2){state=emergencyHamsLimit(state,value.raw_payload.emergencyId,value.received_at);pending=null;}
+        else if(typeof value.raw_payload?.enabled==='boolean'&&!(value.raw_payload.enabled&&state.rulesV2?.emergency?.pending)) { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
         lastControl={id:value.id,at:value.received_at,enabled:state.enabled};
         if(reviewRequired())state.status='RECOVERY_REVIEW_REQUIRED';
         save();
@@ -257,7 +258,11 @@ async function main() {
     const controls=await db.from(TABLE).select('id,received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id','__hams_final_control__').order('received_at',{ascending:false}).order('id',{ascending:false}).limit(1);
     if(controls.error)throw Error('HAMS_CONTROL_STORAGE_UNAVAILABLE');
     const control=controls.data?.[0];
-    if(control&&typeof control.raw_payload?.enabled==='boolean'){state=setHamsEnabled(state,control.raw_payload.enabled);lastControl={id:control.id,at:control.received_at,enabled:state.enabled};}
+    if(control&&typeof control.raw_payload?.enabled==='boolean'){
+      if(typeof control.raw_payload.emergencyId==='string'&&state.rulesV2)state=emergencyHamsLimit(state,control.raw_payload.emergencyId,control.received_at);
+      else if(!(control.raw_payload.enabled&&state.rulesV2?.emergency?.pending))state=setHamsEnabled(state,control.raw_payload.enabled);
+      lastControl={id:control.id,at:control.received_at,enabled:state.enabled};
+    }
   }
   // Preserve evidence of legacy entries whose detailed checkpoint was already lost.
   for(const name of fs.readdirSync(directory).filter(f=>/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f))) {

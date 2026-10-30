@@ -40,7 +40,7 @@ test('unfilled exit cannot open opposite side or re-anchor beyond original bid m
 test('stop exits use observed bounded bid depth; losses increment, profitable cumulative net resets',()=>{
  let s=tick(opened(),3,22512,79,80);assert.equal(s.position,null);assert.equal(s.trades[0].reason,'PREMIUM_SL');assert.equal(s.nextLots,2);
  s=opened();s=tick(s,3,22512,200,201);assert.equal(s.trades[0].reason,'PREMIUM_TARGET');assert.equal(s.nextLots,1);assert.ok(s.trades[0].pnl<s.trades[0].grossPnl);
- s=opened();s.position.lots=20;s.nextLots=20;s=tick(s,3,22512,79,80);assert.equal(s.nextLots,20);
+ s=opened();s.position.lots=20;s.nextLots=20;s=tick(s,3,22512,79,80);assert.equal(s.nextLots,21);
  s=opened();s.balance=999000;s=tick(s,3,22512,101,102);s.pendingExit={reason:'OPPOSITE_BREAKOUT',limit:97};s=tick(s,4,22512,101,102);assert.equal(s.nextLots,2);
 });
 test('time exit at 14:50, no market fallback',()=>{const s=markLimitPaper(opened(),{at:'2026-10-29T09:20:00Z',spot:22500,chain:[{...quote('CE',0),at:'2026-10-29T09:20:00Z'}]});assert.equal(s.trades[0].reason,'TIME_EXIT');assert.equal(s.position,null);});

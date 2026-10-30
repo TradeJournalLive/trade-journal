@@ -19,14 +19,15 @@ retained with their original accounting; new trades are tagged ruleVersion 2.
   bid - INR 4 (floor INR 0.05). Never move that limit further to chase price.
 - Fills are PAPER FOK/all-or-none using observed quote/depth only. They are not
   broker acknowledgements or guarantees of exchange fills. Unfilled exits remain
-  open and visibly pending, including at 14:50. No market-order fallback.
+  open and visibly pending, including at 14:50. No automatic market-order fallback.
+  The separate two-answer emergency control can explicitly request market paper exits.
 - Opposite setups preselect an ATM quote while waiting. Recheck after trigger;
   exit must fill completely before submitting the opposite entry. Update lots
   from the completed net exit result first. No double exposure.
 - Start one lot. A loss adds one lot. A profitable exit resets to one only when
   cumulative new-rule net P&L is positive; otherwise add one. Flat net follows
-  the non-profitable branch (+1). Maximum 20. No daily risk stop, but sufficient
-  virtual premium capital is still required.
+  the non-profitable branch (+1). No lot cap and no daily size reset. No daily
+  risk stop, but sufficient virtual premium capital is still required.
 - New closed trades store gross P&L, cost breakdown and net P&L. Estimated FYERS
   NSE options costs checked 2026-10-29: INR 20 each executed order, exchange
   0.0355299%, clearing 0.009%, SEBI INR 10/crore, IPFT INR 0.01/crore,

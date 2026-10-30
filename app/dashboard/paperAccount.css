@@ -31,5 +31,10 @@
 .algo-shell .paper-workspace .algo-os-table { min-width:1050px; color:rgb(var(--color-text)); }
 .algo-shell .paper-workspace .algo-os-table th { color:rgb(var(--color-muted)); background:rgb(var(--color-elevate)); }
 .algo-shell .paper-workspace .algo-os-table td { color:rgb(var(--color-text)); }
+.nifty-emergency { border-block:1px solid rgb(var(--color-negative) / .5); padding:16px 0; color:rgb(var(--color-text)); }
+.nifty-emergency h4 { color:rgb(var(--color-negative)); font-size:14px; }
+.nifty-emergency input { min-width:0; background:rgb(var(--color-panel)); color:rgb(var(--color-text)); border-color:rgb(var(--color-border)); }
+.nifty-emergency form { max-width:620px; }
+.nifty-emergency button { white-space:normal; overflow-wrap:anywhere; }
 @media(max-width:1000px) { .paper-account-metrics,.paper-operations { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:380px) { .paper-account-metrics { grid-template-columns:minmax(0,1fr); gap:16px; } .paper-account-heading { flex-wrap:wrap; } }

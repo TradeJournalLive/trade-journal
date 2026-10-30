@@ -1,4 +1,4 @@
-import { newLimitState, markLimitPaper, receiveLimitSignal, type LimitQuote, type LimitSignal } from "./niftyLimitPaper";
+import { newLimitState, markLimitPaper, receiveLimitSignal, requestNiftyEmergency, type LimitQuote, type LimitSignal } from "./niftyLimitPaper";
 import type { HamsState } from "./hamsFinalPaper";
 export function initializeHamsLimits(previous: HamsState, at: string): HamsState {
   if(previous.rulesV2)return previous;
@@ -12,3 +12,4 @@ function project(previous:HamsState,s:NonNullable<HamsState["rulesV2"]>):HamsSta
 }
 export function receiveHamsLimit(previous:HamsState,signal:LimitSignal,processedAt=signal.receivedAt){return project(previous,receiveLimitSignal({...previous.rulesV2!,enabled:previous.enabled},signal,processedAt));}
 export function markHamsLimit(previous:HamsState,tick:{at:string;spot:number;chain:LimitQuote[]}){return project(previous,markLimitPaper({...previous.rulesV2!,enabled:previous.enabled},tick));}
+export function emergencyHamsLimit(previous:HamsState,id:string,at:string){return project(previous,requestNiftyEmergency(previous.rulesV2!,id,at));}

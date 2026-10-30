@@ -1,4 +1,4 @@
-import { newLimitState, markLimitPaper, receiveLimitSignal, type LimitState, type LimitQuote } from "./niftyLimitPaper";
+import { newLimitState, markLimitPaper, receiveLimitSignal, requestNiftyEmergency, type LimitState, type LimitQuote } from "./niftyLimitPaper";
 import type { NiftyPaperCheckpoint } from "./niftyPaperEngine";
 import type { PaperEvent } from "./paperEngine";
 export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?: NiftyPaperCheckpoint) {
@@ -7,6 +7,8 @@ export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?
   if(!initial?.rulesV2){s.decisions=structuredClone(initial?.decisions??[]);s.seen=s.decisions.map(d=>d.id);}
   for(const event of events){
     const control=event.raw.paperControl;
+    if(control?.market==="NIFTY"&&typeof control.emergencyId==="string"){s=requestNiftyEmergency(s,control.emergencyId,event.receivedAt);continue;}
+    if(s.emergency?.pending&&control?.niftyOptionsEnabled===true)continue;
     if(control?.market==="NIFTY"&&typeof control.niftyOptionsEnabled==="boolean"){s.enabled=control.niftyOptionsEnabled;if(!s.enabled)s.setup=null;s.status=s.position?"OPEN":s.enabled?"WAITING_FOR_SIGNAL":"DISABLED";continue;}
     const data=event.signal.metadata?.niftyPaper as Record<string,unknown>|undefined;
     if(!data||event.signal.symbol!=="NSE:NIFTY"||event.raw.automation?.mode!=="PAPER"||event.signal.metadata?.diagnostic||event.signal.id.startsWith("panel-test-"))continue;
@@ -21,7 +23,7 @@ export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?
   const legacy=initial?.trades.filter(t=>(t as {ruleVersion?:number}).ruleVersion!==2)??[];
   const mapPosition=(p:NonNullable<LimitState["position"]>)=>({...p,indexSymbol:"NSE:NIFTY",contract:{...p.contract,timestamp:p.contract.at},initialLots:p.lots,initialQuantity:p.quantity,realizedPnl:0,entryFill:{price:p.entry,initialAsk:p.entryLimit-4,slippage:p.entry-(p.entryLimit-4),fills:[{price:p.entry,quantity:p.quantity}]}});
   const position=s.position?mapPosition(s.position):null;
-  const trades=[...legacy,...s.trades.map(t=>({...mapPosition(t),exit:t.exit,closedAt:t.closedAt,reason:t.reason,pnl:t.pnl,grossPnl:t.grossPnl,costs:t.costs,exitLimit:t.exitLimit}))];
+  const trades=[...legacy,...s.trades.map(t=>({...mapPosition(t),exit:t.exit,closedAt:t.closedAt,reason:t.reason,pnl:t.pnl,grossPnl:t.grossPnl,costs:t.costs,exitLimit:t.exitLimit,exitOrderType:t.exitOrderType}))];
   const lastTickAt=s.ticks.at(-1)?.at??null;
   const setup=s.setup?{...s.setup,indexSymbol:"NSE:NIFTY",intervalMinutes:s.interval}:null;
   const size={lots:s.nextLots,consecutiveLosses:0};

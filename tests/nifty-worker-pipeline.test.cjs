@@ -36,3 +36,11 @@ test('HAMS ignores unrelated contract messages for rule evaluation but still rec
  assert.equal(w.get().state.rulesV2.ticks.at(-1).at,before);
  price(w,3,'NSE:NIFTY50-INDEX',{ltp:22501});assert.equal(w.get().state.rulesV2.ticks.at(-1).price,22501);
 });
+for(const kind of ['nifty','hams'])test(`${kind} actual worker consumes verified emergency command and records market paper exit`,async()=>{
+ const w=worker(kind),hams=kind==='hams',core=load('niftyLimitPaper');let v=core.newLimitState(at(-60),hams?3:1,!hams,true);
+ v.position={contract:{...contracts[0],at:at(0),bid:99,ask:100,bidSize:5000,askSize:5000},signalId:'existing',signalClosedAt:at(-3),receivedAt:at(-2),openedAt:at(-1),entry:100,stop:80,target:200,quantity:65,lots:1,ruleVersion:2,orderType:'LIMIT',entryLimit:104};
+ w.start(hams?{...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,position:v.position,balance:1000000}:{rulesV2:v,enabled:true,trades:[]},contracts);prime(w);
+ w.setRows([{id:'kill-row',strategy_id:hams?'__hams_final_control__':'__paper_control__',received_at:at(1),signal:{metadata:{}},raw_payload:hams?{enabled:false,emergencyId:'kill'}:{paperControl:{market:'NIFTY',enabled:false,niftyOptionsEnabled:false,emergencyId:'kill'}}}]);w.setTime(1);await w.poll();assert.equal(w.get().state.enabled,false);assert.ok(w.get().state.position);
+ // Emergency premium exits remain possible even if the index feed stops updating.
+ price(w,7,'CE',{bid_price:90,ask_price:91,bid_size:5000,ask_size:5000});assert.equal(w.get().state.position,null);assert.equal(w.get().state.trades.at(-1).exitOrderType,'MARKET');assert.equal(w.get().state.trades.at(-1).reason,'EMERGENCY_MARKET_EXIT');assert.notEqual(w.get().status,'PROCESSING_ERROR');
+});

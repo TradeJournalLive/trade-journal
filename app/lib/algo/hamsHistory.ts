@@ -30,10 +30,10 @@ export function hamsRecoveryView(saved: HamsState | null, storedIncidents: HamsI
   state.trades = [...trades.values()].sort((a,b) => a.closedAt.localeCompare(b.closedAt));
   state.balance = state.rulesV2 ? 1000000 + state.trades.filter(t=>t.ruleVersion===2).reduce((sum,t)=>sum+t.pnl,0) : 500000 + state.trades.reduce((sum,t) => sum + t.pnl, 0);
   const lastTrade = state.trades.at(-1), savedLastTrade = saved?.trades.at(-1);
-  if (lastTrade && (!savedLastTrade || lastTrade.closedAt > savedLastTrade.closedAt)) state.nextLots = nextHamsLots(lastTrade.lots, lastTrade.reason);
+  if (!state.rulesV2 && lastTrade && (!savedLastTrade || lastTrade.closedAt > savedLastTrade.closedAt)) state.nextLots = nextHamsLots(lastTrade.lots, lastTrade.reason);
   if(state.rulesV2){
     let net=0,lots=1;
-    for(const t of state.trades.filter(t=>t.ruleVersion===2)){net+=t.pnl;lots=t.pnl>0&&net>0?1:Math.min(20,t.lots+1);}
+    for(const t of state.trades.filter(t=>t.ruleVersion===2)){net+=t.pnl;lots=t.pnl>0&&net>0?1:t.lots+1;}
     state.nextLots=lots;state.rulesV2.balance=state.balance;state.rulesV2.nextLots=lots;
     state.rulesV2.trades=state.trades.filter(t=>t.ruleVersion===2) as typeof state.rulesV2.trades;
   }

@@ -7,7 +7,7 @@ export type PaperMarket = typeof markets[number];
 export type PaperEvent = {
   receivedAt: string;
   signal: AlgoSignal;
-  raw: { automation?: { mode?: string; enabled?: boolean; underlying?: string }; paperControl?: { market: PaperMarket; enabled: boolean; symbol?: string; slippage?: number; nextCandle?: boolean; niftyOptionsEnabled?: boolean } };
+  raw: { automation?: { mode?: string; enabled?: boolean; underlying?: string }; paperControl?: { market: PaperMarket; enabled: boolean; symbol?: string; slippage?: number; nextCandle?: boolean; niftyOptionsEnabled?: boolean; emergencyId?: string } };
 };
 export type IndexPosition = { id: string; symbol: string; side: "LONG" | "SHORT"; entry: number; referenceEntry: number; entrySlippage: number; openedAt: string; signalId: string };
 export type IndexTrade = IndexPosition & { exit: number; referenceExit: number; closedAt: string; exitSignalId: string; points: number; grossPoints: number; slippagePoints: number; reason: string };

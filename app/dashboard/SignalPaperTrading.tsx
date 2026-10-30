@@ -12,6 +12,7 @@ import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import HamsFinalPaper from "./HamsFinalPaper";
 import PaperAccountSummary from "./PaperAccountSummary";
 import { paperCapital } from "../lib/algo/paperCapital";
+import NiftyEmergency from "./NiftyEmergency";
 
 type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
@@ -116,6 +117,7 @@ export default function SignalPaperTrading() {
       {!hams && market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
+    {(hams||market==="NIFTY")&&<NiftyEmergency />}
     {hams && <HamsFinalPaper />}
     <div hidden={hams}>
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
@@ -125,7 +127,7 @@ export default function SignalPaperTrading() {
       <p className="text-xs text-slate-500">Last index tick: {book?.options?.lastTickAt ? time(book.options.lastTickAt) : "--"}</p>
       <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
       <PaperAccountSummary capital={book?.options?.capital??paperCapital(null)} />
-      <dl className="paper-operations"><div><dt>Next order</dt><dd>{book?.options?.size.lots ?? "--"} lot(s) / 20 max</dd></div><div><dt>Execution</dt><dd>Limit only</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{book?.options?.status?.replaceAll("_"," ") ?? "Loading"}</dd></div></dl>
+      <dl className="paper-operations"><div><dt>Next order</dt><dd>{book?.options?.size.lots ?? "--"} lot(s) · no lot cap</dd></div><div><dt>Execution</dt><dd>Limit · emergency market exit</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{book?.options?.status?.replaceAll("_"," ") ?? "Loading"}</dd></div></dl>
       <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} /></details>
       <details className="border-y border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list">
         <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
@@ -135,7 +137,7 @@ export default function SignalPaperTrading() {
         <div><dt>Index trail</dt><dd>Disabled</dd></div>
         <div><dt>Session</dt><dd>09:17–14:50 IST</dd></div>
         <div><dt>Exit</dt><dd>Opposite breakout, stop, target or 14:50 IST · limit only</dd></div>
-        <div><dt>Size</dt><dd>Start 1 · +1 after loss · cap 20 · profitable trade and positive cumulative net resets to 1</dd></div>
+        <div><dt>Size</dt><dd>Start 1 · +1 after loss · no lot cap or daily reset · profitable trade and positive cumulative net resets to 1</dd></div>
         <div><dt>Entry fill</dt><dd>Available ask depth · maximum ₹4 above initial ask · average fill price</dd></div>
         <div><dt>Target</dt><dd>Entry + min(100 premium points, 100% of entry)</dd></div>
         <div><dt>Reversal</dt><dd>Exit fill confirmed first, then opposite ATM entry · bid − ₹4 / ask + ₹4 limits</dd></div>
