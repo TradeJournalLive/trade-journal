@@ -110,7 +110,11 @@ async function flushLedger() {
   } finally { flushing = false; }
 }
 function contractQuotes(at) {
-  return master.map(c => {
+  const setup=state.rulesV2?.setup;
+  const required=new Set([state.position?.contract.id,setup?.attempt?.contractId,setup?.prepared?.contractId].filter(Boolean));
+  const expiry=master.filter(c=>c.expiry>=day(at)).map(c=>c.expiry).sort()[0];
+  const relevant=state.rulesV2&&spot?master.filter(c=>(c.expiry===expiry&&Math.abs(c.strike-spot.price)<=700)||required.has(c.id)):master;
+  return relevant.map(c => {
     const q = quotes.get(c.id), d = depths.get(c.id);
     if (!q) return { ...c, at:'',bid:0,ask:0,bidSize:0,askSize:0 };
     const sync = d && Date.parse(at)-Date.parse(q.at) <= 5000 && Date.parse(at)-Date.parse(d.depthAt) <= 5000 && d.asks[0].price === q.ask && d.bids[0].price === q.bid;
@@ -141,7 +145,8 @@ function onMessage(message) {
           if (state.trades.length !== before) { save(); audit('TRADE',state.trades.at(-1)); }
         }
       }
-      tryEntry();
+      const setup=state.rulesV2?.setup;
+      if(!state.rulesV2||r.symbol===INDEX||r.symbol===state.position?.contract.id||r.symbol===setup?.attempt?.contractId||r.symbol===setup?.prepared?.contractId)tryEntry();
     }
   } catch { status = 'PROCESSING_ERROR'; stopped = true; }
 }
@@ -149,7 +154,7 @@ function tryEntry() {
   if(state.rulesV2){
     if(!executionAllowed()||!spot||Date.now()-spot.at>5000)return;
     const at=now(),before=state.position,closed=state.trades.length;
-    state=markHamsLimit(state,{at,spot:spot.price,chain:contractQuotes(at)});
+    state=markHamsLimit(state,{at,spot:spot.price,chain:state.position||state.rulesV2.setup?contractQuotes(at):[]});
     decisions=state.rulesV2.decisions;
     mark=state.rulesV2.mark;
     if(state.trades.length!==closed){save();audit('TRADE',state.trades.at(-1));}
@@ -308,7 +313,7 @@ async function main() {
     if(Date.now()-ack>2000&&!publishing) void publish().catch(()=>{status='LEASE_OR_STORAGE_LOST';stopped=true;});
     if(!flushing)void flushLedger().catch(()=>{status='HAMS_LEDGER_SYNC_RETRY';});
     if(!busy) void poll().catch(()=>{status='SIGNAL_STORAGE_UNAVAILABLE';});
-    tryEntry();
+    if(!state.rulesV2||state.position||state.rulesV2.setup?.attempt)tryEntry();
     if(pending && Date.now()-Date.parse(pending.signal.closedAt)>=180000) { decide(pending.signal,'MISSED_SIGNAL_CLOSE');pending=null;save(); }
     if(Date.now()-lastRefresh>60000&&!busy) {
       lastRefresh=Date.now();
