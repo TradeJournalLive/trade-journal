@@ -59,11 +59,13 @@ function eligible(s: LimitState, setup: LimitSignal, at: string) {
   return session.day===istSession(setup.closedAt).day && session.minute>=limitRules.start && session.minute<limitRules.end
     && time(at)>=time(setup.closedAt) && time(at)-time(setup.closedAt)<10*setup.interval*60000;
 }
-export function receiveLimitSignal(previous: LimitState, signal: LimitSignal): LimitState {
-  const s=structuredClone(previous),at=signal.receivedAt;
+export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, processedAt=signal.receivedAt): LimitState {
+  // Webhook receipt and worker processing are different clocks. Prices captured
+  // between them must be checked against processing time, not rejected as future.
+  const s=structuredClone(previous),at=processedAt;
   if(s.seen.includes(signal.id))return s;
   s.seen.push(signal.id);
-  if(![signal.high,signal.low].every(positive)||signal.high<signal.low||!["BUY","SELL"].includes(signal.action)||signal.interval!==s.interval||!Number.isFinite(time(signal.closedAt))||time(signal.closedAt)>time(at)) {
+  if(![signal.high,signal.low].every(positive)||signal.high<signal.low||!["BUY","SELL"].includes(signal.action)||signal.interval!==s.interval||!Number.isFinite(time(signal.closedAt))||!Number.isFinite(time(signal.receivedAt))||!Number.isFinite(time(at))||time(signal.closedAt)>time(signal.receivedAt)||time(at)<time(signal.receivedAt)) {
     decision(s,signal,at,"INVALID_SIGNAL","Invalid confirmed signal candle.");return s;
   }
   if(time(signal.closedAt)<time(s.startedAt)||!eligible(s,signal,at)){decision(s,signal,at,"SETUP_EXPIRED","Signal predates this rule session or its ten-candle/session window expired.");return s;}

@@ -10,7 +10,7 @@ export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?
     if(control?.market==="NIFTY"&&typeof control.niftyOptionsEnabled==="boolean"){s.enabled=control.niftyOptionsEnabled;if(!s.enabled)s.setup=null;s.status=s.position?"OPEN":s.enabled?"WAITING_FOR_SIGNAL":"DISABLED";continue;}
     const data=event.signal.metadata?.niftyPaper as Record<string,unknown>|undefined;
     if(!data||event.signal.symbol!=="NSE:NIFTY"||event.raw.automation?.mode!=="PAPER"||event.signal.metadata?.diagnostic||event.signal.id.startsWith("panel-test-"))continue;
-    if(data.kind==="SIGNAL") s=receiveLimitSignal(s,{id:event.signal.id,action:event.signal.action as "BUY"|"SELL",receivedAt:event.receivedAt,closedAt:String(data.closedAt),high:Number(data.high),low:Number(data.low),interval:Number(event.signal.timeframe)});
+    if(data.kind==="SIGNAL") s=receiveLimitSignal(s,{id:event.signal.id,action:event.signal.action as "BUY"|"SELL",receivedAt:event.receivedAt,closedAt:String(data.closedAt),high:Number(data.high),low:Number(data.low),interval:Number(event.signal.timeframe)},now);
     if(data.kind==="TICK"&&event.signal.symbol==="NSE:NIFTY"&&Array.isArray(data.contracts)){
       const at=String(data.timestamp),age=Date.parse(event.receivedAt)-Date.parse(at);
       if(age<0||age>5000)continue;

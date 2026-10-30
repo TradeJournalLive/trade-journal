@@ -174,7 +174,7 @@ async function prepare(signal) {
   if(state.rulesV2){
     if(signal.symbol!=='NSE:NIFTY'||signal.timeframe!=='3') { decide(signal,'INVALID_SIGNAL');return; }
     if(reviewRequired()){decide(signal,'RECOVERY_REVIEW_REQUIRED');return;}
-    state=receiveHamsLimit(state,{...signal,interval:3});decisions=state.rulesV2.decisions;save();return;
+    state=receiveHamsLimit(state,{...signal,interval:3},now());decisions=state.rulesV2.decisions;save();return;
   }
   if (pending) { decide(pending.signal,'SUPERSEDED'); pending=null; }
   if (state.seen.includes(`${signal.strategyId}:${signal.id}`)) return;

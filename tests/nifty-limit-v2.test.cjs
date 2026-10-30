@@ -73,3 +73,18 @@ test('HAMS durable v2 ledger restores net capital and lot progression ahead of a
  const view=hamsRecoveryView(saved,[],[{id:'closed',type:'TRADE',at:trade.closedAt,value:trade}]);
  assert.equal(view.state.balance,1000000+trade.pnl);assert.equal(view.state.nextLots,2);assert.equal(view.state.rulesV2.trades.length,1);assert.equal(view.state.rulesV2.balance,view.state.balance);
 });
+test('post-receipt price observations are fresh at processing time, not invalid future ticks',()=>{
+ const s=tick(ready(),2.5,22500),sig=signal('BUY','processing',2);
+ const result=receiveLimitSignal(s,sig,at(3));assert.equal(result.status,'WAITING_FOR_INDEX_BREAK');assert.equal(result.decisions.at(-1).receivedAt,at(2));assert.equal(result.decisions.at(-1).decidedAt,at(3));
+ const {buildNiftyLimitPaper}=load('niftyLimitAdapter');
+ const event={receivedAt:sig.receivedAt,signal:{id:sig.id,strategyId:'nifty',symbol:'NSE:NIFTY',action:'BUY',timeframe:'1',metadata:{niftyPaper:{kind:'SIGNAL',high:sig.high,low:sig.low,closedAt:sig.closedAt}}},raw:{automation:{mode:'PAPER'}}};
+ assert.equal(buildNiftyLimitPaper([event],at(3),{rulesV2:s,trades:[],enabled:true}).status,'WAITING_FOR_INDEX_BREAK');
+ const h=load('hamsLimitAdapter'),base=h.initializeHamsLimits({...load('hamsFinalPaper').emptyHamsState(),enabled:true},at(-60));
+ const marked=h.markHamsLimit(base,{at:at(2.5),spot:22500,chain:[quote('CE',2.5)]});assert.equal(h.receiveHamsLimit(marked,{...sig,interval:3},at(3)).status,'WAITING_FOR_INDEX_BREAK');
+});
+test('break during receipt-to-processing delay is missed, and truly stale history still fails',()=>{
+ const sig=signal('BUY','processing',2);
+ assert.equal(receiveLimitSignal(tick(ready(),2.5,22511),sig,at(3)).status,'MISSED_BREAKOUT');
+ assert.equal(receiveLimitSignal(ready(),sig,at(10)).status,'UNVERIFIABLE_BREAKOUT_HISTORY');
+ assert.equal(receiveLimitSignal(ready(),sig,at(1)).status,'INVALID_SIGNAL');
+});
