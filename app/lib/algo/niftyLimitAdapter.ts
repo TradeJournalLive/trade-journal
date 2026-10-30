@@ -1,4 +1,4 @@
-import { newLimitState, markLimitPaper, receiveLimitSignal, requestNiftyEmergency, type LimitState, type LimitQuote } from "./niftyLimitPaper";
+import { newLimitState, markLimitPaper, receiveLimitSignal, requestNiftyEmergency, canArmNifty, type LimitState, type LimitQuote } from "./niftyLimitPaper";
 import type { NiftyPaperCheckpoint } from "./niftyPaperEngine";
 import type { PaperEvent } from "./paperEngine";
 export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?: NiftyPaperCheckpoint) {
@@ -8,7 +8,7 @@ export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?
   for(const event of events){
     const control=event.raw.paperControl;
     if(control?.market==="NIFTY"&&typeof control.emergencyId==="string"){s=requestNiftyEmergency(s,control.emergencyId,event.receivedAt);continue;}
-    if(s.emergency?.pending&&control?.niftyOptionsEnabled===true)continue;
+    if(control?.niftyOptionsEnabled===true&&!canArmNifty(s,event.receivedAt))continue;
     if(control?.market==="NIFTY"&&typeof control.niftyOptionsEnabled==="boolean"){s.enabled=control.niftyOptionsEnabled;if(!s.enabled)s.setup=null;s.status=s.position?"OPEN":s.enabled?"WAITING_FOR_SIGNAL":"DISABLED";continue;}
     const data=event.signal.metadata?.niftyPaper as Record<string,unknown>|undefined;
     if(!data||event.signal.symbol!=="NSE:NIFTY"||event.raw.automation?.mode!=="PAPER"||event.signal.metadata?.diagnostic||event.signal.id.startsWith("panel-test-"))continue;

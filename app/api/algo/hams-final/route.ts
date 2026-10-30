@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     if (body.enabled || recoveryAck) {
       const r = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__hams_final_worker__").eq("signal_id", "state").maybeSingle();
       const age = Date.now() - Date.parse(r.data?.received_at || "");
+      if(body.enabled&&r.data?.raw_payload?.state?.rulesV2?.emergency?.pending)return NextResponse.json({error:"Emergency exit is pending. Wait for a verified closure before re-arming."},{status:409,headers});
       if (r.error || !(age >= 0 && age < 15000) || (!recoveryAck && r.data?.raw_payload?.workerStatus !== "READY")) return NextResponse.json({ error: "HAMS worker must be online. Review any unresolved recovery incident before arming entries." }, { status: 409, headers });
     }
     const id = randomUUID(), at = new Date().toISOString();

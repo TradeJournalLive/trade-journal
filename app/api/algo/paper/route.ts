@@ -47,7 +47,8 @@ export async function POST(request: Request) {
       if (![heartbeatAge, quoteAge].every(age => Number.isFinite(age) && age >= 0 && age <= 15000) || String(data?.raw_payload?.workerStatus).startsWith("STOPPED_")) return NextResponse.json({ error: "Fresh Delta BTC data is required before arming entries." }, { status: 409 });
     }
     if (body.niftyOptionsEnabled === true) {
-      const { data } = await db.from("tradingview_signal_events").select("received_at").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_worker__").eq("signal_id", "state").maybeSingle();
+      const { data } = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__nifty_paper_worker__").eq("signal_id", "state").maybeSingle();
+      if(data?.raw_payload?.state?.checkpoint?.rulesV2?.emergency?.pending)return NextResponse.json({error:"Emergency exit is pending. Wait for a verified closure before re-arming."},{status:409});
       if (!data || Date.now() - Date.parse(data.received_at) > 15000) return NextResponse.json({ error: "Options worker is offline. Start the Mac worker before arming paper entries." }, { status: 409 });
     }
     const now = new Date().toISOString();

@@ -10,6 +10,7 @@ test('emergency cancels setups, disarms entries, waits for a verified market pap
  s=core.markLimitPaper(s,{at:at(4),spot:22511,chain:[]});assert.ok(s.position);assert.equal(s.trades.length,0);assert.equal(s.ticks.at(-1).at,lastIndex);
  s=core.markLimitPaper(s,{at:at(5),spot:22511,chain:[q(5,90)]});assert.equal(s.position,null);assert.equal(s.trades[0].exit,90);assert.equal(s.trades[0].exitOrderType,'MARKET');assert.equal(s.trades[0].reason,'EMERGENCY_MARKET_EXIT');assert.equal(s.status,'EMERGENCY_STOPPED');assert.equal(s.enabled,false);assert.equal(s.nextLots,2);
  assert.deepEqual(core.requestNiftyEmergency(s,'kill-1',at(6)),s);
+ assert.equal(core.canArmNifty(s,at(4)),false);assert.equal(core.canArmNifty(s,at(6)),true);
 });
 test('emergency overrides an unfilled normal limit and sweeps bids beyond four rupees',()=>{
  let s=opened();s.pendingExit={reason:'PREMIUM_SL',limit:96};s=core.requestNiftyEmergency(s,'kill',at(3));

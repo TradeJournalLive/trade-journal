@@ -7,7 +7,7 @@ type Attempt = { contractId: string; reference: number; at: string };
 type Setup = LimitSignal & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
 export type LimitPosition = { contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
 export type LimitTrade = LimitPosition & { exit: number; closedAt: string; reason: string; pnl: number; grossPnl: number; costs: ReturnType<typeof optionCosts>; exitLimit: number; exitOrderType?: "LIMIT" | "MARKET" };
-export type LimitState = { version: 2; startedAt: string; enabled: boolean; balance: number; nextLots: number; position: LimitPosition | null; trades: LimitTrade[]; setup: Setup | null; seen: string[]; decisions: { id: string; receivedAt: string; decidedAt: string; status: string; reason: string }[]; ticks: { at: string; price: number; high?:number; low?:number }[]; pendingExit: { reason: string; limit: number } | null; emergency?: { id: string; requestedAt: string; pending: boolean }; status: string; mark: number | null; rangeFilter: boolean; interval: number };
+export type LimitState = { version: 2; startedAt: string; enabled: boolean; balance: number; nextLots: number; position: LimitPosition | null; trades: LimitTrade[]; setup: Setup | null; seen: string[]; decisions: { id: string; receivedAt: string; decidedAt: string; status: string; reason: string }[]; ticks: { at: string; price: number; high?:number; low?:number }[]; pendingExit: { reason: string; limit: number } | null; emergency?: { id: string; requestedAt: string; pending: boolean; completedAt?: string }; status: string; mark: number | null; rangeFilter: boolean; interval: number };
 const time = (at: string) => Date.parse(at);
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const positive = (n: number) => Number.isFinite(n) && n > 0;
@@ -32,9 +32,12 @@ export function requestNiftyEmergency(previous: LimitState, id: string, at: stri
   if(s.seen.includes(key))return s;
   if(s.setup)decision(s,s.setup,at,"CANCELLED_EMERGENCY","Emergency stop cancelled this pending setup.");
   s.seen.push(key);s.enabled=false;s.setup=null;s.pendingExit=null;
-  s.emergency={id,requestedAt:at,pending:Boolean(s.position)};
+  s.emergency={id,requestedAt:at,pending:Boolean(s.position),...(!s.position?{completedAt:at}:{})};
   s.status=s.position?"EMERGENCY_MARKET_EXIT_PENDING":"EMERGENCY_STOPPED";
   return s;
+}
+export function canArmNifty(s:LimitState,controlAt:string){
+  return !s.emergency || (!s.emergency.pending&&Boolean(s.emergency.completedAt)&&time(controlAt)>time(s.emergency.completedAt!));
 }
 export function limitFill(q: LimitQuote, quantity: number, side: "BUY" | "SELL", limit: number, at: string) {
   if (!fresh(q.at, at) || !positive(q.bid) || q.ask < q.bid || !Number.isSafeInteger(quantity) || quantity <= 0) return null;
@@ -149,6 +152,7 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
   if(s.position&&!s.pendingExit)s.status="OPEN";
   if(s.emergency?.pending){
     s.emergency.pending=Boolean(s.position);
+    if(!s.position)s.emergency.completedAt=at;
     s.status=s.position?"EMERGENCY_MARKET_EXIT_PENDING":"EMERGENCY_STOPPED";
   }
   return s;

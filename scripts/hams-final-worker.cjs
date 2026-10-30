@@ -16,6 +16,7 @@ function loadAlgo(name) {
 const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = loadAlgo('hamsFinalPaper');
 const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
 const { initializeHamsLimits, receiveHamsLimit, markHamsLimit, emergencyHamsLimit } = loadAlgo('hamsLimitAdapter');
+const { canArmNifty } = loadAlgo('niftyLimitPaper');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
 const root = path.resolve('.paper-worker'), directory = path.join(root, 'hams-final');
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -224,7 +225,7 @@ async function poll() {
           state.status=state.position?'OPEN':state.enabled?'WAITING_FOR_SIGNAL':'DISABLED';pending=null;
         }
         if(typeof value.raw_payload?.emergencyId==='string'&&state.rulesV2){state=emergencyHamsLimit(state,value.raw_payload.emergencyId,value.received_at);pending=null;}
-        else if(typeof value.raw_payload?.enabled==='boolean'&&!(value.raw_payload.enabled&&state.rulesV2?.emergency?.pending)) { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
+        else if(typeof value.raw_payload?.enabled==='boolean'&&!(value.raw_payload.enabled&&state.rulesV2&&!canArmNifty(state.rulesV2,value.received_at))) { state=setHamsEnabled(state,value.raw_payload.enabled); if(!state.enabled)pending=null; }
         lastControl={id:value.id,at:value.received_at,enabled:state.enabled};
         if(reviewRequired())state.status='RECOVERY_REVIEW_REQUIRED';
         save();
@@ -260,7 +261,7 @@ async function main() {
     const control=controls.data?.[0];
     if(control&&typeof control.raw_payload?.enabled==='boolean'){
       if(typeof control.raw_payload.emergencyId==='string'&&state.rulesV2)state=emergencyHamsLimit(state,control.raw_payload.emergencyId,control.received_at);
-      else if(!(control.raw_payload.enabled&&state.rulesV2?.emergency?.pending))state=setHamsEnabled(state,control.raw_payload.enabled);
+      else if(!(control.raw_payload.enabled&&state.rulesV2&&!canArmNifty(state.rulesV2,control.received_at)))state=setHamsEnabled(state,control.raw_payload.enabled);
       lastControl={id:control.id,at:control.received_at,enabled:state.enabled};
     }
   }
