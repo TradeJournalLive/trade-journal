@@ -28,7 +28,10 @@ function fixture(failPage = false, pending = false) {
   }
   copy.require = id => id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { activeMarkets: ['NIFTY','BTC'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
   const originalRequire = copy.require;
-  copy.require = id => id === './paperEngine' ? { ...originalRequire(id), buildPaperBooks: safeBooks } : originalRequire(id);
+  copy.require = id => {
+    if(id==='./paperCapital') { const file=path.resolve(__dirname,'../app/lib/algo/paperCapital.ts'),m=new Module(file,module);m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports; }
+    return id === './paperEngine' ? { ...originalRequire(id), buildPaperBooks: safeBooks } : originalRequire(id);
+  };
   copy._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, filename);
   return { api: copy.exports, ranges };
 }

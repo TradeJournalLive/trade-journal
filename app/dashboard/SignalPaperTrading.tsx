@@ -10,6 +10,8 @@ import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import HamsFinalPaper from "./HamsFinalPaper";
+import PaperAccountSummary from "./PaperAccountSummary";
+import { paperCapital } from "../lib/algo/paperCapital";
 
 type LivePaperBook = Awaited<ReturnType<typeof loadPaperBooks>>[string];
 
@@ -117,13 +119,14 @@ export default function SignalPaperTrading() {
     {hams && <HamsFinalPaper />}
     <div hidden={hams}>
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
-    {market === "NIFTY" && <section className="algo-os-card">
+    {market === "NIFTY" && <section className="algo-os-card paper-workspace">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>
       <p className="text-xs text-slate-500">{book?.options?.trial ? `Trial ${time(book.options.trial.startedAt)} to ${time(book.options.trial.endsAt)}` : "Trial not started"} · Paper LIMIT orders · New-rule P&amp;L includes estimated charges; earlier results unchanged</p>
       <p className="text-xs text-slate-500">Last index tick: {book?.options?.lastTickAt ? time(book.options.lastTickAt) : "--"}</p>
       <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
-      <PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} />
-      <div className="algo-rule-list"><div><span>Engine status</span><b>{book?.options?.status ?? "Loading"}</b></div><div><span>Market feed</span><b>{book?.options?.stale === false ? "Receiving" : "Missing or stale"}</b></div><div><span>Next size</span><b>{book?.options?.size.lots ?? 1} lots</b></div></div>
+      <PaperAccountSummary capital={book?.options?.capital??paperCapital(null)} />
+      <dl className="paper-operations"><div><dt>Next order</dt><dd>{book?.options?.size.lots ?? "--"} lot(s) / 20 max</dd></div><div><dt>Execution</dt><dd>Limit only</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{book?.options?.status?.replaceAll("_"," ") ?? "Loading"}</dd></div></dl>
+      <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} /></details>
       <details className="border-y border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list">
         <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
         <div><dt>Contract</dt><dd>ATM · nearest weekly expiry · ₹10,00,000 initial capital</dd></div>

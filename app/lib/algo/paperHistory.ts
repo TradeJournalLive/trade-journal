@@ -3,6 +3,7 @@ import { buildPaperBooks, paperValuation, activeMarkets, type PaperEvent } from 
 import { buildNiftyOptionsPaper } from "./niftyPaperEngine";
 import { btcView, type BtcTrade } from "./btcPaperEngine";
 import { tradeSignalTimes } from "./reportDates";
+import { paperCapital } from "./paperCapital";
 
 async function ledger(secret: string, strategy: string) {
   const db = getServerSupabase(); if (!db) throw new Error("Saved paper trading is unavailable.");
@@ -35,7 +36,10 @@ export async function loadPaperBooks(secret: string) {
       const now = new Date().toISOString();
       const books = buildPaperBooks(events, now);
       const options = worker?.raw_payload?.state?.checkpoint ? buildNiftyOptionsPaper([], now, worker.raw_payload.state.checkpoint) : buildNiftyOptionsPaper(events, now);
-      const { checkpoint: _checkpoint, ...publicOptions } = options;
+      const { checkpoint: _checkpoint, ...optionView } = options;
+      const capitalState="rulesV2" in _checkpoint?_checkpoint.rulesV2:undefined;
+      const capital=paperCapital(capitalState?{initial:1000000,balance:capitalState.balance,position:capitalState.position,mark:options.mark,fresh:!options.stale}:null);
+      const publicOptions={...optionView,capital};
       const workerOnline = Boolean(worker && Date.parse(now) - Date.parse(worker.received_at) < 15000 && !String(worker.raw_payload?.book?.trial?.workerStatus || "").startsWith("STOPPED_"));
       const ledgerTrades = niftyLedger.map(row => row.raw_payload?.trade).filter(Boolean) as typeof options.trades;
       const optionTrades = (ledgerTrades.length ? ledgerTrades : options.trades).map(trade => ({ ...trade, ...tradeSignalTimes(events, trade.signalId, trade.indexSymbol, trade.openedAt) }));

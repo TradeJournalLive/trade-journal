@@ -5,6 +5,8 @@ import { emptyHamsState, type HamsState } from "../lib/algo/hamsFinalPaper";
 import { istDay, istTime } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
+import PaperAccountSummary from "./PaperAccountSummary";
+import { paperCapital } from "../lib/algo/paperCapital";
 import type { HamsIncident } from "../lib/algo/hamsHistory";
 type Snapshot = { state: HamsState; incidents?: HamsIncident[]; reviewRequired?: boolean; decisions: { id: string; receivedAt: string; status: string }[]; workerOnline: boolean; feedAt: string | null; workerStatus: string; mark: number | null };
 const amount = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -29,6 +31,7 @@ export default function HamsFinalPaper() {
   }, []);
   const state = snapshot?.state ?? emptyHamsState(), p = state.position;
   const fresh = snapshot?.feedAt && Date.now() - Date.parse(snapshot.feedAt) < 15000;
+  const capital=paperCapital(snapshot?{initial:state.rulesV2?1000000:500000,balance:state.balance,position:p,mark:snapshot.mark,fresh:Boolean(fresh&&snapshot.workerOnline),verified:!snapshot.reviewRequired}:null);
   const trades = state.trades.filter(t => !date || istDay(t.openedAt) === date);
   async function toggle() {
     setBusy(true);
@@ -41,13 +44,14 @@ export default function HamsFinalPaper() {
     try{const r=await accountFetch("/api/algo/hams-final",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"acknowledgeRecovery",excludeUnverified:true})});const b=await r.json();if(!r.ok)throw Error(b.error);setError("");}
     catch(e){setError(e instanceof Error?e.message:"Recovery acknowledgement failed.");}finally{setBusy(false);}
   }
-  return <section className="algo-os-card">
+  return <section className="algo-os-card paper-workspace">
     <div className="algo-card-head"><h3>NIFTY HAMS Final · 3 minutes</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="HAMS Final paper entries" checked={state.enabled} disabled={busy || !snapshot || (!state.enabled && !snapshot.workerOnline)} onChange={() => void toggle()} />{state.enabled ? "Entries armed" : "Entries off"}</label></div>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {snapshot?.reviewRequired && <div role="alert" className="algo-alert-box"><b>HAMS recovery review required</b><span>Entries are blocked while an earlier trade is unverified. The entry switch has not been turned off. Unknown results are excluded from verified P&amp;L.</span><button className="algo-action secondary" type="button" disabled={busy||!snapshot.workerOnline} onClick={()=>void acknowledgeRecovery()}>Exclude unverified result and continue</button></div>}
     <p role="status" className={snapshot?.workerOnline && fresh && !snapshot.reviewRequired ? "text-emerald-600" : "text-red-600"}>{snapshot?.workerOnline ? fresh ? "● Worker online · data receiving" : "● Worker online · market data stale/closed" : "● Worker offline"} · {snapshot?.workerStatus ?? "Loading"}</p>
-    <PaperLifetimeSummary realized={`₹${amount(state.trades.reduce((sum,t)=>sum+t.pnl,0))} · new rules net; legacy gross`} openPnl={snapshot?.reviewRequired ? "Unverified" : p && snapshot?.mark != null && fresh ? `₹${amount((snapshot.mark - p.entry) * p.quantity)}` : p ? "Unavailable" : "₹0"} closedTrades={state.trades.length} />
-    <dl className="algo-rule-list"><div><dt>Initial capital</dt><dd>{state.rulesV2?"₹10,00,000":"₹5,00,000 · legacy"}</dd></div><div><dt>Cash available</dt><dd>{snapshot?.reviewRequired?"Unavailable during review":`₹${amount(state.balance - (p ? p.entry * p.quantity : 0))}`}</dd></div><div><dt>Next size</dt><dd>{state.nextLots} lot(s) · maximum 20</dd></div><div><dt>Status</dt><dd>{state.status}</dd></div></dl>
+    <PaperAccountSummary capital={capital} />
+    <dl className="paper-operations"><div><dt>Next order</dt><dd>{state.nextLots} lot(s) / 20 max</dd></div><div><dt>Execution</dt><dd>Limit only</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{state.status.replaceAll("_"," ")}</dd></div></dl>
+    <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`₹${amount(state.trades.reduce((sum,t)=>sum+t.pnl,0))} · new net / legacy gross`} openPnl={capital.openPnl===null?"Unavailable":`₹${amount(capital.openPnl)}`} closedTrades={state.trades.length} /></details>
     <details className="border-y py-3"><summary>Strategy rules · limit orders</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>3-minute signal high → CE / low → PE · next 10 candles</dd></div><div><dt>Contract</dt><dd>ATM · nearest weekly expiry · no 35-point filter</dd></div><div><dt>Stop</dt><dd>Entry − min(20 points, 25% of entry)</dd></div><div><dt>Target</dt><dd>Entry + min(100 points, 100% of entry)</dd></div><div><dt>Sizing</dt><dd>Start 1; +1 after loss, maximum 20; profitable trade and positive cumulative net resets to 1</dd></div><div><dt>Session</dt><dd>09:17–14:50 IST · no trailing stop</dd></div><div><dt>Reversal</dt><dd>Opposite breakout · confirm exit fill before opposite entry</dd></div><div><dt>Limits</dt><dd>Initial ask + ₹4 / initial bid − ₹4 · no market fallback</dd></div></dl></details>
     {p && <dl className="algo-rule-list"><div><dt>Open contract</dt><dd>{p.contract.id} · {p.lots} lots</dd></div><div><dt>Entry / stop / target</dt><dd>{amount(p.entry)} / {amount(p.stop)} / {amount(p.target)}</dd></div><div><dt>Capital used</dt><dd>₹{amount(p.entry * p.quantity)}</dd></div></dl>}
     <HistoryDatePicker label="Entry date · IST" value={date} onChange={setDate} allowAll />
