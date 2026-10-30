@@ -8,7 +8,7 @@ const tradeKey = t => `${t.signalId}:${t.openedAt}`;
 function validate(snapshot, owner) {
   const s = snapshot?.state;
   if (!snapshot || snapshot.owner !== owner || !s || typeof s.enabled !== 'boolean'
-    || !Number.isFinite(s.balance) || !Number.isSafeInteger(s.nextLots) || s.nextLots < 1 || s.nextLots > 20
+    || !Number.isFinite(s.balance) || !Number.isSafeInteger(s.nextLots) || s.nextLots < 1 || (!s.rulesV2 && s.nextLots > 20)
     || !Array.isArray(s.trades) || !Array.isArray(s.seen) || !Array.isArray(snapshot.decisions)
     || !Number.isFinite(Date.parse(snapshot.savedAt))) throw Error('HAMS_INVALID_SAVED_STATE');
   for (const t of s.trades) if (!t.signalId || !t.openedAt || !t.closedAt || !Number.isFinite(t.pnl)) throw Error('HAMS_INVALID_SAVED_TRADE');

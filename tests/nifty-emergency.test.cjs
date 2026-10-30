@@ -32,6 +32,10 @@ test('HAMS recovery restores uncapped sizing from durable trades',()=>{
  const t={...opened().position,lots:27,exit:80,closedAt:at(3),reason:'PREMIUM_SL',pnl:-100,grossPnl:-90,costs:{total:10},exitLimit:76};
  const restored=hamsRecoveryView(state,[],[{id:'trade',type:'TRADE',at:at(3),value:t}]);assert.equal(restored.state.nextLots,28);assert.equal(restored.state.rulesV2.nextLots,28);
 });
+test('durable HAMS journal accepts sizes above twenty only for the new-rule engine',()=>{
+ const {selectSnapshot}=require('../scripts/hams-journal.cjs');const state=load('hamsFinalPaper').emptyHamsState();state.nextLots=28;state.rulesV2=core.newLimitState(at(0),3,false,true);state.rulesV2.nextLots=28;
+ const saved={owner:'fixture',state,decisions:[],savedAt:at(0)};assert.equal(selectSnapshot([saved],'fixture').state.nextLots,28);delete state.rulesV2;assert.throws(()=>selectSnapshot([saved],'fixture'),/INVALID_SAVED_STATE/);
+});
 test('security answers use salted hashes and both must match',async()=>{
  const a=['private phrase one','private phrase two'],stored=await Promise.all(a.map(hashEmergencyAnswer));assert.notEqual(stored[0].hash,(await hashEmergencyAnswer(a[0])).hash);assert.equal(await verifyEmergencyAnswers(a,stored),true);assert.equal(await verifyEmergencyAnswers([a[0],'incorrect answer'],stored),false);assert.equal(await verifyEmergencyAnswers([' PRIVATE PHRASE ONE ',a[1]],stored),true);assert.equal(validEmergencyAnswers(['short','short']),false);assert.equal(validEmergencyAnswers(['same answer','SAME ANSWER']),false);
 });
