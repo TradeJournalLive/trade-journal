@@ -9,7 +9,15 @@ retained with their original accounting; new trades are tagged ruleVersion 2.
 - HAMS: confirmed 3-minute signals; no 35-point range filter.
 - BUY high breakout buys ATM CE; SELL low breakout buys ATM PE, nearest listed
   NIFTY weekly expiry. Valid for ten subsequent candles of the signal timeframe.
-- A pre-delivery breakout is missed, never reconstructed as a historical fill.
+- Current NIFTY: a pre-delivery breakout is missed, never reconstructed as a historical fill.
+- HAMS only: allow a current-premium limit entry up to 20 seconds after the first
+  verified breakout, including one observed before webhook processing. Require
+  fresh current index data, an unbroken pre-close baseline and continuous observed
+  delivery-period history; skip recorded reversals and unverifiable timing. The
+  deadline is checked before each fill and survives checkpoints. Compacted history
+  uses the start of its first broken one-second bucket as a conservative timer;
+  this can shorten, never extend, the allowance by less than a second. The usual
+  1.5-second depth attempt and ten-candle/session cutoffs still apply. No backfills.
 - Session: 09:17 inclusive to 14:50 exclusive IST. Exit at 14:50.
 - Premium stop: entry minus min(20 points, 25% of actual average entry).
 - Premium target: entry plus min(100 points, 100% of average entry).

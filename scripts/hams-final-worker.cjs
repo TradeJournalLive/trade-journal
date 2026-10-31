@@ -180,7 +180,7 @@ async function prepare(signal) {
   if(state.rulesV2){
     if(signal.symbol!=='NSE:NIFTY'||signal.timeframe!=='3') { decide(signal,'INVALID_SIGNAL');return; }
     if(reviewRequired()){decide(signal,'RECOVERY_REVIEW_REQUIRED');return;}
-    state=receiveHamsLimit(state,{...signal,interval:3},now());decisions=state.rulesV2.decisions;save();return;
+    state=receiveHamsLimit(state,{...signal,interval:3},now());decisions=state.rulesV2.decisions;save();if(state.rulesV2.setup?.triggered)tryEntry();return;
   }
   if (pending) { decide(pending.signal,'SUPERSEDED'); pending=null; }
   if (state.seen.includes(`${signal.strategyId}:${signal.id}`)) return;
@@ -319,7 +319,7 @@ async function main() {
     if(Date.now()-ack>2000&&!publishing) void publish().catch(()=>{status='LEASE_OR_STORAGE_LOST';stopped=true;});
     if(!flushing)void flushLedger().catch(()=>{status='HAMS_LEDGER_SYNC_RETRY';});
     if(!busy) void poll().catch(()=>{status='SIGNAL_STORAGE_UNAVAILABLE';});
-    if(!state.rulesV2||state.position||state.rulesV2.setup?.attempt)tryEntry();
+    if(!state.rulesV2||state.position||state.rulesV2.setup?.triggered)tryEntry();
     if(pending && Date.now()-Date.parse(pending.signal.closedAt)>=180000) { decide(pending.signal,'MISSED_SIGNAL_CLOSE');pending=null;save(); }
     if(Date.now()-lastRefresh>60000&&!busy) {
       lastRefresh=Date.now();

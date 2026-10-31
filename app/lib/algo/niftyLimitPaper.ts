@@ -4,8 +4,9 @@ export type LimitQuote = { id: string; expiry: string; strike: number; side: "CE
 type Level = { price: number; quantity: number };
 export type LimitSignal = { id: string; action: "BUY" | "SELL"; closedAt: string; receivedAt: string; high: number; low: number; interval: number };
 type Attempt = { contractId: string; reference: number; at: string };
-type Setup = LimitSignal & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
-export type LimitPosition = { contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
+type BreakoutTiming = { breakoutAt?: string; breakoutDeadline?: string; breakoutTimePrecision?: "SECOND_BUCKET" | "OBSERVED_TICK" };
+type Setup = LimitSignal & BreakoutTiming & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
+export type LimitPosition = BreakoutTiming & { contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
 export type LimitTrade = LimitPosition & { exit: number; closedAt: string; reason: string; pnl: number; grossPnl: number; costs: ReturnType<typeof optionCosts>; exitLimit: number; exitOrderType?: "LIMIT" | "MARKET" };
 export type LimitState = { version: 2; startedAt: string; enabled: boolean; balance: number; nextLots: number; position: LimitPosition | null; trades: LimitTrade[]; setup: Setup | null; seen: string[]; decisions: { id: string; receivedAt: string; decidedAt: string; status: string; reason: string }[]; ticks: { at: string; price: number; high?:number; low?:number }[]; pendingExit: { reason: string; limit: number } | null; emergency?: { id: string; requestedAt: string; pending: boolean; completedAt?: string }; status: string; mark: number | null; rangeFilter: boolean; interval: number };
 const time = (at: string) => Date.parse(at);
@@ -71,7 +72,7 @@ function eligible(s: LimitState, setup: LimitSignal, at: string) {
   return session.day===istSession(setup.closedAt).day && session.minute>=limitRules.start && session.minute<limitRules.end
     && time(at)>=time(setup.closedAt) && time(at)-time(setup.closedAt)<10*setup.interval*60000;
 }
-export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, processedAt=signal.receivedAt): LimitState {
+export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, processedAt=signal.receivedAt, breakoutGraceMs=0): LimitState {
   // Webhook receipt and worker processing are different clocks. Prices captured
   // between them must be checked against processing time, not rejected as future.
   const s=structuredClone(previous),at=processedAt;
@@ -88,16 +89,35 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
   const side=signal.action==="BUY"?"CE":"PE";
   if(s.position?.contract.side===side){decision(s,signal,at,"ALREADY_OPEN","The same option side is already open.");return s;}
   const history=s.ticks.filter(t=>time(t.at)>=time(signal.closedAt)&&time(t.at)<=time(at));
-  if(history.some(t=>signal.action==="BUY"?(t.high??t.price)>signal.high:(t.low??t.price)<signal.low)) {
+  const broken=(price:number)=>signal.action==="BUY"?price>signal.high:price<signal.low;
+  const firstBreak=history.findIndex(t=>signal.action==="BUY"?(t.high??t.price)>signal.high:(t.low??t.price)<signal.low);
+  if(firstBreak>=0&&breakoutGraceMs!==20000) {
     decision(s,signal,at,"MISSED_BREAKOUT","The signal level already broke before alert processing; wait for the next signal.");return s;
   }
   const last=s.ticks.at(-1);
   if(!last||!fresh(last.at,at)||time(last.at)<time(signal.closedAt)) {
     decision(s,signal,at,"UNVERIFIABLE_BREAKOUT_HISTORY","No fresh index observation establishes an unbroken level at alert processing.");return s;
   }
+  if(firstBreak>=0){
+    const baseline=s.ticks.filter(t=>time(t.at)<time(signal.closedAt)).at(-1);
+    let previousAt=time(signal.closedAt);
+    const gap=history.some(t=>{const missing=time(t.at)-previousAt>5000;previousAt=time(t.at);return missing;});
+    if(!baseline||time(signal.closedAt)-time(baseline.at)>5000||broken(baseline.price)||gap){
+      decision(s,signal,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Cannot verify the first breakout inside the HAMS grace window from continuous observed index history.");return s;
+    }
+    // Older history is compacted per second. Use the bucket START, not its last
+    // timestamp, so compaction can never extend a 20-second grace by almost 1s.
+    const breakoutMs=Math.max(time(signal.closedAt),Math.floor(time(history[firstBreak].at)/1000)*1000);
+    const deadline=breakoutMs+breakoutGraceMs;
+    if(time(at)>deadline){decision(s,signal,at,"MISSED_BREAKOUT","The first observed breakout is older than the HAMS 20-second entry grace; wait for the next signal.");return s;}
+    const reversed=!broken(history[firstBreak].price)||history.slice(firstBreak+1).some(t=>signal.action==="BUY"?(t.low??t.price)<=signal.high:(t.high??t.price)>=signal.low);
+    if(!broken(last.price)||reversed){decision(s,signal,at,"BREAKOUT_REVERSED","The observed index returned inside the signal level after the first breakout; no re-cross entry.");return s;}
+    s.setup={...signal,triggered:true,breakoutAt:new Date(breakoutMs).toISOString(),breakoutDeadline:new Date(deadline).toISOString(),breakoutTimePrecision:"SECOND_BUCKET"};
+    decision(s,signal,at,"BREAKOUT_GRACE_ACTIVE",`HAMS breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
+  }
   s.setup=signal;decision(s,signal,at,"WAITING_FOR_INDEX_BREAK","Prepared ATM side; waiting for the confirmed signal high/low breakout within ten candles.");return s;
 }
-export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }): LimitState {
+export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }, breakoutGraceMs=0): LimitState {
   const s=structuredClone(previous),at=tick.at,session=istSession(at),last=s.ticks.at(-1);
   if(!positive(tick.spot)||!Number.isFinite(time(at))||(last&&time(at)<=time(last.at)))return s;
   // Bound checkpoint size without losing an intra-second pre-delivery breakout.
@@ -107,13 +127,21 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
   }
   s.ticks=s.ticks.filter(t=>time(at)-time(t.at)<=35*60000);
   let setup=s.setup;
+  if(breakoutGraceMs===20000&&setup?.triggered&&!setup.breakoutDeadline){decision(s,setup,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Pending HAMS breakout has no saved grace deadline; wait for the next signal.");s.setup=null;setup=null;}
   if(setup&&!eligible(s,setup,at)){decision(s,setup,at,"SETUP_EXPIRED","No fill inside the ten-candle/session window.");s.setup=null;setup=null;}
+  if(setup?.breakoutDeadline&&time(at)>time(setup.breakoutDeadline)){decision(s,setup,at,"BREAKOUT_GRACE_EXPIRED","No complete limit entry inside the HAMS 20-second breakout grace.");s.setup=null;setup=null;}
   if(setup&&!setup.triggered){
     const q=atmContract(tick.spot,setup.action==="BUY"?"CE":"PE",tick.chain,at);
     if(q)setup.prepared={contractId:q.id,ask:q.ask,bid:q.bid,at};
   }
   if(setup&&!setup.triggered&&last&&fresh(last.at,at)) {
-    if(setup.action==="BUY"?last.price<=setup.high&&tick.spot>setup.high:last.price>=setup.low&&tick.spot<setup.low)setup.triggered=true;
+    if(setup.action==="BUY"?last.price<=setup.high&&tick.spot>setup.high:last.price>=setup.low&&tick.spot<setup.low){
+      setup.triggered=true;
+      if(breakoutGraceMs===20000){setup.breakoutAt=at;setup.breakoutDeadline=new Date(time(at)+breakoutGraceMs).toISOString();setup.breakoutTimePrecision="OBSERVED_TICK";}
+    }
+  }
+  if(breakoutGraceMs===20000&&setup?.triggered&&(setup.action==="BUY"?tick.spot<=setup.high:tick.spot>=setup.low)){
+    decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before the HAMS grace entry.");s.setup=null;setup=null;
   }
   const p=s.position;
   if(p){
@@ -138,14 +166,17 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
   if(!s.position&&s.enabled&&setup?.triggered&&eligible(s,setup,at)){
     if(setup.action==="BUY"?tick.spot<=setup.high:tick.spot>=setup.low){decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before a complete limit fill.");s.setup=null;return s;}
     const contract=setup.attempt?tick.chain.find(q=>q.id===setup!.attempt!.contractId&&fresh(q.at,at)):atmContract(tick.spot,setup.action==="BUY"?"CE":"PE",tick.chain,at);
-    if(!contract){decision(s,setup,at,"MISSING_FRESH_ATM_QUOTE","No fresh nearest-weekly ATM premium is available.");s.setup=null;return s;}
+    if(!contract){
+      if(breakoutGraceMs===20000&&setup.breakoutDeadline){decision(s,setup,at,"WAITING_FOR_FRESH_ATM_QUOTE","HAMS grace is active; waiting for a fresh nearest-weekly ATM quote before its original deadline.");return s;}
+      decision(s,setup,at,"MISSING_FRESH_ATM_QUOTE","No fresh nearest-weekly ATM premium is available.");s.setup=null;return s;
+    }
     setup.attempt??={contractId:contract.id,reference:contract.ask,at};
     const quantity=s.nextLots*contract.lotSize,limit=round(setup.attempt.reference+limitRules.allowance);
     const fill=limitFill(contract,quantity,"BUY",limit,at);
     if(fill){
       if(fill.price*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL","The full premium exceeds available virtual cash.");s.setup=null;return s;}
-      s.position={contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots:s.nextLots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit};
-      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${s.nextLots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}.`);s.setup=null;
+      s.position={contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots:s.nextLots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
+      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${s.nextLots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}.${setup.breakoutDeadline?` HAMS breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
     }else if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Full observed quantity was unavailable within the original ask + ₹4 limit during the 1.5-second attempt.");s.setup=null;}
     else decision(s,setup,at,"WAITING_FOR_ENTRY_DEPTH","Bounded limit order awaiting observed quantity; no fill assumed.");
   }
