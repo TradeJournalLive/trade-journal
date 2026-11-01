@@ -70,7 +70,7 @@ test('worker startup database failure cannot save the default state',async()=>{
  const realFs=fs;const fakeFs={...fs,mkdirSync(){},readFileSync(file,...args){return String(file).endsWith('config.json')?JSON.stringify({webhookSecret:'test-secret'}):realFs.readFileSync(file,...args)},writeFileSync(){writes.push('write')},renameSync(){writes.push('rename')}};
  const db={from(){const q={select(){return q},eq(){return q},maybeSingle(){return Promise.resolve({error:{message:'offline'}})}};return q;}};
  const fakeProcess={env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.invalid',SUPABASE_SERVICE_ROLE_KEY:'test'},argv:[],cwd:()=>process.cwd(),on(){},exit(code){exits.push(code)}};
- const req=id=>id==='node:fs'?fakeFs:id==='@next/env'?{loadEnvConfig(){}}:id==='@supabase/supabase-js'?{createClient:()=>db}:id==='fyers-api-v3'?{}:id==='./nifty-depth.cjs'?{readDepth(){}}:id==='./hams-journal.cjs'?{HamsJournal:class{read(){return null}save(){writes.push('journal-save')}},selectSnapshot,flushHamsRecords}:require(id);
+ const req=id=>id==='node:fs'?fakeFs:id==='@next/env'?{loadEnvConfig(){}}:id==='@supabase/supabase-js'?{createClient:()=>db}:id==='fyers-api-v3'?{}:id==='./nifty-depth.cjs'?{readDepth(){}}:id==='./hams-public-view.cjs'?require('../scripts/hams-public-view.cjs'):id==='./hams-journal.cjs'?{HamsJournal:class{read(){return null}save(){writes.push('journal-save')}},selectSnapshot,flushHamsRecords}:require(id);
  vm.runInNewContext(source,{require:req,process:fakeProcess,module:{},__dirname:path.resolve(__dirname,'../scripts'),console:{log(){},error(){}},Buffer,structuredClone,AbortSignal,setTimeout});
  await new Promise(r=>setImmediate(r));assert.deepEqual(writes,[]);assert.deepEqual(exits,[1]);
 });

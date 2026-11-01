@@ -12,11 +12,14 @@ export async function GET() {
     const secret = await connectionSecret();
     if (!secret) return NextResponse.json({ error: "Connect TradingView first." }, { status: 401, headers });
     const db = getServerSupabase(); if (!db) throw new Error("Storage unavailable.");
-    const result = await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__hams_final_worker__").eq("signal_id", "state").maybeSingle();
+    const result = await db.from("tradingview_signal_events").select("received_at,public_view:raw_payload->publicView").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__hams_final_worker__").eq("signal_id", "state").maybeSingle();
     if (result.error) throw new Error("HAMS history unavailable.");
-    const raw = result.data?.raw_payload, age = Date.now() - Date.parse(result.data?.received_at || "");
+    const projected=result.data?.public_view as any;
+    let raw:any=projected?.viewVersion===1?projected:null;
+    if(result.data&&!raw){const fallback=await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash",hashWebhookSecret(secret)).eq("strategy_id","__hams_final_worker__").eq("signal_id","state").maybeSingle();if(fallback.error)throw Error("HAMS legacy snapshot unavailable.");raw=fallback.data?.raw_payload;}
+    const age = Date.now() - Date.parse(result.data?.received_at || "");
     if(result.data && !raw?.state)throw Error("Invalid HAMS snapshot; durable history retained.");
-    const records = await loadHamsRecords(db,hashWebhookSecret(secret));
+    const records = await loadHamsRecords(db,hashWebhookSecret(secret),true);
     const recovery = hamsRecoveryView(raw?.state ?? emptyHamsState(),raw?.incidents ?? [],records);
     const decisions = new Map<string, {id:string;receivedAt:string;decidedAt?:string;status:string}>();
     for(const d of [...(raw?.decisions ?? []), ...records.filter(r=>r.type==="DECISION").map(r=>r.value)]) {

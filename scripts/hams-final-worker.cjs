@@ -7,6 +7,7 @@ const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
 const { readDepth } = require('./nifty-depth.cjs');
 const { HamsJournal, selectSnapshot, flushHamsRecords, confirmHamsPublish, digest } = require('./hams-journal.cjs');
+const { hamsPublicView } = require('./hams-public-view.cjs');
 function loadAlgo(name) {
   const file=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),copy=new Module(file,module);
   copy.require=id=>id.startsWith('./')?loadAlgo(id.slice(2)):require(id);
@@ -90,7 +91,7 @@ async function publish() {
   try {
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
-    const r = await db.from(TABLE).update(row('state',at,snapshot)).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).select('id');
+    const r = await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).select('id');
     await confirmHamsPublish(r,()=>db.from(TABLE).select('received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
     lease = at; ack = Date.parse(at); save();
   } finally { publishing = false; }

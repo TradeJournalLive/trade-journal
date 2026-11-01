@@ -13,12 +13,13 @@ function fixture(failPage = false, pending = false) {
   rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_worker__', signal_id: 'state', received_at: new Date().toISOString(), raw_payload: { state: { enabled: true, trades: [] } } });
   rows.push({ secret_hash: 'owner-a', strategy_id: '__gold_mt5_trade__', received_at: '2026-10-22T16:00:00Z', signal_id: 'gold', raw_payload: { trade: { id: 'gold-own', pnl: 30 } } });
   rows.push({ secret_hash: 'owner-b', strategy_id: '__gold_mt5_trade__', raw_payload: { trade: { id: 'gold-private', pnl: 100 } } });
+  rows.forEach((r,i)=>r.id=i+1);
   function from() {
-    const filters = []; let single = false, range = null;
-    const q = { select() { return q; }, eq(k,v) { filters.push(r => r[k] === v); return q; }, neq(k,v) { filters.push(r => r[k] !== v); return q; }, order() { return q; }, maybeSingle() { single = true; return q; }, range(a,b) { range = [a,b]; ranges.push(range); return q; }, then(resolve,reject) { return Promise.resolve().then(() => {
+    const filters = []; let single = false, range = null, head=false;
+    const q = { select(columns,options) { head=Boolean(options?.head); return q; }, eq(k,v) { filters.push(r => r[k] === v); return q; }, neq(k,v) { filters.push(r => r[k] !== v); return q; }, order() { return q; }, maybeSingle() { single = true; return q; }, range(a,b) { range = [a,b]; ranges.push(range); return q; }, then(resolve,reject) { return Promise.resolve().then(() => {
       if (failPage && range?.[0] === 1000) return { error: { message: 'offline' } };
       const found = rows.filter(r => filters.every(f => f(r)));
-      return { data: single ? found[0] || null : range ? found.slice(range[0], range[1]+1) : found, error: null };
+      return { count:found.length,data: head?null:single ? found[0] || null : range ? found.slice(range[0], range[1]+1) : found, error: null };
     }).then(resolve,reject); } }; return q;
   }
   const filename = path.resolve(__dirname, '../app/lib/algo/paperHistory.ts'), copy = new Module(filename, module);
@@ -29,6 +30,7 @@ function fixture(failPage = false, pending = false) {
   copy.require = id => id === './signalStore' ? { getServerSupabase: () => ({ from }), hashWebhookSecret: s => s } : id === './reportDates' ? { tradeSignalTimes: () => ({ signalReceivedAt: undefined, signalClosedAt: undefined }) } : id === './paperEngine' ? { activeMarkets: ['NIFTY','BTC'], buildPaperBooks: () => Object.fromEntries(['NIFTY','BTC','GOLD'].map(m => [m,{ trades: [], position: null }])), paperValuation: () => ({ realized: 0 }) } : id === './niftyPaperEngine' ? { buildNiftyOptionsPaper: () => ({ checkpoint: {}, trades: [], position: null, realized: 0 }) } : id === './btcPaperEngine' ? { btcView: () => ({ realized: 10, tradeCount: 1 }) } : require(id);
   const originalRequire = copy.require;
   copy.require = id => {
+    if(id==='./historyReads') { const file=path.resolve(__dirname,'../app/lib/algo/historyReads.ts'),m=new Module(file,module);m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports; }
     if(id==='./paperCapital') { const file=path.resolve(__dirname,'../app/lib/algo/paperCapital.ts'),m=new Module(file,module);m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports; }
     return id === './paperEngine' ? { ...originalRequire(id), buildPaperBooks: safeBooks } : originalRequire(id);
   };

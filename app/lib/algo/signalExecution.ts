@@ -23,12 +23,15 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
     if (!id || !t.openedAt || typeof t.entry !== "number" || !Number.isFinite(t.entry)) return;
     entries.set(key(market, id), options ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
   }
-  const workers = await db.from("tradingview_signal_events").select("strategy_id,raw_payload").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__hams_final_worker__"]);
+  const workers = await db.from("tradingview_signal_events").select("strategy_id,nifty_decisions:raw_payload->state->checkpoint->decisions,nifty_position:raw_payload->state->checkpoint->position,nifty_trades:raw_payload->state->checkpoint->trades,hams_decisions:raw_payload->decisions,hams_state_decisions:raw_payload->state->decisions,hams_position:raw_payload->state->position,hams_trades:raw_payload->state->trades,btc_decisions:raw_payload->saved->state->decisions,btc_position:raw_payload->saved->state->position,btc_trades:raw_payload->saved->state->trades").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__hams_final_worker__"]);
   if (workers.error) throw Error("Execution history unavailable.");
-  for (const row of workers.data || []) {
+  for (const value of workers.data || []) {
+    const row=value as any;
     const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__hams_final_worker__" ? "NIFTY_HAMS" : "BTC";
-    const state = market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "NIFTY_HAMS" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
-    if (market === "NIFTY_HAMS") for (const d of row.raw_payload?.decisions || []) {
+    const prefix=market==="NIFTY"?"nifty":market==="NIFTY_HAMS"?"hams":"btc";
+    const projected=Object.prototype.hasOwnProperty.call(row,`${prefix}_position`);
+    const state = projected?{decisions:row[market==="NIFTY_HAMS"?"hams_state_decisions":`${prefix}_decisions`],position:row[`${prefix}_position`],trades:row[`${prefix}_trades`]}:market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "NIFTY_HAMS" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
+    if (market === "NIFTY_HAMS") for (const d of (projected?row.hams_decisions:row.raw_payload?.decisions) || []) {
       readDecision(market, { ...d, reason: d.reason || String(d.status).replaceAll("_", " "), decidedAt: d.decidedAt || d.receivedAt });
     }
     for (const d of state?.decisions || []) readDecision(market, d);

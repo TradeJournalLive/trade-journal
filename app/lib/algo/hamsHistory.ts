@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emptyHamsState, nextHamsLots, type HamsState, type HamsPosition, type HamsTrade } from "./hamsFinalPaper";
+import { readHistory } from "./historyReads";
 export type HamsIncident = { id: string; signalId: string; at: string; status: string; reason: string; position?: HamsPosition; acknowledgedAt?: string };
 export type HamsRecord = { id: string; type: string; at: string; value: unknown };
 const key = (t: HamsPosition) => `${t.signalId}:${t.openedAt}`;
-export async function loadHamsRecords(db: SupabaseClient, owner: string): Promise<HamsRecord[]> {
+export async function loadHamsRecords(db: SupabaseClient, owner: string, reporting=false): Promise<HamsRecord[]> {
+  if(reporting){const rows=await readHistory(db,owner,"hams-ledger",q=>q.eq("strategy_id","__hams_final_worker__").like("signal_id","ledger:%"));return rows.map(r=>r.raw_payload?.record).filter(Boolean) as HamsRecord[];}
   const records: HamsRecord[] = [];
   for (let offset = 0; ; offset += 1000) {
     const r = await db.from("tradingview_signal_events").select("raw_payload").eq("secret_hash", owner).eq("strategy_id", "__hams_final_worker__")

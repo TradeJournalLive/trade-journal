@@ -179,7 +179,7 @@ async function publish() {
   lease = at; lastPublish = Date.now(); saveLocal();
 }
 async function poll() {
-  const { data, error } = await db.from(TABLE).select('id,received_at,signal,raw_payload').eq('secret_hash', secretHash).neq('strategy_id', STRATEGY).gte('received_at', pollAfter).order('received_at').order('id').limit(1000);
+  const { data, error } = await db.from(TABLE).select('id,received_at,signal,raw_payload').eq('secret_hash', secretHash).or('strategy_id.eq.__paper_control__,signal->metadata->niftyPaper->>kind.eq.SIGNAL').gte('received_at', pollAfter).order('received_at').order('id').limit(1000);
   if (error || data?.length === 1000) throw new Error('SIGNAL_BACKLOG_OR_STORAGE_ERROR');
   const events = [];
   for (const row of data || []) {
