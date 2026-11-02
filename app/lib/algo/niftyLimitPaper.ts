@@ -6,7 +6,8 @@ export type LimitSignal = { id: string; action: "BUY" | "SELL"; closedAt: string
 type Attempt = { contractId: string; reference: number; at: string };
 type BreakoutTiming = { breakoutAt?: string; breakoutDeadline?: string; breakoutTimePrecision?: "SECOND_BUCKET" | "OBSERVED_TICK" };
 type Setup = LimitSignal & BreakoutTiming & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
-export type LimitPosition = BreakoutTiming & { contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
+export type RecoverySizing = { version: 1; baseLots: number; lossToRecover: number; recoveryLots: number; selectedLots: number; estimatedTargetNet: number; estimatedStopLoss: number };
+export type LimitPosition = BreakoutTiming & { sizing?: RecoverySizing; contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
 export type LimitTrade = LimitPosition & { exit: number; closedAt: string; reason: string; pnl: number; grossPnl: number; costs: ReturnType<typeof optionCosts>; exitLimit: number; exitOrderType?: "LIMIT" | "MARKET" };
 export type LimitState = { version: 2; startedAt: string; enabled: boolean; balance: number; nextLots: number; position: LimitPosition | null; trades: LimitTrade[]; setup: Setup | null; seen: string[]; decisions: { id: string; receivedAt: string; decidedAt: string; status: string; reason: string }[]; ticks: { at: string; price: number; high?:number; low?:number }[]; pendingExit: { reason: string; limit: number } | null; emergency?: { id: string; requestedAt: string; pending: boolean; completedAt?: string }; status: string; mark: number | null; rangeFilter: boolean; interval: number };
 const time = (at: string) => Date.parse(at);
@@ -24,6 +25,30 @@ export function optionCosts(entry: number, exit: number, quantity: number) {
   const stt = sell * 0.0015, stamp = buy * 0.00003;
   const gst = (brokerage + exchange + clearing + sebi + ipft) * 0.18;
   return { schedule: "FYERS_NSE_OPTIONS_2026_10_29", brokerage, exchange, clearing, sebi, ipft, stt, stamp, gst, total: round(brokerage + exchange + clearing + sebi + ipft + stt + stamp + gst) };
+}
+// Reporting and execution share this calculation. Losses are never added twice;
+// the existing progression is a floor, not a replacement or a recovery promise.
+export function recoverySizing(s: Pick<LimitState,"balance"|"nextLots"|"trades">, entry: number, lotSize: number, maxEntry=entry): RecoverySizing | null {
+  if(![entry,maxEntry].every(positive)||maxEntry<entry||!Number.isSafeInteger(lotSize)||lotSize<1||!Number.isSafeInteger(s.nextLots)||s.nextLots<1||!Number.isFinite(s.balance))return null;
+  if([entry,maxEntry].some(price=>round(price-Math.min(20,price*.25))<=0))return null;
+  const last=s.trades.at(-1)?.pnl??0;
+  if(!Number.isFinite(last))return null;
+  const lossToRecover=round(Math.max(0,limitRules.capital-s.balance,-last));
+  const maxLots=Math.floor(Number.MAX_SAFE_INTEGER/(lotSize*Math.max(1,maxEntry+100)));
+  const net=(lots:number,price:number)=>{const target=round(price+Math.min(100,price)),quantity=lots*lotSize;return round((target-price)*quantity-optionCosts(price,target,quantity).total);};
+  // Actual depth fills can lie anywhere between the current ask and the limit.
+  const worstNet=(lots:number)=>Math.min(net(lots,entry),net(lots,maxEntry));
+  if(s.nextLots>maxLots)return null;
+  let recoveryLots=1;
+  if(lossToRecover>0){
+    if(worstNet(maxLots)<lossToRecover)return null;
+    let low=1,high=maxLots;
+    while(low<high){const mid=low+Math.floor((high-low)/2);if(worstNet(mid)>=lossToRecover)high=mid;else low=mid+1;}
+    recoveryLots=low;
+  }
+  const selectedLots=Math.max(s.nextLots,recoveryLots),quantity=selectedLots*lotSize;
+  const stopLoss=(price:number)=>{const stop=round(price-Math.min(20,price*.25));return round((price-stop)*quantity+optionCosts(price,stop,quantity).total);};
+  return {version:1,baseLots:s.nextLots,lossToRecover,recoveryLots,selectedLots,estimatedTargetNet:worstNet(selectedLots),estimatedStopLoss:Math.max(stopLoss(entry),stopLoss(maxEntry))};
 }
 export function newLimitState(at: string, interval: number, rangeFilter: boolean, enabled: boolean): LimitState {
   return { version: 2, startedAt: at, enabled, balance: limitRules.capital, nextLots: 1, position: null, trades: [], setup: null, seen: [], decisions: [], ticks: [], pendingExit: null, status: enabled ? "WAITING_FOR_SIGNAL" : "DISABLED", mark: null, rangeFilter, interval };
@@ -171,12 +196,20 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
       decision(s,setup,at,"MISSING_FRESH_ATM_QUOTE","No fresh nearest-weekly ATM premium is available.");s.setup=null;return s;
     }
     setup.attempt??={contractId:contract.id,reference:contract.ask,at};
-    const quantity=s.nextLots*contract.lotSize,limit=round(setup.attempt.reference+limitRules.allowance);
+    const limit=round(setup.attempt.reference+limitRules.allowance);
+    if(contract.ask>limit){
+      if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Current ask exceeds the original ask + ₹4 limit; no fill assumed.");s.setup=null;}
+      return s;
+    }
+    const sizing=recoverySizing(s,contract.ask,contract.lotSize,limit);
+    if(!sizing){decision(s,setup,at,"INVALID_RECOVERY_SIZING","Cannot calculate a valid whole-lot recovery position from verified account and premium data.");s.setup=null;return s;}
+    const lots=sizing.selectedLots,quantity=lots*contract.lotSize;
+    if(contract.ask*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL",`Recovery sizing requires ${lots} lots (base ${sizing.baseLots}, recovery ${sizing.recoveryLots}, loss ₹${sizing.lossToRecover.toFixed(2)}); available virtual cash cannot fund the premium.`);s.setup=null;return s;}
     const fill=limitFill(contract,quantity,"BUY",limit,at);
     if(fill){
       if(fill.price*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL","The full premium exceeds available virtual cash.");s.setup=null;return s;}
-      s.position={contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots:s.nextLots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
-      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${s.nextLots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}.${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
+      s.position={sizing,contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
+      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${lots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}. Sizing: max(base ${sizing.baseLots}, recovery ${sizing.recoveryLots}); loss to recover ₹${sizing.lossToRecover.toFixed(2)}; estimated target net ₹${sizing.estimatedTargetNet.toFixed(2)}.${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
     }else if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Full observed quantity was unavailable within the original ask + ₹4 limit during the 1.5-second attempt.");s.setup=null;}
     else decision(s,setup,at,"WAITING_FOR_ENTRY_DEPTH","Bounded limit order awaiting observed quantity; no fill assumed.");
   }
