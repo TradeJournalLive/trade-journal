@@ -103,17 +103,17 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
     let previousAt=time(signal.closedAt);
     const gap=history.some(t=>{const missing=time(t.at)-previousAt>5000;previousAt=time(t.at);return missing;});
     if(!baseline||time(signal.closedAt)-time(baseline.at)>5000||broken(baseline.price)||gap){
-      decision(s,signal,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Cannot verify the first breakout inside the HAMS grace window from continuous observed index history.");return s;
+      decision(s,signal,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Cannot verify the first breakout inside the grace window from continuous observed index history.");return s;
     }
     // Older history is compacted per second. Use the bucket START, not its last
     // timestamp, so compaction can never extend a 20-second grace by almost 1s.
     const breakoutMs=Math.max(time(signal.closedAt),Math.floor(time(history[firstBreak].at)/1000)*1000);
     const deadline=breakoutMs+breakoutGraceMs;
-    if(time(at)>deadline){decision(s,signal,at,"MISSED_BREAKOUT","The first observed breakout is older than the HAMS 20-second entry grace; wait for the next signal.");return s;}
+    if(time(at)>deadline){decision(s,signal,at,"MISSED_BREAKOUT","The first observed breakout is older than the 20-second entry grace; wait for the next signal.");return s;}
     const reversed=!broken(history[firstBreak].price)||history.slice(firstBreak+1).some(t=>signal.action==="BUY"?(t.low??t.price)<=signal.high:(t.high??t.price)>=signal.low);
     if(!broken(last.price)||reversed){decision(s,signal,at,"BREAKOUT_REVERSED","The observed index returned inside the signal level after the first breakout; no re-cross entry.");return s;}
     s.setup={...signal,triggered:true,breakoutAt:new Date(breakoutMs).toISOString(),breakoutDeadline:new Date(deadline).toISOString(),breakoutTimePrecision:"SECOND_BUCKET"};
-    decision(s,signal,at,"BREAKOUT_GRACE_ACTIVE",`HAMS breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
+    decision(s,signal,at,"BREAKOUT_GRACE_ACTIVE",`Breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
   }
   s.setup=signal;decision(s,signal,at,"WAITING_FOR_INDEX_BREAK","Prepared ATM side; waiting for the confirmed signal high/low breakout within ten candles.");return s;
 }
@@ -127,9 +127,9 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
   }
   s.ticks=s.ticks.filter(t=>time(at)-time(t.at)<=35*60000);
   let setup=s.setup;
-  if(breakoutGraceMs===20000&&setup?.triggered&&!setup.breakoutDeadline){decision(s,setup,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Pending HAMS breakout has no saved grace deadline; wait for the next signal.");s.setup=null;setup=null;}
+  if(breakoutGraceMs===20000&&setup?.triggered&&!setup.breakoutDeadline){decision(s,setup,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Pending breakout has no saved grace deadline; wait for the next signal.");s.setup=null;setup=null;}
   if(setup&&!eligible(s,setup,at)){decision(s,setup,at,"SETUP_EXPIRED","No fill inside the ten-candle/session window.");s.setup=null;setup=null;}
-  if(setup?.breakoutDeadline&&time(at)>time(setup.breakoutDeadline)){decision(s,setup,at,"BREAKOUT_GRACE_EXPIRED","No complete limit entry inside the HAMS 20-second breakout grace.");s.setup=null;setup=null;}
+  if(setup?.breakoutDeadline&&time(at)>time(setup.breakoutDeadline)){decision(s,setup,at,"BREAKOUT_GRACE_EXPIRED","No complete limit entry inside the 20-second breakout grace.");s.setup=null;setup=null;}
   if(setup&&!setup.triggered){
     const q=atmContract(tick.spot,setup.action==="BUY"?"CE":"PE",tick.chain,at);
     if(q)setup.prepared={contractId:q.id,ask:q.ask,bid:q.bid,at};
@@ -141,7 +141,7 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     }
   }
   if(breakoutGraceMs===20000&&setup?.triggered&&(setup.action==="BUY"?tick.spot<=setup.high:tick.spot>=setup.low)){
-    decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before the HAMS grace entry.");s.setup=null;setup=null;
+    decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before the grace entry.");s.setup=null;setup=null;
   }
   const p=s.position;
   if(p){
@@ -167,7 +167,7 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     if(setup.action==="BUY"?tick.spot<=setup.high:tick.spot>=setup.low){decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before a complete limit fill.");s.setup=null;return s;}
     const contract=setup.attempt?tick.chain.find(q=>q.id===setup!.attempt!.contractId&&fresh(q.at,at)):atmContract(tick.spot,setup.action==="BUY"?"CE":"PE",tick.chain,at);
     if(!contract){
-      if(breakoutGraceMs===20000&&setup.breakoutDeadline){decision(s,setup,at,"WAITING_FOR_FRESH_ATM_QUOTE","HAMS grace is active; waiting for a fresh nearest-weekly ATM quote before its original deadline.");return s;}
+      if(breakoutGraceMs===20000&&setup.breakoutDeadline){decision(s,setup,at,"WAITING_FOR_FRESH_ATM_QUOTE","Breakout grace is active; waiting for a fresh nearest-weekly ATM quote before its original deadline.");return s;}
       decision(s,setup,at,"MISSING_FRESH_ATM_QUOTE","No fresh nearest-weekly ATM premium is available.");s.setup=null;return s;
     }
     setup.attempt??={contractId:contract.id,reference:contract.ask,at};
@@ -176,7 +176,7 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     if(fill){
       if(fill.price*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL","The full premium exceeds available virtual cash.");s.setup=null;return s;}
       s.position={contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots:s.nextLots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
-      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${s.nextLots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}.${setup.breakoutDeadline?` HAMS breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
+      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${s.nextLots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}.${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
     }else if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Full observed quantity was unavailable within the original ask + ₹4 limit during the 1.5-second attempt.");s.setup=null;}
     else decision(s,setup,at,"WAITING_FOR_ENTRY_DEPTH","Bounded limit order awaiting observed quantity; no fill assumed.");
   }

@@ -44,13 +44,21 @@ for(const kind of ['nifty','hams'])test(`${kind} actual worker consumes verified
  // Emergency premium exits remain possible even if the index feed stops updating.
  price(w,7,'CE',{bid_price:90,ask_price:91,bid_size:5000,ask_size:5000});assert.equal(w.get().state.position,null);assert.equal(w.get().state.trades.at(-1).exitOrderType,'MARKET');assert.equal(w.get().state.trades.at(-1).reason,'EMERGENCY_MARKET_EXIT');assert.notEqual(w.get().status,'PROCESSING_ERROR');
 });
-for(const kind of ['nifty','hams'])test(`${kind} actual worker keeps late breakout grace isolated to HAMS`,async()=>{
+for(const kind of ['nifty','hams'])test(`${kind} actual worker permits verified late breakout within twenty seconds`,async()=>{
  const w=worker(kind),hams=kind==='hams',v=load('niftyLimitPaper').newLimitState(at(-60),hams?3:1,!hams,true);
  w.start(hams?{...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,balance:1000000}:{rulesV2:v,enabled:true,trades:[]},contracts);
  price(w,-1,'NSE:NIFTY50-INDEX',{ltp:22500});prime(w);
  for(let n=0;n<=18;n++){w.setTime(n);if(hams)w.heartbeat();price(w,n,'NSE:NIFTY50-INDEX',{ltp:n<2?22500:22511});}
  const signal={id:'late-'+kind,strategyId:hams?'nifty_hams_final_3m_v1':'nifty',symbol:'NSE:NIFTY',action:'BUY',timeframe:hams?'3':'1',metadata:{[hams?'hamsFinalPaper':'niftyPaper']:{kind:'SIGNAL',closedAt:at(0),high:22510,low:22490}}};
  w.setRows([{id:'late-row',strategy_id:signal.strategyId,received_at:at(17),signal,raw_payload:{automation:{mode:'PAPER'}}}]);w.setTime(18);await w.poll();
- if(!hams){assert.equal(w.get().state.rulesV2.setup,null);assert.equal(w.get().decisions.at(-1).status,'MISSED_BREAKOUT');return;}
- assert.equal(w.get().state.rulesV2.setup.breakoutDeadline,at(22));price(w,18.1,'CE',{bid_price:119,ask_price:120,bid_size:5000,ask_size:5000});w.pulse();assert.equal(w.get().state.position.entry,120);assert.equal(w.get().state.position.openedAt,at(18.1));assert.equal(w.get().state.position.orderType,'LIMIT');
+ assert.equal(w.get().state.rulesV2.setup.breakoutDeadline,at(22));price(w,18.1,'CE',{bid_price:119,ask_price:120,bid_size:5000,ask_size:5000});if(hams)w.pulse();else price(w,18.1,'NSE:NIFTY50-INDEX',{ltp:22511});const position=hams?w.get().state.position:w.get().state.rulesV2.position;assert.equal(position.entry,120);assert.equal(position.openedAt,at(18.1));assert.equal(position.orderType,'LIMIT');
+});
+for(const reversed of [false,true])test(`current NIFTY rejects ${reversed?'reversed':'expired'} late breakouts`,async()=>{
+ const w=worker('nifty'),v=load('niftyLimitPaper').newLimitState(at(-60),1,true,true);
+ w.start({rulesV2:v,enabled:true,trades:[]},contracts);price(w,-1,'NSE:NIFTY50-INDEX',{ltp:22500});prime(w);
+ const processed=reversed?18:24;
+ for(let n=0;n<=processed;n++)price(w,n,'NSE:NIFTY50-INDEX',{ltp:n<2||reversed&&n===10?22500:22511});
+ const signal={id:'guard-'+reversed,strategyId:'nifty',symbol:'NSE:NIFTY',action:'BUY',timeframe:'1',metadata:{niftyPaper:{kind:'SIGNAL',closedAt:at(0),high:22510,low:22490}}};
+ w.setRows([{id:'guard-row',strategy_id:'nifty',received_at:at(processed-1),signal,raw_payload:{automation:{mode:'PAPER'}}}]);w.setTime(processed);await w.poll();
+ assert.equal(w.get().state.rulesV2.setup,null);assert.equal(w.get().state.rulesV2.position,null);assert.equal(w.get().decisions.at(-1).status,reversed?'BREAKOUT_REVERSED':'MISSED_BREAKOUT');
 });
