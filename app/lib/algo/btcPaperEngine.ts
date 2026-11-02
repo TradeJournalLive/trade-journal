@@ -1,13 +1,13 @@
-export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, sizeStepBtc: 0.1, maxQuantityBtc: 0.8, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
-export const btcSizingPolicy = "SL_STEP_0_1_CAP_0_8_V1";
+export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, sizeStepBtc: 0.1, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
+export const btcSizingPolicy = "SL_STEP_0_1_UNCAPPED_V2";
 export function btcRequestedQuantity(state: { nextQuantityBtc?: number }) {
   const size = state.nextQuantityBtc;
-  return typeof size === "number" && Number.isFinite(size) && size >= btcRules.quantityBtc && size <= btcRules.maxQuantityBtc
+  return typeof size === "number" && Number.isFinite(size) && size >= btcRules.quantityBtc && Number.isSafeInteger(Math.round(size*10))
     && Math.abs(size / btcRules.sizeStepBtc - Math.round(size / btcRules.sizeStepBtc)) < 1e-9 ? size : btcRules.quantityBtc;
 }
 export function btcNextQuantity(size: number, reason: string) {
   const current = btcRequestedQuantity({ nextQuantityBtc: size });
-  if (reason === "SIGNAL_CANDLE_STOP") return Math.min(btcRules.maxQuantityBtc, Math.round((current + btcRules.sizeStepBtc) * 1e12) / 1e12);
+  if (reason === "SIGNAL_CANDLE_STOP") return (Math.round(current*10)+1)/10;
   if (reason === "TARGET_3R" || reason === "TARGET_1_5R") return btcRules.quantityBtc;
   return current;
 }
@@ -150,7 +150,7 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
           const original = p.entryQuantityBtc ?? p.quantityBtc;
           const exit = exitFills.reduce((sum, level) => sum + level.price * level.quantityBtc, 0) / original;
           s.trades.push({ ...p, quantityBtc: original, initialMargin: p.entry * original / p.leverage, exit, exitFills, closedAt: tick.timestamp, reason, pnl, exitReference: reference, exitDifference: reference === null ? null : (long ? reference - exit : exit - reference) });
-          if (p.sizingPolicy === btcSizingPolicy && !p.monitoringGap) s.nextQuantityBtc = btcNextQuantity(btcRequestedQuantity(s), reason);
+          if ((p.sizingPolicy === btcSizingPolicy || p.sizingPolicy === "SL_STEP_0_1_CAP_0_8_V1") && !p.monitoringGap) s.nextQuantityBtc = btcNextQuantity(btcRequestedQuantity(s), reason);
           s.position = null; s.pendingExit = null; exited = true; s.status = s.enabled ? "WAITING_FOR_SIGNAL" : "DISABLED";
         }
       }

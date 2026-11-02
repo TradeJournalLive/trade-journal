@@ -7,6 +7,8 @@ test('new progression sizes are included but untagged earlier sizes stay exclude
   assert(inBtcPerformanceScope({ quantityBtc: 0.2, requestedQuantityBtc: 0.2, sizingPolicy: 'SL_STEP_0_1_CAP_0_8_V1' }));
   assert.equal(inBtcPerformanceScope({ quantityBtc: 0.2 }), false);
   assert.equal(inBtcPerformanceScope({ quantityBtc: 0.9, requestedQuantityBtc: 0.9, sizingPolicy: 'SL_STEP_0_1_CAP_0_8_V1' }), false);
+  assert(inBtcPerformanceScope({quantityBtc:1.2,requestedQuantityBtc:1.2,sizingPolicy:'SL_STEP_0_1_UNCAPPED_V2'}));
+  assert.equal(inBtcPerformanceScope({quantityBtc:1.25,requestedQuantityBtc:1.25,sizingPolicy:'SL_STEP_0_1_UNCAPPED_V2'}),false);
 });
 test('date range includes both boundaries in IST, supports all dates and rejects reversed range', () => {
   const rows = [{ openedAt: '2026-10-27T18:29:59Z' }, { openedAt: '2026-10-27T18:30:00Z' }, { openedAt: '2026-10-28T18:29:59Z' }, { openedAt: '2026-10-28T18:30:00Z' }];

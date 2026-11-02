@@ -7,12 +7,19 @@ const tick = (n, bid) => ({ timestamp: at(n), quoteAt: at(n), tradeAt: at(n), pr
 function open(size = 0.1) {
   return { ...emptyBtcState(), enabled: true, nextQuantityBtc: size, previousTick: tick(0, 100), position: { id: 'trade', sizingPolicy: btcSizingPolicy, requestedQuantityBtc: size, quantityBtc: size, entryQuantityBtc: size, entry: 100, side: 'LONG', stop: 90, initialRisk: 10, target: 130, openedAt: at(0), estimatedLiquidation: 1, leverage: 100 } };
 }
-test('SL steps exactly 0.1 up to cap; target resets; other exits preserve size', () => {
+test('SL steps exactly 0.1 beyond the old cap; target resets; other exits preserve size', () => {
   let size = 0.1;
-  for (const expected of [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.8]) { size = btcNextQuantity(size, 'SIGNAL_CANDLE_STOP'); assert.equal(size, expected); }
+  for (const expected of [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1]) { size = btcNextQuantity(size, 'SIGNAL_CANDLE_STOP'); assert.equal(size, expected); }
+  assert.equal(btcNextQuantity(10,'SIGNAL_CANDLE_STOP'),10.1);
   assert.equal(btcNextQuantity(size, 'TARGET_3R'), 0.1);
   for (const reason of ['OPPOSITE_SIGNAL', 'COST_TO_COST_STOP', 'MANUAL_STOP_AND_CLOSE', 'ESTIMATED_ISOLATED_MARGIN_EXIT']) assert.equal(btcNextQuantity(0.4, reason), 0.4);
-  for (const value of [NaN, Infinity, -1, 0.9, 0.35]) assert.equal(btcRequestedQuantity({ nextQuantityBtc: value }), 0.1);
+  for (const value of [NaN, Infinity, -1, 0.35]) assert.equal(btcRequestedQuantity({ nextQuantityBtc: value }), 0.1);
+  for(const value of [0.9,1,1.1,10])assert.equal(btcRequestedQuantity({nextQuantityBtc:value}),value);
+});
+test('an existing capped-policy position can progress past 0.8 without rewriting its history',()=>{
+ const s=open(0.8);s.position.sizingPolicy='SL_STEP_0_1_CAP_0_8_V1';const closed=btcTick(s,tick(1,89));
+ assert.equal(closed.nextQuantityBtc,0.9);assert.equal(closed.trades[0].sizingPolicy,'SL_STEP_0_1_CAP_0_8_V1');
+ assert.equal(btcRequestedQuantity(JSON.parse(JSON.stringify(closed))),0.9);
 });
 test('size changes once at confirmed closure and persists after ledger compaction/restart', () => {
   const closed = btcTick(open(), tick(1, 89));

@@ -8,8 +8,9 @@ export function isPointOneBtc(position: BtcPosition) {
 
 export function inBtcPerformanceScope(position: BtcPosition) {
   const requested = position.requestedQuantityBtc;
-  return isPointOneBtc(position) || (position.sizingPolicy === "SL_STEP_0_1_CAP_0_8_V1" && typeof requested === "number"
-    && Number.isFinite(requested) && requested >= 0.1 && requested <= 0.8 && Math.abs(requested * 10 - Math.round(requested * 10)) < 1e-9);
+  const progressive=position.sizingPolicy === "SL_STEP_0_1_UNCAPPED_V2" || (position.sizingPolicy === "SL_STEP_0_1_CAP_0_8_V1" && typeof requested === "number" && requested <= 0.8);
+  return isPointOneBtc(position) || (progressive && typeof requested === "number"
+    && Number.isFinite(requested) && requested >= 0.1 && Number.isSafeInteger(Math.round(requested*10)) && Math.abs(requested * 10 - Math.round(requested * 10)) < 1e-9);
 }
 
 export function btcDateRange<T extends { openedAt: string }>(trades: T[], from: string, to: string) {
