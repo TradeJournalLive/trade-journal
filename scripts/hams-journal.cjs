@@ -107,6 +107,6 @@ async function flushHamsRecords(journal, transport) {
 async function confirmHamsPublish(result, readBack, workerId, at) {
   if(!result.error && result.data?.length===1)return;
   const check=await readBack();
-  if(check.error||check.data?.raw_payload?.workerId!==workerId||Date.parse(check.data.received_at)!==Date.parse(at))throw Error('LEASE_OR_STORAGE_LOST');
+  if(check.error||check.data?.raw_payload?.workerId!==workerId||Date.parse(check.data.received_at)!==Date.parse(at))throw new Error('LEASE_OR_STORAGE_LOST',{cause:check.error||result.error||new Error(check.data?.raw_payload?.workerId!==workerId?'Snapshot ownership changed or missing':'Snapshot timestamp was not acknowledged')});
 }
 module.exports={HamsJournal,selectSnapshot,checkTransition,validate,flushHamsRecords,confirmHamsPublish,digest,tradeKey};
