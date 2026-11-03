@@ -3,17 +3,44 @@ const root=path.resolve(__dirname,'..'),base=Date.parse('2026-10-30T04:00:00Z'),
 function load(name){const f=path.join(root,'app/lib/algo',name+'.ts'),m=new Module(f,module);m.require=id=>id.startsWith('./')?load(id.slice(2)):require(id);m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);return m.exports;}
 function worker(kind){
  const hams=kind==='hams',file=path.join(root,'scripts',hams?'hams-final-worker.cjs':'nifty-paper-worker.cjs'),realRequire=Module.createRequire(file);
- let clock=base,rows=[];const audit=[];
+ let clock=base,rows=[],writeResult,readResult,lastWrite;const audit=[];
  class Clock extends Date{constructor(...args){super(...(args.length?args:[clock]));}static now(){return clock;}}
- const db={from(){const q={select(){return q;},eq(){return q;},neq(){return q;},or(){return q;},in(){return q;},gte(){return q;},order(){return q;},limit(){return q;},then(resolve,reject){return Promise.resolve({data:rows,error:null}).then(resolve,reject);}};return q;}};
+ const db={from(){let writing=false,single=false;const q={update(value){writing=true;lastWrite=value;return q;},maybeSingle(){single=true;return q;},select(){return q;},eq(){return q;},neq(){return q;},or(){return q;},in(){return q;},gte(){return q;},order(){return q;},limit(){return q;},then(resolve,reject){const result=writing?writeResult:single?readResult:undefined;return Promise.resolve(typeof result==='function'?result(lastWrite):result??{data:rows,error:null}).then(resolve,reject);}};return q;}};
  const io={...fs,mkdirSync(){},existsSync(f){return String(f).endsWith('config.json')||fs.existsSync(f);},readFileSync(f,...args){return String(f).endsWith('config.json')?JSON.stringify({webhookSecret:'fixture-secret',fyersAppId:'fixture-app'}):fs.readFileSync(f,...args);},appendFileSync(f,data){audit.push(JSON.parse(data));},writeFileSync(){},renameSync(){}};
- const context=vm.createContext({require(id){if(id==='node:fs')return io;if(id==='@next/env')return {loadEnvConfig(){}};if(id==='@supabase/supabase-js')return {createClient:()=>db};if(id==='fyers-api-v3')return {fyersDataSocket:{}};return realRequire(id);},module,__dirname:path.dirname(file),process:{cwd:()=>root,env:{NEXT_PUBLIC_SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service'},argv:[],on(){},exit(){throw Error('Unexpected worker exit');}},Date:Clock,console:{log(){},error(){}},Buffer,URL,AbortSignal,setTimeout,clearTimeout,fetch(){throw Error('Unexpected external request');}});
+ const context=vm.createContext({require(id){if(id==='node:fs')return io;if(id==='@next/env')return {loadEnvConfig(){}};if(id==='@supabase/supabase-js')return {createClient:()=>db};if(id==='fyers-api-v3')return {fyersDataSocket:{}};return realRequire(id);},module,__dirname:path.dirname(file),process:{cwd:()=>root,env:{NEXT_PUBLIC_SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service'},argv:[],on(){},exit(){throw Error('Unexpected worker exit');}},Date:Clock,console:{log(){},error(){}},Buffer,URL,AbortSignal,structuredClone,setTimeout,clearTimeout,fetch(){throw Error('Unexpected external request');}});
  let source=fs.readFileSync(file,'utf8').replace(/main\(\)\.catch\([\s\S]*$/,'');
- source+=hams?`\nglobalThis.harness={start(s,contracts){state=s;master=contracts;initialized=true;claimed=true;ack=Date.now();status='READY';journal={save(v){return {...v,revision:1};}};},send:onMessage,poll,get:()=>({state,decisions,status}),pulse:tryEntry,heartbeat(){ack=Date.now();}};`:`\nglobalThis.harness={start(s,contracts){state={checkpoint:s,startedAt:new Date(Date.now()).toISOString(),endsAt:'2026-12-01T00:00:00Z'};master=contracts;advance([]);},send:marketTick,poll,get:()=>({state:book.checkpoint,decisions:book.checkpoint.decisions,status})};`;
+ source+=hams?`\nglobalThis.harness={start(s,contracts){state=s;master=contracts;initialized=true;claimed=true;ack=Date.now();status='READY';let saved;journal={save(v){saved={...v,revision:1};return saved;},read(){return saved;}};},send:onMessage,poll,publish,startRefresh,configureRefresh(fn){connection={accessToken:'original'};credentials=fn;api=async()=>({data:{optionsChain:[]}});socket={isConnected:()=>true,subscribe(){}};},get:()=>({state,decisions,incidents,status,stopped,refreshing,owned:owned(),executionAllowed:executionAllowed(),ack,publishFailures,publishRetryAt}),pulse:tryEntry,heartbeat(){ack=Date.now();}};`:`\nglobalThis.harness={start(s,contracts){state={checkpoint:s,startedAt:new Date(Date.now()).toISOString(),endsAt:'2026-12-01T00:00:00Z'};master=contracts;advance([]);},send:marketTick,poll,get:()=>({state:book.checkpoint,decisions:book.checkpoint.decisions,status})};`;
  vm.runInContext(source,context,{filename:file});
- return {...context.harness,setTime(n){clock=base+n*1000;},setRows(v){rows=v;},audit};
+ return {...context.harness,setTime(n){clock=base+n*1000;},setRows(v){rows=v;},setPublishResults(write,read){writeResult=write;readResult=read;},audit};
 }
 const contracts=['CE','PE'].map(side=>({id:side,side,strike:22500,expiry:'2026-11-03',lotSize:65}));
+test('HAMS slow 30-second credential refresh does not block snapshot renewals or signal polls and stays single-flight',async()=>{
+ const w=worker('hams'),v=load('niftyLimitPaper').newLimitState(at(-60),3,false,true);
+ w.start({...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,balance:1000000},contracts);
+ let release,calls=0;w.configureRefresh(()=>{calls++;return new Promise(resolve=>{release=resolve;});});w.setPublishResults({data:[{id:1}],error:null});
+ w.startRefresh();w.startRefresh();assert.equal(calls,1);assert.equal(w.get().refreshing,true);
+ prime(w);w.setTime(1);await w.publish();
+ const signal={id:'during-refresh',strategyId:'nifty_hams_final_3m_v1',symbol:'NSE:NIFTY',action:'BUY',timeframe:'3',metadata:{hamsFinalPaper:{kind:'SIGNAL',closedAt:at(0),high:22510,low:22490}}};
+ w.setRows([{id:'refresh-row',strategy_id:signal.strategyId,received_at:at(1),signal,raw_payload:{automation:{mode:'PAPER'}}}]);await w.poll();price(w,2,'NSE:NIFTY50-INDEX',{ltp:22511});assert.equal(w.get().state.position.entry,100);
+ price(w,3,'CE',{bid_price:79,ask_price:80,bid_size:5000,ask_size:5000});assert.equal(w.get().state.position,null);assert.equal(w.get().state.trades[0].reason,'PREMIUM_SL');
+ for(const n of [5,10,15,20,25,30]){w.setTime(n);await w.publish();await w.poll();assert.equal(w.get().owned,true);assert.equal(w.get().stopped,false);}
+ release({accessToken:'original'});await new Promise(r=>setImmediate(r));assert.equal(w.get().refreshing,false);assert.equal(w.get().stopped,false);
+});
+test('HAMS transient snapshot timeout keeps process alive, pauses on stale ownership, and resumes only after confirmed write',async()=>{
+ const w=worker('hams'),v=load('niftyLimitPaper').newLimitState(at(-60),3,false,true);
+ w.start({...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,balance:1000000},contracts);
+ w.setPublishResults({error:{message:'timeout'}},{error:{message:'timeout'}});w.setTime(3);await w.publish();assert.equal(w.get().stopped,false);assert.equal(w.get().publishFailures,1);assert.equal(w.get().ack,base);
+ w.setTime(12);assert.equal(w.get().owned,false);assert.equal(w.get().state.enabled,true);
+ w.setPublishResults({data:[{id:1}],error:null});w.setTime(13);await w.publish();assert.equal(w.get().owned,true);assert.equal(w.get().publishFailures,0);assert.equal(w.get().state.enabled,true);
+});
+test('HAMS open trade cannot silently resume verified execution after ownership expires',async()=>{
+ const w=worker('hams'),v=load('niftyLimitPaper').newLimitState(at(-60),3,false,true);
+ w.start({...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,balance:1000000},contracts);prime(w);
+ const signal={id:'lease-open',strategyId:'nifty_hams_final_3m_v1',symbol:'NSE:NIFTY',action:'BUY',timeframe:'3',metadata:{hamsFinalPaper:{kind:'SIGNAL',closedAt:at(0),high:22510,low:22490}}};
+ w.setTime(1);w.setRows([{id:'lease-row',strategy_id:signal.strategyId,received_at:at(1),signal,raw_payload:{automation:{mode:'PAPER'}}}]);await w.poll();price(w,2,'NSE:NIFTY50-INDEX',{ltp:22511});assert.equal(w.get().state.position.entry,100);
+ price(w,12,'NSE:NIFTY50-INDEX',{ltp:22511});assert.equal(w.get().incidents.length,1);assert.equal(w.get().executionAllowed,false);assert.equal(w.get().state.trades.length,0);assert.equal(w.get().stopped,false);
+ w.setPublishResults({data:[{id:1}],error:null});w.setTime(13);await w.publish();assert.equal(w.get().owned,true);assert.equal(w.get().executionAllowed,false);assert.equal(w.get().state.position.entry,100);assert.equal(w.get().state.trades.length,0);
+});
 function price(w,n,symbol,values){w.setTime(n);w.send({symbol,exch_feed_time:(base+n*1000)/1000,...values});}
 function prime(w){for(const c of contracts)price(w,0,c.id,{bid_price:99,ask_price:100,bid_size:5000,ask_size:5000});price(w,0,'NSE:NIFTY50-INDEX',{ltp:22500});}
 for(const kind of ['nifty','hams'])test(`${kind} actual worker: saved receipt → processing → index breakout → observed ATM limit fill`,async()=>{

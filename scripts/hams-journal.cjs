@@ -109,4 +109,19 @@ async function confirmHamsPublish(result, readBack, workerId, at) {
   const check=await readBack();
   if(check.error||check.data?.raw_payload?.workerId!==workerId||Date.parse(check.data.received_at)!==Date.parse(at))throw new Error('LEASE_OR_STORAGE_LOST',{cause:check.error||result.error||new Error(check.data?.raw_payload?.workerId!==workerId?'Snapshot ownership changed or missing':'Snapshot timestamp was not acknowledged')});
 }
-module.exports={HamsJournal,selectSnapshot,checkTransition,validate,flushHamsRecords,confirmHamsPublish,digest,tradeKey};
+// A response timeout is not proof of a different owner. Reconcile only this
+// worker's observed timestamp; never renew ownership using the local clock.
+async function reconcileHamsPublish(result,readBack,workerId,at){
+  if(!result.error&&result.data?.length===1)return {committed:true,lease:at};
+  const retry=cause=>Object.assign(new Error('HAMS_STORAGE_RETRY',{cause}),{code:'HAMS_STORAGE_RETRY'});
+  let check;try{check=await readBack();}catch(error){throw retry(error);}
+  if(check.error)throw retry(check.error);
+  if(!check.data)throw retry(result.error||new Error('Worker snapshot missing; ownership unverified'));
+  const observedOwner=check.data.worker_id??check.data.raw_payload?.workerId;
+  if(!observedOwner)throw retry(new Error('Snapshot owner missing; ownership unverified'));
+  if(observedOwner!==workerId)throw Object.assign(new Error('HAMS_OWNERSHIP_LOST'),{code:'HAMS_OWNERSHIP_LOST'});
+  const observed=Date.parse(check.data.received_at);
+  if(!Number.isFinite(observed)||observed>Date.parse(at))throw retry(new Error('Invalid snapshot timestamp'));
+  return {committed:observed===Date.parse(at),lease:check.data.received_at};
+}
+module.exports={HamsJournal,selectSnapshot,checkTransition,validate,flushHamsRecords,confirmHamsPublish,reconcileHamsPublish,digest,tradeKey};

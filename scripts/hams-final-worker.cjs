@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
 const { readDepth } = require('./nifty-depth.cjs');
-const { HamsJournal, selectSnapshot, flushHamsRecords, confirmHamsPublish, digest } = require('./hams-journal.cjs');
+const { HamsJournal, selectSnapshot, flushHamsRecords, reconcileHamsPublish, digest } = require('./hams-journal.cjs');
 const { hamsPublicView } = require('./hams-public-view.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
 function loadAlgo(name) {
@@ -33,10 +33,11 @@ let state = emptyHamsState(), decisions = [], pending = null, connection, socket
 let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = false, busy = false, publishing = false, pollAfter;
 let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
+let refreshing=false,publishRetryAt=0,publishFailures=0;
 const diagnostics=createWorkerDiagnostics({
   emit:value=>fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600}),
   secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,connection?.accessToken,connection?.appId],
-  context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt)})
+  context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),publishFailures,refreshing})
 });
 async function observedFetch(operation,url,init){return diagnostics.run(operation,async()=>{
   const response=await fetch(url,init);
@@ -45,6 +46,7 @@ async function observedFetch(operation,url,init){return diagnostics.run(operatio
 });}
 const storageError=(message,cause)=>new Error(message,{cause:cause||new Error('Missing expected storage acknowledgement')});
 function stopWorker(operation,error,nextStatus){diagnostics.stop(operation,error);status=nextStatus;stopped=true;}
+function retryPublish(error){publishFailures++;publishRetryAt=Date.now()+Math.min(5000,500*2**Math.min(publishFailures-1,4));status='STORAGE_RETRY';diagnostics.failure('snapshot.retry',error);}
 const quotes = new Map(), depths = new Map(), processed = new Set();
 function audit(type, value) { fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, value })+'\n', { mode: 0o600 }); }
 function save() {
@@ -55,6 +57,12 @@ function save() {
 function owned() { return !stopped && Date.now()-ack < 10000; }
 function reviewRequired() { return incidents.some(i => !i.acknowledgedAt); }
 function executionAllowed() { return owned() && !reviewRequired(); }
+function guardOwnershipPause(){
+  if(stopped||!claimed||!initialized||!state.position||owned()||reviewRequired())return;
+  const at=now(),id=`ownership-gap:${hash(state.position.signalId+state.position.openedAt)}`;
+  if(!incidents.some(i=>i.id===id&&!i.acknowledgedAt))incidents.push({id,signalId:state.position.signalId,at,status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Verified ownership expired while a position was open. No exit is assumed during the execution pause; review is required.'});
+  state.status='RECOVERY_REVIEW_REQUIRED';diagnostics.write('OWNERSHIP_EXECUTION_PAUSED');save();
+}
 function decide(signal, result) {
   if (result !== 'LOADING_COMPLETED_3M_OPTION_CANDLE') {
     const key = `${signal.strategyId}:${signal.id}`;
@@ -105,10 +113,33 @@ async function publish() {
   try {
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
-    const r = await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).select('id');
-    await confirmHamsPublish(r,()=>db.from(TABLE).select('received_at,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
-    lease = at; ack = Date.parse(at); save();
+    let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
+    catch(error){r={error};}
+    const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
+    lease=confirmed.lease;ack=Date.parse(confirmed.lease);
+    if(!confirmed.committed){retryPublish(storageError('HAMS_WRITE_UNCONFIRMED',r.error));save();return;}
+    publishFailures=0;publishRetryAt=0;if(status==='STORAGE_RETRY'&&socket?.isConnected())status='READY';save();
+  } catch(error){
+    if(error.code==='HAMS_STORAGE_RETRY'){retryPublish(error);return;}
+    throw error;
   } finally { publishing = false; }
+}
+async function refreshConnection(){
+  lastRefreshStartedAt=now();const finish=diagnostics.begin('credentials.refresh');let refreshError;
+  try{
+    const updated=await credentials();if(updated.accessToken!==connection.accessToken)throw new Error('FYERS_SESSION_CHANGED_RESTART');
+    const chain=await api(`data/options-chain-v3?symbol=${encodeURIComponent(INDEX)}&strikecount=12`);
+    if(stopped)return;
+    const ids=(chain.data?.optionsChain||[]).filter(r=>['CE','PE'].includes(r.option_type)).map(r=>r.symbol);
+    if(state.position)ids.push(state.position.contract.id);
+    if(socket.isConnected()&&ids.length){socket.subscribe([...new Set(ids)]);socket.subscribe([...new Set(ids)],true);}
+    if(socket.isConnected()&&!publishFailures)status='READY';
+  }catch(error){refreshError=error;if(error.message==='FYERS_SESSION_CHANGED_RESTART')throw error;if(!stopped)status='CREDENTIAL_OR_SUBSCRIPTION_REFRESH_RETRY';}
+  finally{lastRefreshFinishedAt=now();finish(refreshError);}
+}
+function startRefresh(){
+  if(refreshing||stopped)return;refreshing=true;
+  void refreshConnection().catch(error=>stopWorker('credentials.refresh',error,'FYERS_SESSION_CHANGED_RESTART')).finally(()=>{refreshing=false;});
 }
 async function flushLedger() {
   if (flushing || !claimed || stopped) return;
@@ -122,7 +153,7 @@ async function flushLedger() {
       if(check.error || check.data?.length!==rows.length)throw storageError('HAMS_LEDGER_ACK_UNAVAILABLE',check.error);
       for(const r of rows)if(check.data.find(v=>v.signal_id===r.signal_id)?.raw_payload?.recordHash!==r.raw_payload.recordHash)throw Error('HAMS_LEDGER_CONFLICT');
     });
-    if(status==='HAMS_LEDGER_SYNC_RETRY'&&socket?.isConnected())status='READY';
+    if(status==='HAMS_LEDGER_SYNC_RETRY'&&socket?.isConnected()&&!publishFailures)status='READY';
   } finally { flushing = false; }
 }
 function contractQuotes(at) {
@@ -150,6 +181,7 @@ function onMessage(message) {
         else if (Number(r.bid_price)>0 && Number(r.ask_price)>=Number(r.bid_price)) quotes.set(r.symbol,{ at:new Date(t).toISOString(),bid:Number(r.bid_price),ask:Number(r.ask_price),bidSize:Number(r.bid_size),askSize:Number(r.ask_size) });
       }
       if (spot && Date.now()-spot.at <= 5000) feedAt = new Date(spot.at).toISOString();
+      guardOwnershipPause();
       if (!executionAllowed()) continue;
       if (!state.rulesV2 && state.position && r.symbol === state.position.contract.id) {
         const q = contractQuotes(at).find(c => c.id === r.symbol);
@@ -326,7 +358,7 @@ async function main() {
   save();
   await flushLedger();
   socket=fyersDataSocket.getInstance(`${connection.appId}:${connection.accessToken}`,directory,false);
-  socket.on('connect',()=>{status='READY';quotes.clear();depths.clear();spot=null;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);});
+  socket.on('connect',()=>{status=publishFailures?'STORAGE_RETRY':'READY';quotes.clear();depths.clear();spot=null;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);});
   socket.on('message',onMessage);socket.on('error',error=>{diagnostics.failure('feed.socket',error);status='FEED_ERROR';feedAt=null;});socket.on('close',()=>{diagnostics.write('FEED_DISCONNECTED');status='FEED_DISCONNECTED';feedAt=null;});
   socket.connect(); if(socket.autoreconnect)socket.autoreconnect(50);
   save(); console.log('HAMS Final paper worker started; read-only FYERS data.');
@@ -339,27 +371,13 @@ async function main() {
   let lastRefresh=Date.now();
   while(!stopped) {
     await new Promise(r=>setTimeout(r,250));
-    if(Date.now()-ack>2000&&!publishing) void diagnostics.run('snapshot.publish',publish).catch(error=>stopWorker('snapshot.publish',error,'LEASE_OR_STORAGE_LOST'));
+    if(Date.now()-ack>2000&&Date.now()>=publishRetryAt&&!publishing) void diagnostics.run('snapshot.publish',publish).catch(error=>stopWorker('snapshot.publish',error,'LEASE_OR_STORAGE_LOST'));
     if(!flushing)void diagnostics.run('ledger.flush',flushLedger).catch(()=>{status='HAMS_LEDGER_SYNC_RETRY';});
     if(!busy) void poll().catch(()=>{status='SIGNAL_STORAGE_UNAVAILABLE';});
+    guardOwnershipPause();
     if(!state.rulesV2||state.position||state.rulesV2.setup?.triggered)tryEntry();
     if(pending && Date.now()-Date.parse(pending.signal.closedAt)>=180000) { decide(pending.signal,'MISSED_SIGNAL_CLOSE');pending=null;save(); }
-    if(Date.now()-lastRefresh>60000&&!busy) {
-      lastRefresh=Date.now();
-      lastRefreshStartedAt=now();const finishRefresh=diagnostics.begin('credentials.refresh');let refreshError;
-      try {
-        const updated=await credentials(); if(updated.accessToken!==connection.accessToken)throw new Error('FYERS_SESSION_CHANGED_RESTART');
-        const updatedChain=await api(`data/options-chain-v3?symbol=${encodeURIComponent(INDEX)}&strikecount=12`);
-        const ids=(updatedChain.data?.optionsChain||[]).filter(r=>['CE','PE'].includes(r.option_type)).map(r=>r.symbol);
-        if(state.position)ids.push(state.position.contract.id);
-        if(socket.isConnected()&&ids.length){socket.subscribe([...new Set(ids)]);socket.subscribe([...new Set(ids)],true);}
-        if(socket.isConnected())status='READY';
-      } catch(e) {
-        refreshError=e;
-        if(e.message==='FYERS_SESSION_CHANGED_RESTART')throw e;
-        status='CREDENTIAL_OR_SUBSCRIPTION_REFRESH_RETRY';
-      } finally {lastRefreshFinishedAt=now();finishRefresh(refreshError);}
-    }
+    if(Date.now()-lastRefresh>60000&&!refreshing){lastRefresh=Date.now();startRefresh();}
   }
   throw new Error('HAMS_WORKER_STOPPED');
 }
