@@ -3,6 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const integration=require('./integration');
 const directory = process.env.PROBE_DATA_DIR || path.join(__dirname, 'storage');
 fs.mkdirSync(directory, {recursive: true, mode: 0o700});
 const db = new DatabaseSync(path.join(directory, 'probe.sqlite'));
@@ -46,8 +47,8 @@ const server=http.createServer((req,res)=>{
   let bootCount=0,pulses=0;
   try {bootCount=db.prepare('SELECT count(*) AS n FROM boots').get().n;pulses=db.prepare('SELECT count FROM pulses WHERE id=1').get().count;}catch{storageError=true;}
   res.writeHead(storageError?503:200,{'content-type':'application/json','cache-control':'no-store'});
-  res.end(JSON.stringify({mode:'INFRASTRUCTURE_PROBE_ONLY',tradingEnabled:false,node:process.versions.node,uptimeSeconds:Math.floor((Date.now()-started)/1000),storage:{ok:!storageError,bootCount,pulses},deltaPublicRest:feed,deltaWebSocket:{connected:socket?.readyState===1,frames,lastQuoteAt,fresh:!!lastQuoteAt&&Date.now()-Date.parse(lastQuoteAt)<5000}}));
+  res.end(JSON.stringify({mode:'INFRASTRUCTURE_PROBE_ONLY',tradingEnabled:false,node:process.versions.node,uptimeSeconds:Math.floor((Date.now()-started)/1000),storage:{ok:!storageError,bootCount,pulses},deltaPublicRest:feed,deltaWebSocket:{connected:socket?.readyState===1,frames,lastQuoteAt,fresh:!!lastQuoteAt&&Date.now()-Date.parse(lastQuoteAt)<5000},integration:integration.result}));
 });
 server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('Credential-free hosting probe listening'));
-function stop(){stopping=true;clearTimeout(reconnect);socket?.close();clearInterval(pulse);clearInterval(feedTimer);server.close(()=>{db.close();process.exit(0);});}
+function stop(){stopping=true;integration.stop();clearTimeout(reconnect);socket?.close();clearInterval(pulse);clearInterval(feedTimer);server.close(()=>{db.close();process.exit(0);});}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
