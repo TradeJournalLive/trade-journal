@@ -10,6 +10,19 @@ db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT E
 db.prepare('INSERT INTO boots (at) VALUES (?)').run(new Date().toISOString());
 const started = Date.now();
 let storageError = false, feed = {ok: false, checkedAt: null, latencyMs: null};
+let socket, reconnect, stopping=false, frames=0, lastQuoteAt=null;
+function connectSocket() {
+  if(stopping)return;
+  const current=new WebSocket('wss://public-socket.india.delta.exchange');
+  socket=current;
+  current.addEventListener('open',()=>current.send(JSON.stringify({type:'subscribe',payload:{channels:[{name:'ob_l1',symbols:['BTCUSD']},{name:'trades',symbols:['BTCUSD']}]}})));
+  current.addEventListener('message',event=>{
+    try {const data=JSON.parse(String(event.data));if(['ob_l1','trades'].includes(data.type)){frames++;lastQuoteAt=new Date().toISOString();}}catch{}
+  });
+  current.addEventListener('error',()=>current.close());
+  current.addEventListener('close',()=>{if(!stopping)reconnect=setTimeout(connectSocket,2000);});
+}
+connectSocket();
 const pulse = setInterval(() => {
   try { db.exec('UPDATE pulses SET count=count+1 WHERE id=1'); storageError=false; }
   catch { storageError=true; }
@@ -33,8 +46,8 @@ const server=http.createServer((req,res)=>{
   let bootCount=0,pulses=0;
   try {bootCount=db.prepare('SELECT count(*) AS n FROM boots').get().n;pulses=db.prepare('SELECT count FROM pulses WHERE id=1').get().count;}catch{storageError=true;}
   res.writeHead(storageError?503:200,{'content-type':'application/json','cache-control':'no-store'});
-  res.end(JSON.stringify({mode:'INFRASTRUCTURE_PROBE_ONLY',tradingEnabled:false,node:process.versions.node,uptimeSeconds:Math.floor((Date.now()-started)/1000),storage:{ok:!storageError,bootCount,pulses},deltaPublicRest:feed}));
+  res.end(JSON.stringify({mode:'INFRASTRUCTURE_PROBE_ONLY',tradingEnabled:false,node:process.versions.node,uptimeSeconds:Math.floor((Date.now()-started)/1000),storage:{ok:!storageError,bootCount,pulses},deltaPublicRest:feed,deltaWebSocket:{connected:socket?.readyState===1,frames,lastQuoteAt,fresh:!!lastQuoteAt&&Date.now()-Date.parse(lastQuoteAt)<5000}}));
 });
 server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('Credential-free hosting probe listening'));
-function stop(){clearInterval(pulse);clearInterval(feedTimer);server.close(()=>{db.close();process.exit(0);});}
+function stop(){stopping=true;clearTimeout(reconnect);socket?.close();clearInterval(pulse);clearInterval(feedTimer);server.close(()=>{db.close();process.exit(0);});}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
