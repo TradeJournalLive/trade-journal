@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
 const { readDepth, withDepth } = require('./nifty-depth.cjs');
+const { quarantineInterruptedPosition, recoverOnNextSignal } = require('./nifty-independent-recovery.cjs');
 function load(name) {
   const file = path.resolve(__dirname, `../app/lib/algo/${name}.ts`), copy = new Module(file, module);
   copy.require = id => id.startsWith('./') ? load(id.slice(2)) : require(id);
@@ -51,6 +52,18 @@ function event(id, data, action = 'EXIT', timestamp = now()) {
   return { receivedAt: timestamp, signal: { id, strategyId: 'nifty_paper_feed_v1', symbol: 'NSE:NIFTY', action, timeframe: '1', metadata: { niftyPaper: data } }, raw: { automation: { mode: 'PAPER' } } };
 }
 function advance(events) {
+  if(state?.recoveryIncidents?.some(i=>!i.acknowledgedAt)) {
+    for(const e of events){
+      const control=e.raw?.paperControl;
+      if(control?.market==='NIFTY' && typeof control.niftyOptionsEnabled==='boolean') {
+        state.checkpoint.rulesV2.enabled=control.niftyOptionsEnabled;
+        state.checkpoint.enabled=control.niftyOptionsEnabled;
+        saveLocal();
+      }
+    }
+    if(!recoverOnNextSignal(state,events,now()))return;
+    audit('RECOVERY_AUTO_EXCLUDED',{reason:'NEXT_SIGNAL_INDEPENDENT'});
+  }
   const before = book?.trades.length ?? 0;
   const previousPosition = book?.position?.openedAt;
   const previousQuantity = book?.position?.quantity;
@@ -206,7 +219,11 @@ async function main() {
     const startedAt = now(), end = new Date(startedAt); end.setUTCMonth(end.getUTCMonth() + 1);
     state = { startedAt, endsAt: end.toISOString() };
     advance([{ ...event('enable', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: true } } }]);
-  } else advance([]);
+  } else {
+    quarantineInterruptedPosition(state,now());
+    book=buildNiftyLimitPaper([],now(),state.checkpoint);
+    advance([]);
+  }
   pollAfter = old ? new Date(Date.parse(old.received_at) - 60000).toISOString() : state.startedAt;
   lease = now();
   const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: lease, signal_timestamp: lease, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary() } };

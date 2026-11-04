@@ -224,6 +224,14 @@ function tryEntry() {
   if(entered)audit('ENTRY',state.position);
 }
 async function prepare(signal) {
+  const { recoverForFreshSignal } = require('./hams-independent-recovery.cjs');
+  if(signal.symbol==='NSE:NIFTY' && signal.timeframe==='3' && ['BUY','SELL'].includes(signal.action) && reviewRequired() && owned() && spot && Date.now()-spot.at<=5000) {
+    const recovered=recoverForFreshSignal({state,decisions,incidents},signal,now());
+    if(recovered){
+      state=recovered.state;decisions=recovered.decisions;incidents=recovered.incidents;pending=null;mark=null;
+      save();audit('RECOVERY_AUTO_EXCLUDED',{signalId:signal.id,reason:'NEXT_SIGNAL_INDEPENDENT'});
+    }
+  }
   if(state.rulesV2){
     if(signal.symbol!=='NSE:NIFTY'||signal.timeframe!=='3') { decide(signal,'INVALID_SIGNAL');return; }
     if(reviewRequired()){decide(signal,'RECOVERY_REVIEW_REQUIRED');return;}
