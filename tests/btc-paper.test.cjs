@@ -18,7 +18,7 @@ function btcSignal(state, signal) {
   return rawBtcSignal({ ...state, previousTick: state.previousTick || tick((end - Date.parse(time(0))) / 1000, 80050), priceHistory }, signal);
 }
 test('breakout before alert processing is missed even if price returned inside', () => {
-  let s = { ...emptyBtcState(), enabled: true };
+  let s = { ...emptyBtcState(), enabled: true, previousTick:tick(-1,80050) };
   for (let n = 0; n <= 4; n++) s = btcTick(s, tick(n, n === 2 ? 79990 : 80050));
   s = rawBtcSignal(s, { ...signal('SELL', 'missed'), receivedAt: time(4) });
   assert.equal(s.status, 'MISSED_BREAKOUT'); assert.equal(s.setup, null);

@@ -49,10 +49,10 @@ function executionFill(tick: BtcTick, buy: boolean, quantity: number, limit = In
   const id = matches ? `depth:${depth.at}:${depth.sequence}` : `quote:${tick.quoteAt}`;
   return btcDepthFill(levels, buy, quantity, tick.contractBtc ?? NaN, initial, id, limit);
 }
-export type BtcSignal = { id: string; action: "BUY" | "SELL"; symbol: string; receivedAt: string; closedAt: string; high: number; low: number; signalPrice: number; breakoutVerified?: boolean };
+export type BtcSignal = { id: string; action: "BUY" | "SELL"; symbol: string; receivedAt: string; closedAt: string; high: number; low: number; signalPrice: number; breakoutVerified?: boolean; lateEntry?: boolean };
 type PriceWindow = { second: number; first: number; last: number; low: number; high: number; gap: number };
 export type BtcTick = { timestamp: string; tradeAt: string; quoteAt: string; price: number; bid: number; ask: number; bidBtc: number; askBtc: number; mark: number; markAt: string; maintenanceRate: number; executionVersion?: 2; contractBtc?: number; depth?: { at: string; sequence: number; bids: BtcLevel[]; asks: BtcLevel[] }; previous15m?: { high: number; low: number; closedAt: string } };
-export type BtcPosition = { sizingPolicy?: string; requestedQuantityBtc?: number; id: string; side: "LONG" | "SHORT"; quantityBtc: number; leverage: number; entry: number; openedAt: string; stop: number; initialRisk?: number; breakEven?: boolean; monitoringGap?: { from: string; to: string }; target: number; trigger: number; signalPrice: number; signalClosedAt: string; signalReceivedAt: string; entryDifference: number; initialMargin: number; estimatedLiquidation: number; entryFill?: BtcFill; entryQuantityBtc?: number; canceledEntryBtc?: number; realizedPnl?: number; lastExitLiquidityId?: string; exitFills?: (BtcLevel & { at: string; reason: string; liquidityId?: string })[] };
+export type BtcPosition = { lateEntry?: boolean; sizingPolicy?: string; requestedQuantityBtc?: number; id: string; side: "LONG" | "SHORT"; quantityBtc: number; leverage: number; entry: number; openedAt: string; stop: number; initialRisk?: number; breakEven?: boolean; monitoringGap?: { from: string; to: string }; target: number; trigger: number; signalPrice: number; signalClosedAt: string; signalReceivedAt: string; entryDifference: number; initialMargin: number; estimatedLiquidation: number; entryFill?: BtcFill; entryQuantityBtc?: number; canceledEntryBtc?: number; realizedPnl?: number; lastExitLiquidityId?: string; exitFills?: (BtcLevel & { at: string; reason: string; liquidityId?: string })[] };
 export type BtcTrade = BtcPosition & { exit: number; closedAt: string; reason: string; pnl: number; exitReference: number | null; exitDifference: number | null };
 export type BtcState = { nextQuantityBtc?: number; enabled: boolean; setup: BtcSignal | null; position: BtcPosition | null; previousTick: BtcTick | null; priceHistory?: PriceWindow[]; status: string; pendingExit: string | null; seen: string[]; trades: BtcTrade[]; realizedBase: number; tradeCountBase: number; lastSignalAt: string | null; decisions?: BtcDecision[] };
 export function emptyBtcState(): BtcState { return { nextQuantityBtc: btcRules.quantityBtc, enabled: false, setup: null, position: null, previousTick: null, status: "DISABLED", pendingExit: null, seen: [], trades: [], realizedBase: 0, tradeCountBase: 0, lastSignalAt: null }; }
@@ -82,12 +82,15 @@ export function btcSignal(state: BtcState, signal: BtcSignal, processedAt = sign
     const covered = Number.isFinite(end) && end >= Date.parse(signal.receivedAt) - 5000 && rows.length > 0
       && rows[0].first <= start + 1000 && rows[rows.length - 1].last >= end
       && rows.every((row, i) => Number.isFinite(row.gap) && row.gap <= 5000 && (!i || row.first - rows[i - 1].last <= 5000));
-    if (broken || !covered || end - start >= 600000) {
+    const stillBeyond = s.previousTick && (signal.action === 'BUY' ? s.previousTick.price > signal.high : s.previousTick.price < signal.low);
+    if (!covered || end - start >= 600000 || Date.parse(processedAt)-start>=600000 || (broken && !stillBeyond)) {
       s.setup = null; s.status = broken ? "MISSED_BREAKOUT" : end - start >= 600000 ? "SETUP_EXPIRED" : "UNVERIFIABLE_BREAKOUT_HISTORY";
-    } else s.setup.breakoutVerified = true;
+      if(!covered)s.status='UNVERIFIABLE_BREAKOUT_HISTORY';
+      else if(end-start>=600000||Date.parse(processedAt)-start>=600000)s.status='SETUP_EXPIRED';
+    } else { s.setup.breakoutVerified = true; s.setup.lateEntry = broken; }
   }
   decision(s, signal, s.setup ? "WAITING_FOR_BREAKOUT" : s.status === "OPEN" ? "POSITION_ALREADY_OPEN" : s.status,
-    s.setup ? "Waiting for the first eligible high/low crossing." : s.status === "MISSED_BREAKOUT" ? "The level broke before the worker processed this signal; no late entry." : s.status === "SETUP_EXPIRED" ? "The ten-candle entry window expired." : s.status === "UNVERIFIABLE_BREAKOUT_HISTORY" ? "Continuous price history during alert delivery is unavailable." : s.position ? "Existing position managed; no additional same-direction entry." : "Paper entries are off.", processedAt);
+    s.setup ? s.setup.lateEntry ? "Breakout already observed; waiting for a fresh executable quote (late entry)." : "Waiting for the first eligible high/low crossing." : s.status === "MISSED_BREAKOUT" ? "The breakout reversed before processing; wait for a new signal." : s.status === "SETUP_EXPIRED" ? "The ten-candle entry window expired." : s.status === "UNVERIFIABLE_BREAKOUT_HISTORY" ? "Continuous price history during alert delivery is unavailable." : s.position ? "Existing position managed; no additional same-direction entry." : "Paper entries are off.", processedAt);
   return s;
 }
 export function btcTick(state: BtcState, tick: BtcTick): BtcState {
@@ -162,7 +165,9 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
     else if (age >= 10 * 60000) { decision(s, setup, "SETUP_EXPIRED", "No entry within ten candles.", tick.timestamp); s.setup = null; s.status = "SETUP_EXPIRED"; }
     else if (age >= 0 && fresh(tick.tradeAt, tick.timestamp) && s.previousTick && fresh(s.previousTick.timestamp, tick.timestamp)) {
       const long = setup.action === "BUY", trigger = long ? setup.high : setup.low;
-      const crossed = long ? s.previousTick.price <= trigger && tick.price > trigger : s.previousTick.price >= trigger && tick.price < trigger;
+      const beyond = long ? tick.price > trigger : tick.price < trigger;
+      const crossed = setup.lateEntry ? beyond : long ? s.previousTick.price <= trigger && beyond : s.previousTick.price >= trigger && beyond;
+      if(setup.lateEntry && !beyond){decision(s,setup,'BREAKOUT_REVERSED','Price returned inside the breakout before the late entry could fill.',tick.timestamp);s.setup=null;s.status='BREAKOUT_REVERSED';}
       if (crossed) {
         const requested = btcRequestedQuantity(s);
         const fill = tick.executionVersion === 2 ? executionFill(tick, long, requested, btcRules.maxEntrySlippageUsd) : null;
@@ -175,7 +180,8 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
           const quantity = fill?.quantityBtc ?? requested;
           s.position = { sizingPolicy: btcSizingPolicy, requestedQuantityBtc: requested, id: setup.id, side: long ? "LONG" : "SHORT", quantityBtc: quantity, leverage: 100, entry, openedAt: tick.timestamp, stop, initialRisk: risk, breakEven: false, target: entry + (long ? 1 : -1) * btcRules.targetR * risk, trigger, signalPrice: setup.signalPrice, signalClosedAt: setup.closedAt, signalReceivedAt: setup.receivedAt, entryDifference: long ? entry - trigger : trigger - entry, initialMargin: entry * quantity / 100, estimatedLiquidation: long ? entry * (1 - 1 / 100) / (1 - mm) : entry * (1 + 1 / 100) / (1 + mm),
             ...(fill ? { entryFill: fill, entryQuantityBtc: quantity, canceledEntryBtc: Math.max(0, Math.round((requested - quantity) * 1e12) / 1e12) } : {}) };
-          decision(s, setup, quantity < requested ? "PARTIALLY_FILLED" : "ENTERED", quantity < requested ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.", tick.timestamp, fill ?? undefined);
+          s.position.lateEntry=Boolean(setup.lateEntry);
+          decision(s, setup, quantity < requested ? "PARTIALLY_FILLED" : "ENTERED", (quantity < requested ? "Filled available quantity within $5; unfilled entry remainder canceled." : "Filled requested quantity at observed prices within the entry limit.")+(setup.lateEntry?' (Entered late)':''), tick.timestamp, fill ?? undefined);
           s.setup = null; s.status = "OPEN";
         }
         if (!s.position) { decision(s, setup, "MISSED_BREAKOUT_UNFILLED", `${skipReason} First breakout skipped; no later re-entry.`, tick.timestamp); s.setup = null; s.status = "MISSED_BREAKOUT_UNFILLED"; }
