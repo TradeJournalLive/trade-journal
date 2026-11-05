@@ -32,14 +32,18 @@ fs.writeFileSync(path.join(directory,'config.json'),JSON.stringify({webhookSecre
 const definitions={NIFTY:'nifty-paper-worker.cjs',HAMS:'hams-final-worker.cjs',BTC:'btc-delta-paper-worker.cjs'};
 const active=new Set((process.env.CLOUD_WORKERS_ENABLED||'').split(',').filter(Boolean));
 for(const name of active)if(!definitions[name])throw Error('INVALID_WORKER_SELECTION');
-const children=new Map(),timers=new Set();let stopping=false;
+const children=new Map(),timers=new Set(),exits=new Map();let stopping=false;
+function stoppedReason(name){
+  const file=path.join(directory,`cloud-${name.toLowerCase()}.log`);
+  try{const fd=fs.openSync(file,'r'),size=fs.fstatSync(fd).size,b=Buffer.alloc(Math.min(size,8192));fs.readSync(fd,b,0,b.length,Math.max(0,size-b.length));fs.closeSync(fd);const matches=[...b.toString().matchAll(/(?:stopped: |"message":")([A-Z][A-Z_]+)(?:"|\s|$)/g)];return matches.at(-1)?.[1]||null;}catch{return null;}
+}
 function launch(name){
   if(stopping)return;
   const log=fs.openSync(path.join(directory,`cloud-${name.toLowerCase()}.log`),'a',0o600);
   const child=spawn(process.execPath,[path.join(__dirname,definitions[name])],{cwd:storage,env:process.env,stdio:['ignore',log,log]});
   fs.closeSync(log);children.set(name,child);
   child.once('error',()=>{});
-  child.once('exit',()=>{children.delete(name);if(!stopping){const timer=setTimeout(()=>{timers.delete(timer);launch(name);},30000);timers.add(timer);}});
+  child.once('exit',(code,signal)=>{exits.set(name,{code,signal,at:new Date().toISOString()});children.delete(name);if(!stopping){const timer=setTimeout(()=>{timers.delete(timer);launch(name);},30000);timers.add(timer);}});
 }
 for(const name of active)launch(name);
 const started=Date.now();
@@ -50,7 +54,7 @@ function stateInfo(name){
 const server=http.createServer((req,res)=>{
   if(req.url!=='/'&&req.url!=='/health'){res.writeHead(404);res.end();return;}
   res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-  res.end(JSON.stringify({mode:'PAPER_WORKER_HOST',realOrdersEnabled:false,uptimeSeconds:Math.floor((Date.now()-started)/1000),migrationLoaded:fs.existsSync(migrationFile),workers:Object.fromEntries(Object.keys(definitions).map(n=>[n,{selected:active.has(n),processRunning:!!children.get(n),checkpoint:stateInfo(n)}]))}));
+  res.end(JSON.stringify({mode:'PAPER_WORKER_HOST',realOrdersEnabled:false,uptimeSeconds:Math.floor((Date.now()-started)/1000),migrationLoaded:fs.existsSync(migrationFile),workers:Object.fromEntries(Object.keys(definitions).map(n=>[n,{selected:active.has(n),processRunning:!!children.get(n),lastExit:exits.get(n)||null,lastRecordedStop:stoppedReason(n),checkpoint:stateInfo(n)}]))}));
 });
 server.listen(Number(process.env.PORT)||3000,'0.0.0.0');
 function stop(){if(stopping)return;stopping=true;for(const timer of timers)clearTimeout(timer);for(const child of children.values())child.kill('SIGTERM');server.close();const timer=setInterval(()=>{if(!children.size){clearInterval(timer);process.exit(0);}},100);setTimeout(()=>{for(const child of children.values())child.kill('SIGKILL');process.exit(0);},10000).unref();}
