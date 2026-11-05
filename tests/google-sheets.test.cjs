@@ -21,6 +21,23 @@ function database() {
   };
   return { from, rows };
 }
+test('HAMS exports owner-scoped recovered trades and open fills without invented exits', async () => {
+  const filters = [];
+  const q = {select(){return q;},eq(k,v){filters.push([k,v]);return q;},async maybeSingle(){return {data:{raw_payload:{state:{}}}};}};
+  const position = {signalId:'h1',openedAt:'2026-11-05T04:00:00Z',signalClosedAt:'2026-11-05T03:57:00Z',receivedAt:'2026-11-05T04:00:01Z',entry:100,quantity:65,lots:1,stop:80,target:200,contract:{id:'NIFTY CE',side:'CE'}};
+  const api = load('app/lib/algo/hamsTradeReports.ts', {
+    './signalStore': {getServerSupabase:()=>({from:()=>q}),hashWebhookSecret:s=>`hash:${s}`},
+    './hamsHistory': {loadHamsRecords:async(db,owner,reporting)=>{assert.equal(owner,'hash:owner-a');assert.equal(reporting,true);return [];},hamsRecoveryView:()=>({state:{position,trades:[{...position,signalId:'closed',closedAt:'2026-11-05T04:10:00Z',exit:120,pnl:1250,grossPnl:1300,reason:'TARGET'}]},incidents:[{signalId:'h1'}]})}
+  });
+  const rows = await api.loadHamsTradeReports('owner-a');
+  assert.ok(filters.some(([k,v])=>k==='secret_hash'&&v==='hash:owner-a'));
+  assert.equal(rows[0].pnl,1300);
+  assert.equal(rows[1].status,'OPEN');
+  assert.equal(rows[1].exit,undefined);
+  assert.equal(rows[1].pnl,undefined);
+  assert.match(rows[1].quality,/Unverified/);
+  assert.ok(rows.every(t=>t.market==='NIFTY HAMS'));
+});
 test('Sheets credentials are encrypted, owner-isolated, and tampering fails closed', async () => {
   process.env.ALGO_CONNECTION_ENCRYPTION_KEY = 'sheets-test-only';
   const db = database(), api = load('app/lib/algo/googleSheetsStore.ts', { './signalStore': { getServerSupabase: () => db } });
@@ -55,6 +72,7 @@ function reporting() {
     './accountConnections': { readAccountConnection: async user => user === 'a' ? 'secret-a' : null, webhookAccountOwner: async secret => secret === 'secret-a' ? 'a' : null },
     './signalStore': { listPersistedAlgoSignalEvents: async secret => { assert.equal(secret, 'secret-a'); return { ok: true, events: rows }; } },
     './paperHistory': { loadPaperBooks: async secret => { assert.equal(secret, 'secret-a'); return {}; } },
+    './hamsTradeReports': { loadHamsTradeReports: async secret => { assert.equal(secret, 'secret-a'); return []; } },
     './googleSheetsStore': { readSheets: async u => structuredClone(connections.get(u) || null), writeSheets: async (u,v) => connections.set(u, structuredClone(v)), withSheetsLock: async (u, f) => f() }
   });
   const oldFetch = global.fetch;
@@ -84,6 +102,10 @@ test('create is private, explicit and idempotent; sync writes RAW instrument ran
     const values = r.googleCalls.find(c => c.url.endsWith('values:batchUpdate'));
     assert.equal(values.body.valueInputOption, 'RAW');
     assert.ok(values.body.data.some(d => d.range === "'NIFTY'!A1"));
+    assert.ok(values.body.data.some(d => d.range === "'NIFTY HAMS'!A1"));
+    assert.ok(values.body.data.some(d => d.range === "'NIFTY HAMS Trades'!A1"));
+    assert.equal(r.api.eventTab({signal:{symbol:'NSE:NIFTY',strategyId:'nifty_hams_final_3m_v1'}}), 'NIFTY HAMS');
+    assert.equal(r.api.eventTab({signal:{symbol:'NSE:NIFTY',strategyId:'current'}}), 'NIFTY');
     assert.ok(values.body.data[0].values.some(row => row.includes('=IMPORTDATA("bad")')));
     assert.equal(JSON.stringify(values.body).includes('private-refresh'), false);
     assert.equal(r.connections.get('a').signalCount, 1);
