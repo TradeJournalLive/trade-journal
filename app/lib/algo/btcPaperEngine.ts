@@ -1,4 +1,4 @@
-export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, sizeStepBtc: 0.1, leverage: 100, targetR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
+export const btcRules = { feed: "DELTA_INDIA_BTCUSD", timeframe: "1", quantityBtc: 0.1, sizeStepBtc: 0.1, leverage: 100, targetR: 5, breakEvenR: 3, validCandles: 10, maxEntrySlippageUsd: 5 } as const;
 export const btcSizingPolicy = "SL_STEP_0_1_UNCAPPED_V2";
 export function btcRequestedQuantity(state: { nextQuantityBtc?: number }) {
   const size = state.nextQuantityBtc;
@@ -8,7 +8,7 @@ export function btcRequestedQuantity(state: { nextQuantityBtc?: number }) {
 export function btcNextQuantity(size: number, reason: string) {
   const current = btcRequestedQuantity({ nextQuantityBtc: size });
   if (reason === "SIGNAL_CANDLE_STOP") return (Math.round(current*10)+1)/10;
-  if (reason === "TARGET_3R" || reason === "TARGET_1_5R") return btcRules.quantityBtc;
+  if (reason === "TARGET_5R" || reason === "TARGET_3R" || reason === "TARGET_1_5R") return btcRules.quantityBtc;
   return current;
 }
 export type BtcLevel = { price: number; quantityBtc: number };
@@ -127,21 +127,22 @@ export function btcTick(state: BtcState, tick: BtcTick): BtcState {
   if (s.position) {
     const p = s.position, long = p.side === "LONG", price = long ? tick.bid : tick.ask;
     p.initialRisk ??= Math.abs(p.entry - p.stop);
-    if (!p.breakEven && positive(p.initialRisk) && (long ? price - p.entry : p.entry - price) >= 2 * p.initialRisk) {
+    const fiveR = Math.abs(p.target - p.entry) > 4 * p.initialRisk;
+    if (!p.breakEven && positive(p.initialRisk) && (long ? price - p.entry : p.entry - price) >= (fiveR ? btcRules.breakEvenR : 2) * p.initialRisk) {
       p.stop = p.entry; p.breakEven = true;
     }
     const markFresh = positive(tick.mark) && fresh(tick.markAt, tick.timestamp);
     const marginBreach = markFresh && (long ? tick.mark <= p.estimatedLiquidation : tick.mark >= p.estimatedLiquidation);
     const reason = marginBreach ? "ESTIMATED_ISOLATED_MARGIN_EXIT" : s.pendingExit
       || ((long ? price <= p.stop : price >= p.stop) ? (p.breakEven ? "COST_TO_COST_STOP" : "SIGNAL_CANDLE_STOP") : null)
-      || ((long ? price >= p.target : price <= p.target) ? (Math.abs(p.target - p.entry) > 2 * p.initialRisk ? "TARGET_3R" : "TARGET_1_5R") : null);
+      || ((long ? price >= p.target : price <= p.target) ? (fiveR ? "TARGET_5R" : Math.abs(p.target - p.entry) > 2 * p.initialRisk ? "TARGET_3R" : "TARGET_1_5R") : null);
     if (reason) {
       const depth = long ? tick.bidBtc : tick.askBtc;
       // Only new version-two entries use depth/partial fills; stored old positions keep their rules.
       const fill = p.entryFill ? executionFill(tick, !long, p.quantityBtc) : null;
       if (p.entryFill ? !fill || fill.liquidityId === p.lastExitLiquidityId || fill.liquidityId === p.entryFill.liquidityId || p.exitFills?.some(f => f.liquidityId === fill.liquidityId) : !Number.isFinite(depth) || depth < p.quantityBtc) { s.status = "INSUFFICIENT_EXIT_DEPTH"; s.pendingExit = reason; }
       else {
-        const reference = (reason === "SIGNAL_CANDLE_STOP" || reason === "COST_TO_COST_STOP") ? p.stop : (reason === "TARGET_1_5R" || reason === "TARGET_3R") ? p.target : null;
+        const reference = (reason === "SIGNAL_CANDLE_STOP" || reason === "COST_TO_COST_STOP") ? p.stop : (reason === "TARGET_1_5R" || reason === "TARGET_3R" || reason === "TARGET_5R") ? p.target : null;
         const actualPrice = fill?.price ?? price, quantity = fill?.quantityBtc ?? p.quantityBtc;
         const pnl = (p.realizedPnl ?? 0) + (actualPrice - p.entry) * quantity * (long ? 1 : -1);
         const exitFills = [...(p.exitFills ?? []), ...(fill?.fills ?? [{ price, quantityBtc: quantity }]).map(level => ({ ...level, at: tick.timestamp, reason, liquidityId: fill?.liquidityId }))];

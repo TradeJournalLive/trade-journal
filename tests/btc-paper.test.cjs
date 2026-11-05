@@ -7,8 +7,30 @@ const { btcCompactTrades } = copy.exports;
 // Keep the established one-BTC fill/recovery regression fixtures independent of the entry-size default.
 copy.exports.btcRules.quantityBtc = 1;
 copy.exports.btcRules.sizeStepBtc = 1;
+// Preserve the old 3R regression fixtures; the new policy is tested independently below.
+copy.exports.btcRules.targetR = 3;
 const time = n => new Date(Date.UTC(2026, 9, 16, 22, 0, n)).toISOString();
 const signal = (action = 'BUY', id = 'buy') => ({ id, action, symbol: 'DELTAIN:BTCUSD.P', receivedAt: time(1), closedAt: time(0), high: 80100, low: 80000, signalPrice: 80080 });
+test('new 5R policy moves to CTC at 3R, not 2R, and resets sizing on target', () => {
+  copy.exports.btcRules.targetR = 5;
+  try {
+    const s = entry(), p = s.position;
+    assert.equal(p.target, p.entry + 5 * p.initialRisk);
+    const two = btcTick(s, tick(4, p.entry + 2*p.initialRisk + 1));
+    assert.equal(two.position.stop, p.stop);
+    const three = btcTick(two, tick(5, p.entry + 3*p.initialRisk + 1));
+    assert.equal(three.position.stop, p.entry);
+    const saved = JSON.parse(JSON.stringify(three));
+    assert.equal(btcTick(saved, tick(6,p.target+1)).trades[0].reason, 'TARGET_5R');
+    assert.equal(copy.exports.btcNextQuantity(2,'TARGET_5R'), 1);
+    let short = btcSignal({...emptyBtcState(),enabled:true}, signal('SELL','five-short'));
+    short = btcTick(btcTick(short,tick(2,80001)),tick(3,79999));
+    const q=short.position;
+    assert.equal(q.target,q.entry-5*q.initialRisk);
+    const moved=btcTick(short,tick(4,q.entry-3*q.initialRisk-1));
+    assert.equal(moved.position.stop,q.entry);
+  } finally { copy.exports.btcRules.targetR = 3; }
+});
 function tick(n, price, bid = price - 1, ask = price + 1) { return { timestamp: time(n), tradeAt: time(n), quoteAt: time(n), price, bid, ask, bidBtc: 2, askBtc: 2, mark: price, markAt: time(n), maintenanceRate: .0025, previous15m: { high: 81000, low: 79000, closedAt: time(0) } }; }
 // Standard fixtures include uninterrupted, unbroken prices during alert delivery.
 function btcSignal(state, signal) {
