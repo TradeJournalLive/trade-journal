@@ -5,6 +5,10 @@ const { isDeepStrictEqual } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const tradeKey = t => `${t.signalId}:${t.openedAt}`;
+function matchesHamsLedgerRecord(stored,expected){
+  // PostgreSQL JSONB can reorder keys; compare the complete immutable payload.
+  return Boolean(stored?.record && typeof stored.recordHash==='string' && isDeepStrictEqual(stored.record,expected));
+}
 function validate(snapshot, owner) {
   const s = snapshot?.state;
   if (!snapshot || snapshot.owner !== owner || !s || typeof s.enabled !== 'boolean'
@@ -124,4 +128,4 @@ async function reconcileHamsPublish(result,readBack,workerId,at){
   if(!Number.isFinite(observed)||observed>Date.parse(at))throw retry(new Error('Invalid snapshot timestamp'));
   return {committed:observed===Date.parse(at),lease:check.data.received_at};
 }
-module.exports={HamsJournal,selectSnapshot,checkTransition,validate,flushHamsRecords,confirmHamsPublish,reconcileHamsPublish,digest,tradeKey};
+module.exports={HamsJournal,selectSnapshot,checkTransition,validate,flushHamsRecords,confirmHamsPublish,reconcileHamsPublish,digest,tradeKey,matchesHamsLedgerRecord};

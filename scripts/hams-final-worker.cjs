@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
 const { readDepth } = require('./nifty-depth.cjs');
-const { HamsJournal, selectSnapshot, flushHamsRecords, reconcileHamsPublish, digest } = require('./hams-journal.cjs');
+const { HamsJournal, selectSnapshot, flushHamsRecords, reconcileHamsPublish, digest, matchesHamsLedgerRecord } = require('./hams-journal.cjs');
 const { hamsPublicView } = require('./hams-public-view.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
 function loadAlgo(name) {
@@ -151,7 +151,7 @@ async function flushLedger() {
       if(result.error)throw storageError('HAMS_LEDGER_STORAGE_UNAVAILABLE',result.error);
       const check = await db.from(TABLE).select('signal_id,raw_payload').eq('secret_hash',owner).eq('strategy_id',STRATEGY).in('signal_id',rows.map(r=>r.signal_id));
       if(check.error || check.data?.length!==rows.length)throw storageError('HAMS_LEDGER_ACK_UNAVAILABLE',check.error);
-      for(const r of rows)if(check.data.find(v=>v.signal_id===r.signal_id)?.raw_payload?.recordHash!==r.raw_payload.recordHash)throw Error('HAMS_LEDGER_CONFLICT');
+      for(const r of rows)if(!matchesHamsLedgerRecord(check.data.find(v=>v.signal_id===r.signal_id)?.raw_payload,r.raw_payload.record))throw Error('HAMS_LEDGER_CONFLICT');
     });
     if(status==='HAMS_LEDGER_SYNC_RETRY'&&socket?.isConnected()&&!publishFailures)status='READY';
   } finally { flushing = false; }
