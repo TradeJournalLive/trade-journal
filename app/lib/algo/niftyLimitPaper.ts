@@ -4,7 +4,7 @@ export type LimitQuote = { id: string; expiry: string; strike: number; side: "CE
 type Level = { price: number; quantity: number };
 export type LimitSignal = { id: string; action: "BUY" | "SELL"; closedAt: string; receivedAt: string; high: number; low: number; interval: number };
 type Attempt = { contractId: string; reference: number; at: string };
-type BreakoutTiming = { breakoutAt?: string; breakoutDeadline?: string; breakoutTimePrecision?: "SECOND_BUCKET" | "OBSERVED_TICK" };
+type BreakoutTiming = { lateEntry?: boolean; breakoutAt?: string; breakoutDeadline?: string; breakoutTimePrecision?: "SECOND_BUCKET" | "OBSERVED_TICK" };
 type Setup = LimitSignal & BreakoutTiming & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
 export type RecoverySizing = { version: 1; baseLots: number; lossToRecover: number; recoveryLots: number; selectedLots: number; estimatedTargetNet: number; estimatedStopLoss: number };
 export type LimitPosition = BreakoutTiming & { sizing?: RecoverySizing; contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
@@ -97,7 +97,7 @@ function eligible(s: LimitState, setup: LimitSignal, at: string) {
   return session.day===istSession(setup.closedAt).day && session.minute>=limitRules.start && session.minute<limitRules.end
     && time(at)>=time(setup.closedAt) && time(at)-time(setup.closedAt)<10*setup.interval*60000;
 }
-export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, processedAt=signal.receivedAt, breakoutGraceMs=0): LimitState {
+export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, processedAt=signal.receivedAt, breakoutGraceMs=0, allowLateEntry=false): LimitState {
   // Webhook receipt and worker processing are different clocks. Prices captured
   // between them must be checked against processing time, not rejected as future.
   const s=structuredClone(previous),at=processedAt;
@@ -116,7 +116,7 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
   const history=s.ticks.filter(t=>time(t.at)>=time(signal.closedAt)&&time(t.at)<=time(at));
   const broken=(price:number)=>signal.action==="BUY"?price>signal.high:price<signal.low;
   const firstBreak=history.findIndex(t=>signal.action==="BUY"?(t.high??t.price)>signal.high:(t.low??t.price)<signal.low);
-  if(firstBreak>=0&&breakoutGraceMs!==20000) {
+  if(firstBreak>=0&&breakoutGraceMs!==20000&&!allowLateEntry) {
     decision(s,signal,at,"MISSED_BREAKOUT","The signal level already broke before alert processing; wait for the next signal.");return s;
   }
   const last=s.ticks.at(-1);
@@ -133,16 +133,16 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
     // Older history is compacted per second. Use the bucket START, not its last
     // timestamp, so compaction can never extend a 20-second grace by almost 1s.
     const breakoutMs=Math.max(time(signal.closedAt),Math.floor(time(history[firstBreak].at)/1000)*1000);
-    const deadline=breakoutMs+breakoutGraceMs;
+    const deadline=allowLateEntry?time(signal.closedAt)+10*signal.interval*60000:breakoutMs+breakoutGraceMs;
     if(time(at)>deadline){decision(s,signal,at,"MISSED_BREAKOUT","The first observed breakout is older than the 20-second entry grace; wait for the next signal.");return s;}
     const reversed=!broken(history[firstBreak].price)||history.slice(firstBreak+1).some(t=>signal.action==="BUY"?(t.low??t.price)<=signal.high:(t.high??t.price)>=signal.low);
     if(!broken(last.price)||reversed){decision(s,signal,at,"BREAKOUT_REVERSED","The observed index returned inside the signal level after the first breakout; no re-cross entry.");return s;}
-    s.setup={...signal,triggered:true,breakoutAt:new Date(breakoutMs).toISOString(),breakoutDeadline:new Date(deadline).toISOString(),breakoutTimePrecision:"SECOND_BUCKET"};
-    decision(s,signal,at,"BREAKOUT_GRACE_ACTIVE",`Breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
+    s.setup={...signal,triggered:true,...(allowLateEntry?{lateEntry:true}:{}),breakoutAt:new Date(breakoutMs).toISOString(),breakoutDeadline:new Date(deadline).toISOString(),breakoutTimePrecision:"SECOND_BUCKET"};
+    decision(s,signal,at,allowLateEntry?"LATE_ENTRY_PENDING":"BREAKOUT_GRACE_ACTIVE",allowLateEntry?"Verified earlier breakout; use the current option ask + ₹4 limit (late entry), inside the ten-candle/session window.":`Breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
   }
   s.setup=signal;decision(s,signal,at,"WAITING_FOR_INDEX_BREAK","Prepared ATM side; waiting for the confirmed signal high/low breakout within ten candles.");return s;
 }
-export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }, breakoutGraceMs=0): LimitState {
+export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }, breakoutGraceMs=0, allowLateEntry=false): LimitState {
   const s=structuredClone(previous),at=tick.at,session=istSession(at),last=s.ticks.at(-1);
   if(!positive(tick.spot)||!Number.isFinite(time(at))||(last&&time(at)<=time(last.at)))return s;
   // Bound checkpoint size without losing an intra-second pre-delivery breakout.
@@ -152,6 +152,10 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
   }
   s.ticks=s.ticks.filter(t=>time(at)-time(t.at)<=35*60000);
   let setup=s.setup;
+  if(allowLateEntry&&setup?.triggered&&setup.breakoutAt){
+    if(time(at)-time(setup.breakoutAt)>20000)setup.lateEntry=true;
+    setup.breakoutDeadline=new Date(time(setup.closedAt)+10*setup.interval*60000).toISOString();
+  }
   if(breakoutGraceMs===20000&&setup?.triggered&&!setup.breakoutDeadline){decision(s,setup,at,"UNVERIFIABLE_BREAKOUT_HISTORY","Pending breakout has no saved grace deadline; wait for the next signal.");s.setup=null;setup=null;}
   if(setup&&!eligible(s,setup,at)){decision(s,setup,at,"SETUP_EXPIRED","No fill inside the ten-candle/session window.");s.setup=null;setup=null;}
   if(setup?.breakoutDeadline&&time(at)>time(setup.breakoutDeadline)){decision(s,setup,at,"BREAKOUT_GRACE_EXPIRED","No complete limit entry inside the 20-second breakout grace.");s.setup=null;setup=null;}
@@ -209,7 +213,8 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     if(fill){
       if(fill.price*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL","The full premium exceeds available virtual cash.");s.setup=null;return s;}
       s.position={sizing,contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
-      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${lots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}. Sizing: max(base ${sizing.baseLots}, recovery ${sizing.recoveryLots}); loss to recover ₹${sizing.lossToRecover.toFixed(2)}; estimated target net ₹${sizing.estimatedTargetNet.toFixed(2)}.${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
+      if(setup.lateEntry)s.position.lateEntry=true;
+      s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${lots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}. Sizing: max(base ${sizing.baseLots}, recovery ${sizing.recoveryLots}); loss to recover ₹${sizing.lossToRecover.toFixed(2)}; estimated target net ₹${sizing.estimatedTargetNet.toFixed(2)}.${setup.lateEntry?" (Entered late)":""}${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
     }else if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Full observed quantity was unavailable within the original ask + ₹4 limit during the 1.5-second attempt.");s.setup=null;}
     else decision(s,setup,at,"WAITING_FOR_ENTRY_DEPTH","Bounded limit order awaiting observed quantity; no fill assumed.");
   }
