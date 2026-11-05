@@ -1,6 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),ts=require('typescript');
 function load(name){const f=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),m=new Module(f,module);m.require=id=>id.startsWith('./')?load(id.slice(2)):require(id);m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);return m.exports;}
-const core=load('niftyLimitPaper'),hams=load('hamsLimitAdapter'),{emptyHamsState}=load('hamsFinalPaper');
+const core=load('niftyLimitPaper'),adapter=load('hamsLimitAdapter'),{emptyHamsState}=load('hamsFinalPaper');
+// Retain coverage for saved deployments using the original 20-second policy.
+const hams={receiveHamsLimit:(s,signal,at)=>adapter.receiveHamsLimit(s,signal,at,false),markHamsLimit:(s,tick)=>adapter.markHamsLimit(s,tick,false)};
 const at=n=>new Date(Date.parse('2026-10-30T04:00:00Z')+n*1000).toISOString();
 const q=(side,t,ask=100,size=20000)=>({id:side,side,expiry:'2026-11-03',strike:22500,lotSize:65,at:at(t),bid:ask-1,ask,bidSize:size,askSize:size});
 const sig=(action='BUY',received=17)=>({id:'grace-'+action,action,closedAt:at(0),receivedAt:at(received),high:22510,low:22490,interval:3});
