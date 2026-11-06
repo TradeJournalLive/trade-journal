@@ -33,6 +33,7 @@ export async function loadPaperBooks(secret: string) {
   const btcDecisionLedger = await ledger(secret, "__btc_delta_decision__");
   const data=await readHistory(db,hashWebhookSecret(secret),"paper-events",q=>q
       .neq("strategy_id", "__hams_final_worker__").neq("strategy_id", "__hams_final_control__").neq("strategy_id", "nifty_hams_final_3m_v1")
+      .neq("strategy_id", "__nifty_ribbon_worker__").neq("strategy_id", "__nifty_ribbon_control__").neq("strategy_id", "nifty_ribbon_test_3m_v1")
       .neq("strategy_id", "__nifty_emergency_security__")
       .neq("strategy_id", "__nifty_paper_worker__").neq("strategy_id", "__nifty_paper_trade__").neq("strategy_id", "__btc_delta_worker__").neq("strategy_id", "__btc_delta_trade__").neq("strategy_id", "__btc_delta_decision__").neq("strategy_id", "__nifty_paper_decision__").neq("strategy_id", "__gold_mt5_worker__").neq("strategy_id", "__gold_mt5_trade__").neq("strategy_id", "__gold_mt5_decision__"),"received_at");
     events.push(...(data ?? []).map(row => ({ receivedAt: row.received_at, signal: row.signal, raw: row.raw_payload || {} })));
