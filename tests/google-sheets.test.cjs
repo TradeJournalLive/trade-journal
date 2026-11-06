@@ -73,6 +73,7 @@ function reporting() {
     './signalStore': { listPersistedAlgoSignalEvents: async secret => { assert.equal(secret, 'secret-a'); return { ok: true, events: rows }; } },
     './paperHistory': { loadPaperBooks: async secret => { assert.equal(secret, 'secret-a'); return {}; } },
     './hamsTradeReports': { loadHamsTradeReports: async secret => { assert.equal(secret, 'secret-a'); return []; } },
+    './ribbonTradeReports': { loadRibbonTradeReports: async secret => { assert.equal(secret, 'secret-a'); return []; } },
     './googleSheetsStore': { readSheets: async u => structuredClone(connections.get(u) || null), writeSheets: async (u,v) => connections.set(u, structuredClone(v)), withSheetsLock: async (u, f) => f() }
   });
   const oldFetch = global.fetch;

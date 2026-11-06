@@ -18,20 +18,20 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
   }
   function readTrade(market: string, t: Trade) {
     if (market === "GOLD") return;
-    const options = market === "NIFTY" || market === "NIFTY_HAMS";
+    const options = ["NIFTY", "NIFTY_HAMS", "NIFTY_RIBBON"].includes(market);
     const id = options ? t?.signalId : t?.id;
     if (!id || !t.openedAt || typeof t.entry !== "number" || !Number.isFinite(t.entry)) return;
     entries.set(key(market, id), options ? `Entered ${t.initialLots ?? t.lots} lot(s) of ${t.contract?.id ?? "NIFTY options"} at average premium ${t.entry.toFixed(2)}.` : `Entered ${t.entryQuantityBtc ?? t.quantityBtc} BTC at average price ${t.entry.toFixed(2)}.`);
   }
-  const workers = await db.from("tradingview_signal_events").select("strategy_id,nifty_decisions:raw_payload->state->checkpoint->decisions,nifty_position:raw_payload->state->checkpoint->position,nifty_trades:raw_payload->state->checkpoint->trades,hams_decisions:raw_payload->decisions,hams_state_decisions:raw_payload->state->decisions,hams_position:raw_payload->state->position,hams_trades:raw_payload->state->trades,btc_decisions:raw_payload->saved->state->decisions,btc_position:raw_payload->saved->state->position,btc_trades:raw_payload->saved->state->trades").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__hams_final_worker__"]);
+  const workers = await db.from("tradingview_signal_events").select("strategy_id,nifty_decisions:raw_payload->state->checkpoint->decisions,nifty_position:raw_payload->state->checkpoint->position,nifty_trades:raw_payload->state->checkpoint->trades,hams_decisions:raw_payload->decisions,hams_state_decisions:raw_payload->state->decisions,hams_position:raw_payload->state->position,hams_trades:raw_payload->state->trades,btc_decisions:raw_payload->saved->state->decisions,btc_position:raw_payload->saved->state->position,btc_trades:raw_payload->saved->state->trades").eq("secret_hash", owner).eq("signal_id", "state").in("strategy_id", ["__nifty_paper_worker__", "__btc_delta_worker__", "__hams_final_worker__", "__nifty_ribbon_worker__"]);
   if (workers.error) throw Error("Execution history unavailable.");
   for (const value of workers.data || []) {
     const row=value as any;
-    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__hams_final_worker__" ? "NIFTY_HAMS" : "BTC";
-    const prefix=market==="NIFTY"?"nifty":market==="NIFTY_HAMS"?"hams":"btc";
+    const market = row.strategy_id === "__nifty_paper_worker__" ? "NIFTY" : row.strategy_id === "__nifty_ribbon_worker__" ? "NIFTY_RIBBON" : row.strategy_id === "__hams_final_worker__" ? "NIFTY_HAMS" : "BTC";
+    const prefix=market==="NIFTY"?"nifty":(market==="NIFTY_HAMS"||market==="NIFTY_RIBBON")?"hams":"btc";
     const projected=Object.prototype.hasOwnProperty.call(row,`${prefix}_position`);
-    const state = projected?{decisions:row[market==="NIFTY_HAMS"?"hams_state_decisions":`${prefix}_decisions`],position:row[`${prefix}_position`],trades:row[`${prefix}_trades`]}:market === "NIFTY" ? row.raw_payload?.state?.checkpoint : market === "NIFTY_HAMS" ? row.raw_payload?.state : row.raw_payload?.saved?.state;
-    if (market === "NIFTY_HAMS") for (const d of (projected?row.hams_decisions:row.raw_payload?.decisions) || []) {
+    const state = projected?{decisions:row[(market==="NIFTY_HAMS"||market==="NIFTY_RIBBON")?"hams_state_decisions":`${prefix}_decisions`],position:row[`${prefix}_position`],trades:row[`${prefix}_trades`]}:market === "NIFTY" ? row.raw_payload?.state?.checkpoint : (market === "NIFTY_HAMS" || market === "NIFTY_RIBBON") ? row.raw_payload?.state : row.raw_payload?.saved?.state;
+    if ((market === "NIFTY_HAMS" || market === "NIFTY_RIBBON")) for (const d of (projected?row.hams_decisions:row.raw_payload?.decisions) || []) {
       readDecision(market, { ...d, reason: d.reason || String(d.status).replaceAll("_", " "), decidedAt: d.decidedAt || d.receivedAt });
     }
     for (const d of state?.decisions || []) readDecision(market, d);
@@ -52,7 +52,7 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
   }
   return events.map(event => {
     if (event.signal.metadata?.trackingOnly === true && event.signal.symbol !== "VANTAGE:XAUUSD") return { ...event, execution: { status: "TRACKING_ONLY", reason: "Saved for separate signal tracking. Paper and live execution are disabled.", source: "Recorded" as const } };
-    const market = event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY_HAMS" : event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : event.signal.symbol === "VANTAGE:XAUUSD" ? "GOLD" : "OTHER";
+    const market = event.signal.strategyId === "nifty_ribbon_test_3m_v1" ? "NIFTY_RIBBON" : event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY_HAMS" : event.signal.symbol === "NSE:NIFTY" ? "NIFTY" : event.signal.symbol === "DELTAIN:BTCUSD.P" ? "BTC" : event.signal.symbol === "VANTAGE:XAUUSD" ? "GOLD" : "OTHER";
     const k = key(market, event.signal.id), d = decisions.get(k), entry = entries.get(k);
     let execution: SignalExecution;
     if (entry && (!d || !["ENTERED", "PARTIALLY_FILLED"].includes(d.status))) execution = { status: "ENTERED", reason: entry, source: "Recorded" };

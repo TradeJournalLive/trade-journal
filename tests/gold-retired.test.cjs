@@ -8,6 +8,7 @@ function route(relative) {
     : id.endsWith('/paperEngine') ? { markets: ['BTC', 'NIFTY', 'GOLD'] }
     : id.endsWith('/trackingSignals') ? { isolateTrackingSignal: value => value }
     : id.endsWith('/hamsSignal') ? { isolateHamsSignal: value => value }
+    : id.endsWith('/ribbonSignal') ? { isolateRibbonSignal: value => value }
     : {};
   copy._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, file);
   return copy.exports;

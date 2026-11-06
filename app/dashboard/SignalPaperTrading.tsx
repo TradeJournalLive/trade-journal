@@ -10,6 +10,8 @@ import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
 import HamsFinalPaper from "./HamsFinalPaper";
+import NiftyRibbonPaper from "./NiftyRibbonPaper";
+import RibbonEmergency from "./RibbonEmergency";
 import PaperAccountSummary from "./PaperAccountSummary";
 import { paperCapital } from "../lib/algo/paperCapital";
 import NiftyEmergency from "./NiftyEmergency";
@@ -22,6 +24,7 @@ const time = (value: string) => new Date(value).toLocaleString("en-IN", { timeZo
 export default function SignalPaperTrading() {
   const [market, setMarket] = useState<PaperMarket>("NIFTY");
   const [hams, setHams] = useState(false);
+  const [ribbon, setRibbon] = useState(false);
   const [tradeDate, setTradeDate] = useState(() => istDay(new Date().toISOString()));
   const [books, setBooks] = useState<Record<PaperMarket, LivePaperBook> | null>(null);
   const [error, setError] = useState("");
@@ -113,13 +116,18 @@ export default function SignalPaperTrading() {
   return <div className="space-y-4">
     <GoogleSheetsConnection />
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-      <div role="tablist" aria-label="Paper markets" className="flex flex-wrap gap-2">{activeMarkets.map(item => <button key={item} type="button" role="tab" aria-selected={!hams && market === item} onClick={() => { setMarket(item); setHams(false); }} className={`algo-action ${!hams && market === item ? "primary" : "secondary"}`}>{item === "NIFTY" ? "NIFTY Current" : "Bitcoin"}</button>)}<button type="button" role="tab" aria-selected={hams} onClick={() => setHams(true)} className={`algo-action ${hams ? "primary" : "secondary"}`}>NIFTY HAMS Final</button></div>
-      {!hams && market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
+      <div role="tablist" aria-label="Paper markets" className="flex flex-wrap gap-2">
+        {activeMarkets.map(item => <button key={item} type="button" role="tab" aria-selected={!ribbon && !hams && market === item} onClick={() => { setMarket(item); setHams(false); setRibbon(false); }} className={`algo-action ${!ribbon && !hams && market === item ? "primary" : "secondary"}`}>{item === "NIFTY" ? "NIFTY Current" : "Bitcoin"}</button>)}
+        <button type="button" role="tab" aria-selected={!ribbon && hams} onClick={() => {setHams(true);setRibbon(false);}} className={`algo-action ${!ribbon && hams ? "primary" : "secondary"}`}>NIFTY HAMS Final</button>
+        <button type="button" role="tab" aria-selected={ribbon} onClick={() => setRibbon(true)} className={`algo-action ${ribbon ? "primary" : "secondary"}`}>NIFTY Ribbon Test</button>
+      </div>
+      {!hams && !ribbon && market !== "BTC" && <HistoryDatePicker label="Trade entry date · IST" value={tradeDate} onChange={setTradeDate} allowAll />}
     </div>
     {error && <div role="alert" className="algo-alert-box"><b>Paper trading</b><span>{error}</span></div>}
-    {(hams||market==="NIFTY")&&<NiftyEmergency />}
-    {hams && <HamsFinalPaper />}
-    <div hidden={hams}>
+    {!ribbon&&(hams||market==="NIFTY")&&<NiftyEmergency />}
+    {ribbon && <><RibbonEmergency /><NiftyRibbonPaper /></>}
+    {!ribbon && hams && <HamsFinalPaper />}
+    <div hidden={hams||ribbon}>
     {market === "BTC" && <BtcDeltaPaper tradeDate={tradeDate} refreshing={refreshing} book={book?.delta as BtcDeltaBook | null | undefined} legacyEnabled={book?.enabled ?? false} onSaved={() => void refresh()} />}
     {market === "NIFTY" && <section className="algo-os-card paper-workspace">
       <div className="algo-card-head"><h3>NIFTY options breakout · 1 minute</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY options paper entries" checked={book?.options?.enabled ?? false} disabled={!books || busy || (!book?.options?.enabled && !book?.options?.workerOnline)} onChange={() => void toggleOptions()} />{book?.options?.enabled ? "Entries armed" : "Entries off"}</label></div>

@@ -8,6 +8,7 @@ import { waitUntil } from "@vercel/functions";
 import { syncWebhookSheet } from "../../../../lib/algo/googleSheets";
 import { isolateTrackingSignal } from "../../../../lib/algo/trackingSignals";
 import { isolateHamsSignal } from "../../../../lib/algo/hamsSignal";
+import { isolateRibbonSignal } from "../../../../lib/algo/ribbonSignal";
 import { captureDeliveryTiming } from "../../../../lib/algo/signalTiming";
 
 export const runtime = "nodejs";
@@ -177,7 +178,7 @@ export async function POST(request: Request) {
 
     let payload: TradingViewWebhookPayload;
     try {
-      payload = isolateHamsSignal(isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload));
+      payload = isolateRibbonSignal(isolateHamsSignal(isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload)));
     } catch {
       return jsonError("Invalid JSON payload.");
     }
@@ -216,7 +217,9 @@ export async function POST(request: Request) {
     }
 
     const signal = normalizeSignal(payload);
-    const decision: AlgoDecision = signal.strategyId === "nifty_hams_final_3m_v1"
+    const decision: AlgoDecision = signal.strategyId === "nifty_ribbon_test_3m_v1"
+      ? { accepted: true, executionMode: "PAPER", stage: "READY_FOR_PAPER", reasons: ["Saved for the isolated NIFTY Ribbon Test worker; receipt is not an entry fill."], checks: [{ label: "Dedicated paper route", ok: true, message: "Ribbon Test only; live execution disabled." }] }
+      : signal.strategyId === "nifty_hams_final_3m_v1"
       ? { accepted: true, executionMode: "PAPER", stage: "READY_FOR_PAPER", reasons: ["Saved for the isolated HAMS Final paper worker; receipt is not an entry fill."], checks: [{ label: "Dedicated paper route", ok: true, message: "HAMS Final only; live execution disabled." }] }
       : evaluateAlgoSignal(signal, payload.automation ?? {});
     signal.metadata.deliveryTiming=captureDeliveryTiming(payload.alertFiredAt,new Date(receivedAt).toISOString(),new Date().toISOString());
