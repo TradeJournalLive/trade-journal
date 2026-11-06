@@ -22,7 +22,7 @@ export default function NiftyRibbonPaper() {
         const r = await accountFetch("/api/algo/nifty-ribbon", { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]) });
         const body = await r.json(); if (!r.ok) throw new Error(body.error);
         if (active) { setSnapshot(body); setError(""); }
-      } catch (e) { if (active) setError(e instanceof Error ? e.message : "HAMS unavailable."); }
+      } catch (e) { if (active) setError(e instanceof Error ? e.message : "Ribbon Test unavailable."); }
       finally { pending = false; }
     };
     void refresh(); const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 5000);
@@ -39,13 +39,13 @@ export default function NiftyRibbonPaper() {
     catch (e) { setError(e instanceof Error ? e.message : "Switch failed."); } finally { setBusy(false); }
   }
   async function acknowledgeRecovery() {
-    if(!window.confirm("Keep the unverified trade evidence, exclude its unknown result from P&L, and continue HAMS from the last verified balance and lot size? No historical entry or exit price will be invented."))return;
+    if(!window.confirm("Keep the unverified trade evidence, exclude its unknown result from P&L, and continue Ribbon Test from the last verified balance and lot size? No historical entry or exit price will be invented."))return;
     setBusy(true);
     try{const r=await accountFetch("/api/algo/nifty-ribbon",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"acknowledgeRecovery",excludeUnverified:true})});const b=await r.json();if(!r.ok)throw Error(b.error);setError("");}
     catch(e){setError(e instanceof Error?e.message:"Recovery acknowledgement failed.");}finally{setBusy(false);}
   }
   return <section className="algo-os-card paper-workspace">
-    <div className="algo-card-head"><h3>NIFTY NIFTY Ribbon Test · 3 minutes</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY Ribbon Test paper entries" checked={state.enabled} disabled={busy || !snapshot || (!state.enabled && !snapshot.workerOnline)} onChange={() => void toggle()} />{state.enabled ? "Entries armed" : "Entries off"}</label></div>
+    <div className="algo-card-head"><h3>NIFTY Ribbon Test · 3 minutes</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" aria-label="NIFTY Ribbon Test paper entries" checked={state.enabled} disabled={busy || !snapshot || (!state.enabled && !snapshot.workerOnline)} onChange={() => void toggle()} />{state.enabled ? "Entries armed" : "Entries off"}</label></div>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {snapshot?.reviewRequired && <div role="alert" className="algo-alert-box"><b>Ribbon recovery review required</b><span>Entries are blocked while an earlier trade is unverified. The entry switch has not been turned off. Unknown results are excluded from verified P&amp;L.</span><button className="algo-action secondary" type="button" disabled={busy||!snapshot.workerOnline} onClick={()=>void acknowledgeRecovery()}>Exclude unverified result and continue</button></div>}
     <p role="status" className={snapshot?.workerOnline && fresh && !snapshot.reviewRequired ? "text-emerald-600" : "text-red-600"}>{snapshot?.workerOnline ? fresh ? "● Worker online · data receiving" : "● Worker online · market data stale/closed" : "● Worker offline"} · {snapshot?.workerStatus ?? "Loading"}</p>

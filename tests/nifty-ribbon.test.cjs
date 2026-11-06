@@ -33,4 +33,6 @@ test('Ribbon worker storage and control route cannot overwrite existing workers'
  assert.doesNotMatch(source,/__hams_final_worker__|__hams_final_control__|__paper_control__/);
  const emergency=fs.readFileSync(path.resolve(__dirname,'../app/api/algo/ribbon-emergency/route.ts'),'utf8');
  assert.match(emergency,/__nifty_ribbon_control__/);assert.doesNotMatch(emergency,/__hams_final_control__|__paper_control__/);
+ const history=fs.readFileSync(path.resolve(__dirname,'../app/lib/algo/paperHistory.ts'),'utf8');
+ for(const strategy of ['__nifty_ribbon_worker__','__nifty_ribbon_control__','nifty_ribbon_test_3m_v1'])assert.ok(history.includes(`.neq("strategy_id", "${strategy}")`));
 });
