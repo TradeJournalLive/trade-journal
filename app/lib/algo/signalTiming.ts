@@ -20,7 +20,7 @@ function delta(from:string|null,to:string|null){
 export function signalTiming(event:TimingEvent){
   const metadata=event.signal.metadata??{};
   let closedAt:string|null=null;
-  for(const key of ["hamsFinalPaper","niftyPaper","btcPaper"]){
+  for(const key of ["ribbonPaper","hamsFinalPaper","niftyPaper","btcPaper"]){
     const candle=metadata[key] as {kind?:unknown;closedAt?:unknown}|undefined;
     if(candle?.kind==="SIGNAL"&&(closedAt=iso(candle.closedAt)))break;
   }

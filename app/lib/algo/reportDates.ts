@@ -10,7 +10,7 @@ export function onTradeDate<T extends { openedAt: string }>(trades: T[], date: s
   return date ? trades.filter(trade => istDay(trade.openedAt) === date) : trades;
 }
 export function signalTime(event: { signal: { timestamp: string; metadata?: Record<string, unknown> } }) {
-  for (const key of ["btcPaper", "niftyPaper"]) {
+  for (const key of ["ribbonPaper", "btcPaper", "niftyPaper"]) {
     const candle = event.signal.metadata?.[key] as { closedAt?: string } | undefined;
     if (candle?.closedAt && istDay(candle.closedAt)) return candle.closedAt;
   }

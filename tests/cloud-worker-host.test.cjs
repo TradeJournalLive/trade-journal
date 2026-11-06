@@ -10,7 +10,7 @@ test('cloud host loads private flat snapshots once, starts no workers by default
   try{for(let i=0;i<40;i++){try{const data=await (await fetch('http://127.0.0.1:31988/health')).json();return {child,data};}catch{}await new Promise(r=>setTimeout(r,50));}throw Error('Host failed to start');}catch(e){child.kill();throw e;}
  }
  async function stop(child){child.kill('SIGTERM');await new Promise(r=>child.once('exit',r));}
- const a=await boot();assert.equal(a.data.migrationLoaded,true);assert.equal(a.data.realOrdersEnabled,false);for(const w of Object.values(a.data.workers)){assert.equal(w.selected,false);assert.equal(w.processRunning,false);assert.equal(w.checkpoint.available,true);}await stop(a.child);
+ const a=await boot();assert.equal(a.data.migrationLoaded,true);assert.equal(a.data.realOrdersEnabled,false);assert.equal(a.data.workers.RIBBON.checkpoint.available,false);for(const w of Object.values(a.data.workers)){assert.equal(w.selected,false);assert.equal(w.processRunning,false);if(w!==a.data.workers.RIBBON)assert.equal(w.checkpoint.available,true);}await stop(a.child);
  const file=path.join(directory,'.paper-worker/btc/checkpoint.json'),state=JSON.parse(fs.readFileSync(file));state.savedAt='2026-11-05T01:00:00Z';fs.writeFileSync(file,JSON.stringify(state));
  const b=await boot();assert.equal(b.data.workers.BTC.checkpoint.savedAt,state.savedAt);await stop(b.child);
  assert.equal(fs.statSync(path.join(directory,'.paper-worker/config.json')).mode&0o777,0o600);

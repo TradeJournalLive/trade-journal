@@ -7,6 +7,7 @@ import { istDay, istTime, signalTime } from "./reportDates";
 import { loadPaperBooks } from "./paperHistory";
 import { buildTradeReports, tradeColumns, tradeRows } from "./tradeReports";
 import { loadHamsTradeReports } from "./hamsTradeReports";
+import { loadRibbonTradeReports } from "./ribbonTradeReports";
 
 export const SHEETS_SCOPE = "https://www.googleapis.com/auth/drive.file";
 export const sheetsCallback = () => `${process.env.APP_ORIGIN || "https://trade-journal-flax-seven.vercel.app"}/api/integrations/google-sheets/callback`;
@@ -15,8 +16,8 @@ export function sheetsOAuth() {
   if (!sheetsConfigured()) throw new Error("Google Sheets server settings are not configured yet.");
   return new OAuth2Client({ clientId: process.env.GOOGLE_SHEETS_CLIENT_ID, clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET, redirectUri: sheetsCallback(), transporterOptions: { timeout: 10000, retry: false } });
 }
-const tabs = ["NIFTY", "BTC", "Other", "NIFTY HAMS"] as const;
-export function eventTab(event: StoredAlgoEvent) { return event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY HAMS" : signalTab(event.signal.symbol); }
+const tabs = ["NIFTY", "BTC", "Other", "NIFTY HAMS", "NIFTY Ribbon"] as const;
+export function eventTab(event: StoredAlgoEvent) { return event.signal.strategyId === "nifty_ribbon_test_3m_v1" ? "NIFTY Ribbon" : event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY HAMS" : signalTab(event.signal.symbol); }
 export function signalTab(symbol: string) { return /NIFTY/i.test(symbol) ? "NIFTY" : /BTC/i.test(symbol) ? "BTC" : /GOLD|XAU/i.test(symbol) ? "GOLD" : "Other"; }
 const columns = ["Received date", "Received time (IST)", "Signal date", "Signal time (IST)", "Instrument", "Action", "Signal price", "Timeframe", "Status", "Accepted", "Stage", "Reason", "Strategy", "Signal ID"];
 export function signalRows(events: StoredAlgoEvent[]) {
@@ -61,11 +62,11 @@ async function syncUnlocked(user: string, connection: SheetsConnection) {
   const history = await listPersistedAlgoSignalEvents(secret, 0);
   if (!history.ok) throw new Error("Signal history is unavailable. Previous sheet data was retained.");
   const events = [...history.events].reverse();
-  const trades = [...buildTradeReports(await loadPaperBooks(secret), events), ...await loadHamsTradeReports(secret)];
+  const trades = [...buildTradeReports(await loadPaperBooks(secret), events), ...await loadHamsTradeReports(secret), ...await loadRibbonTradeReports(secret)];
   // Rebuild deterministic ranges, rather than append: retries never duplicate signals.
   const reports = [
     ...tabs.map(tab => ({ tab, rows: [columns, ...signalRows(events.filter(e => eventTab(e) === tab))] })),
-    ...["NIFTY", "BTC", "NIFTY HAMS"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
+    ...["NIFTY", "BTC", "NIFTY HAMS", "NIFTY Ribbon"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
   ];
   const metadata = await google(connection, `/${connection.sheetId}?fields=sheets(properties(sheetId,title))`, "GET");
   const existing = new Map<string, number>((metadata.sheets || []).map((sheet: { properties: { title: string; sheetId: number } }) => [sheet.properties.title, sheet.properties.sheetId]));

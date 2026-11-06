@@ -29,7 +29,7 @@ if(migrationId&&!fs.existsSync(migrationFile)){
   fs.writeFileSync(migrationFile,JSON.stringify({id:migrationId,at:new Date().toISOString()}),{mode:0o600});
 }
 fs.writeFileSync(path.join(directory,'config.json'),JSON.stringify({webhookSecret:secret,fyersAppId:process.env.PAPER_FYERS_APP_ID}),{mode:0o600});
-const definitions={NIFTY:'nifty-paper-worker.cjs',HAMS:'hams-final-worker.cjs',BTC:'btc-delta-paper-worker.cjs'};
+const definitions={NIFTY:'nifty-paper-worker.cjs',HAMS:'hams-final-worker.cjs',BTC:'btc-delta-paper-worker.cjs',RIBBON:'nifty-ribbon-worker.cjs'};
 const active=new Set((process.env.CLOUD_WORKERS_ENABLED||'').split(',').filter(Boolean));
 for(const name of active)if(!definitions[name])throw Error('INVALID_WORKER_SELECTION');
 const children=new Map(),timers=new Set(),exits=new Map();let stopping=false;
@@ -48,7 +48,7 @@ function launch(name){
 for(const name of active)launch(name);
 const started=Date.now();
 function stateInfo(name){
-  const file=path.join(directory,name==='BTC'?'btc/checkpoint.json':name==='HAMS'?'hams-final/checkpoint.json':'checkpoint.json');
+  const file=path.join(directory,name==='BTC'?'btc/checkpoint.json':name==='HAMS'?'hams-final/checkpoint.json':name==='RIBBON'?'nifty-ribbon/checkpoint.json':'checkpoint.json');
   try{const x=JSON.parse(fs.readFileSync(file));const s=x.state||x.checkpoint?.rulesV2||{};return {available:true,savedAt:x.savedAt,status:s.status,entriesEnabled:s.enabled,positionOpen:!!s.position};}catch{return {available:false};}
 }
 const server=http.createServer((req,res)=>{
