@@ -27,5 +27,22 @@ test('expiry, stale quotes, unknown history and reversal remain guarded',()=>{
  let s=receive(1);s=core.markLimitPaper(s,{at:at(600),spot:22511,chain:[quote('CE',600)]},20000,true);assert.equal(s.position,null);assert.equal(s.status,'SETUP_EXPIRED');
  s=receive(3);s=core.markLimitPaper(s,{at:at(30.1),spot:22511,chain:[quote('CE',20)]},20000,true);assert.equal(s.position,null);
  const unknown=state(1);unknown.ticks=unknown.ticks.filter(t=>Date.parse(t.at)>=Date.parse(at(0)));assert.equal(receive(1,signal(1),unknown).status,'UNVERIFIABLE_BREAKOUT_HISTORY');
- s=receive(3);s=core.markLimitPaper(s,{at:at(30.1),spot:22500,chain:[quote('CE',30.1)]},20000,true);assert.equal(s.position,null);assert.equal(s.setup,null);
+ s=receive(3);s=core.markLimitPaper(s,{at:at(30.1),spot:22500,chain:[quote('CE',30.1)]},20000,true);assert.equal(s.position,null);assert.equal(s.setup.triggered,false);
+});
+for(const interval of [1,3])for(const action of ['BUY','SELL'])test(`${interval}m ${action} reversal waits for recross without extending signal expiry`,()=>{
+ let s=receive(interval,signal(interval,action));
+ const side=action==='BUY'?'CE':'PE',outside=action==='BUY'?22511:22489;
+ s=core.markLimitPaper(s,{at:at(30.1),spot:outside,chain:[{...quote(side,30.1),askSize:1}]},20000,true);
+ assert.ok(s.setup.attempt);
+ s=core.markLimitPaper(s,{at:at(30.2),spot:22500,chain:[quote(side,30.2)]},20000,true);
+ assert.equal(s.position,null);assert.equal(s.setup.triggered,false);assert.equal(s.setup.attempt,undefined);
+ assert.equal(s.setup.closedAt,at(0));assert.equal(s.status,'WAITING_FOR_INDEX_RECROSS');
+ s=JSON.parse(JSON.stringify(s));
+ s=core.markLimitPaper(s,{at:at(30.3),spot:outside,chain:[quote(side,30.3,140)]},20000,true);
+ assert.equal(s.position.entry,140);assert.equal(s.position.entryLimit,144);
+});
+test('reversal during alert delivery retains the setup for a later cross',()=>{
+ const before=state(3);before.ticks[before.ticks.length-1].price=22500;
+ let s=receive(3,signal(3),before);assert.equal(s.setup.triggered,false);
+ s=core.markLimitPaper(s,{at:at(30.1),spot:22511,chain:[quote('CE',30.1)]},20000,true);assert.ok(s.position);
 });

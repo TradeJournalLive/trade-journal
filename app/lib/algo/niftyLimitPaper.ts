@@ -136,7 +136,8 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
     const deadline=allowLateEntry?time(signal.closedAt)+10*signal.interval*60000:breakoutMs+breakoutGraceMs;
     if(time(at)>deadline){decision(s,signal,at,"MISSED_BREAKOUT","The first observed breakout is older than the 20-second entry grace; wait for the next signal.");return s;}
     const reversed=!broken(history[firstBreak].price)||history.slice(firstBreak+1).some(t=>signal.action==="BUY"?(t.low??t.price)<=signal.high:(t.high??t.price)>=signal.low);
-    if(!broken(last.price)||reversed){decision(s,signal,at,"BREAKOUT_REVERSED","The observed index returned inside the signal level after the first breakout; no re-cross entry.");return s;}
+    if((!broken(last.price)||reversed)&&!allowLateEntry){decision(s,signal,at,"BREAKOUT_REVERSED","The observed index returned inside the signal level after the first breakout; no re-cross entry.");return s;}
+    if(!broken(last.price)&&allowLateEntry){s.setup={...signal,triggered:false};decision(s,signal,at,"WAITING_FOR_INDEX_RECROSS","Index returned inside the signal level; waiting for a fresh cross within the original ten-candle/session window.");return s;}
     s.setup={...signal,triggered:true,...(allowLateEntry?{lateEntry:true}:{}),breakoutAt:new Date(breakoutMs).toISOString(),breakoutDeadline:new Date(deadline).toISOString(),breakoutTimePrecision:"SECOND_BUCKET"};
     decision(s,signal,at,allowLateEntry?"LATE_ENTRY_PENDING":"BREAKOUT_GRACE_ACTIVE",allowLateEntry?"Verified earlier breakout; use the current option ask + ₹4 limit (late entry), inside the ten-candle/session window.":`Breakout verified within 20 seconds; current-premium limit entry must fill by ${s.setup.breakoutDeadline}.`);return s;
   }
@@ -170,7 +171,10 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     }
   }
   if(breakoutGraceMs===20000&&setup?.triggered&&(setup.action==="BUY"?tick.spot<=setup.high:tick.spot>=setup.low)){
-    decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before the grace entry.");s.setup=null;setup=null;
+    if(allowLateEntry){
+      setup.triggered=false;delete setup.attempt;delete setup.breakoutAt;delete setup.breakoutDeadline;delete setup.breakoutTimePrecision;
+      decision(s,setup,at,"WAITING_FOR_INDEX_RECROSS","Index returned inside the signal level; waiting for a fresh cross within the original ten-candle/session window.");
+    }else{decision(s,setup,at,"BREAKOUT_REVERSED","Index returned inside the signal level before the grace entry.");s.setup=null;setup=null;}
   }
   const p=s.position;
   if(p){
