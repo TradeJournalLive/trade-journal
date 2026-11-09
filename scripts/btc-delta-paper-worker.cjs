@@ -21,6 +21,8 @@ let connectedAt = 0, watchdog;
 const stopTasks = [], taskErrors = {}, health = { lastSignalPollAt: null, lastLedgerSyncAt: null, lastSnapshotAt: null, lastError: null, lastErrorAt: null, lastFeedAt: null, reconnects: 0, taskLatencyMs: {}, eventLoopMaxMs: 0, signalNotifications: 'CONNECTING', signalWakeups: 0, lastSignalDetectionMs: null };
 const seenRows = new Set(), persisted = new Set(), persistedDecisions = new Map();
 const heartbeatAttempts = new Set();
+const { shouldPublishSnapshot } = require('./btc-snapshot-policy.cjs');
+let lastSnapshotKey;
 function audit(kind, data) { fs.appendFileSync(path.join(directory, `${now().slice(0, 10)}.jsonl`), JSON.stringify({ at: now(), kind, data }) + '\n', { mode: 0o600 }); }
 const tickAudit = createTickAudit(audit);
 function ownsLease() { return lease && Date.now() - Date.parse(lease) < 12000; }
@@ -122,7 +124,18 @@ async function heartbeat() {
 }
 async function publishSnapshot() {
   if (!ownsLease()) return false;
-  const at = now(), snapshot = structuredClone(saved), view = btcView(snapshot.state, at);
+  const at = now();
+  const state = saved.state;
+  const key = JSON.stringify([state.enabled, state.status, state.lastSignalAt, state.nextQuantityBtc, state.realizedBase, state.tradeCountBase, workerStatus, taskErrors, health.reconnects, health.signalNotifications]);
+  if (!shouldPublishSnapshot({
+    ageMs: Date.parse(at) - Date.parse(health.lastSnapshotAt),
+    changed: key !== lastSnapshotKey,
+    active: Boolean(state.position || state.setup || state.pendingExit),
+    unsynced: state.trades.some(t => !persisted.has(`${t.id}:${t.openedAt}`))
+      || (state.decisions || []).some(d => persistedDecisions.get(d.id) !== JSON.stringify(d)),
+    retrying: Boolean(taskErrors.snapshot),
+  })) return false;
+  const snapshot = structuredClone(saved), view = btcView(snapshot.state, at);
   // Keep unflushed trades in snapshots so ledger delays cannot erase a recorded fill.
   const pending = snapshot.state.trades.filter(t => !persisted.has(`${t.id}:${t.openedAt}`));
   const partial = snapshot.state.position && !snapshot.state.position.monitoringGap ? snapshot.state.position.realizedPnl || 0 : 0;
@@ -134,6 +147,7 @@ async function publishSnapshot() {
   if (r.error) throw Error('BTC_SNAPSHOT_STORAGE_UNAVAILABLE');
   if (r.data?.length !== 1) throw Error('BTC_LEASE_OR_STORAGE_LOST');
   health.lastSnapshotAt = at;
+  lastSnapshotKey = key;
   health.eventLoopMaxMs = Math.round(eventLoop.max / 1e6); eventLoop.reset();
 }
 async function poll() {
