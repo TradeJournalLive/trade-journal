@@ -33,7 +33,7 @@ export default function GoogleSheetsConnection() {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible" || running.current) return;
       void load().then(s => { if (s.enabled && s.url) void action("sync", true); }).catch(e => { if (mounted.current) setError(e.message); });
-    }, 60000);
+    }, 5 * 60000);
     return () => { mounted.current = false; window.clearInterval(timer); };
   }, [load, action]);
   return <section className="border-t border-slate-200 py-4">

@@ -60,7 +60,7 @@ export default function SignalPaperTrading() {
     const controller = new AbortController();
     void refresh(controller.signal);
     const visible = () => { if (document.visibilityState === "visible") void refresh(controller.signal); };
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible" && !activeRequest.current) visible(); }, 5000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible" && !activeRequest.current) visible(); }, 15000);
     window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
     return () => { controller.abort(); activeRequest.current?.abort(); window.clearInterval(timer); window.removeEventListener("focus", visible); document.removeEventListener("visibilitychange", visible); };
