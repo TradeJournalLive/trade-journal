@@ -9,6 +9,7 @@ import { istDay, istTime, onTradeDate } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
+import { maxPaperCapital } from "../lib/algo/maxPaperCapital";
 import HamsFinalPaper from "./HamsFinalPaper";
 import NiftyRibbonPaper from "./NiftyRibbonPaper";
 import RibbonEmergency from "./RibbonEmergency";
@@ -136,7 +137,7 @@ export default function SignalPaperTrading() {
       <div role="status" className="algo-alert-box"><b>{book?.options?.workerOnline ? book.options.stale ? "Worker online · waiting for fresh market data" : "Worker online · fresh data" : "Options worker offline"}</b><span>{book?.options?.trial?.workerStatus ?? "Continuous FYERS worker has not connected."}</span></div>
       <PaperAccountSummary capital={book?.options?.capital??paperCapital(null)} />
       <dl className="paper-operations"><div><dt>Next order</dt><dd>{book?.options?.size.lots ?? "--"} lot(s) · no lot cap</dd></div><div><dt>Execution</dt><dd>Limit · emergency market exit</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{book?.options?.status?.replaceAll("_"," ") ?? "Loading"}</dd></div></dl>
-      <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} /></details>
+      <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`${pnl(book?.options?.realized)} INR · new net / legacy gross`} openPnl={`${pnl(book?.options?.unrealized)} INR before exit costs`} closedTrades={book?.options?.tradeCount} maxCapital={(() => { const o = book?.options?.position; const value = maxPaperCapital(book?.options?.trades ?? [], o, t => t.entry * t.quantity, o ? o.entry * o.quantity : undefined); return value === null ? "--" : (value => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`)(value); })()} /></details>
       <details className="border-y border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list">
         <div><dt>Entry</dt><dd>Index crosses signal high → CE; signal low → PE</dd></div>
         <div><dt>Contract</dt><dd>ATM · nearest weekly expiry · ₹10,00,000 initial capital</dd></div>

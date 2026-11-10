@@ -1,3 +1,3 @@
-export default function PaperLifetimeSummary({ realized, openPnl, closedTrades }: { realized: string; openPnl: string; closedTrades: number | undefined }) {
-  return <div className="grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-3">{[["Lifetime realized", realized], ["Open P&L", openPnl], ["Lifetime closed trades", closedTrades ?? "--"]].map(([label, value]) => <div key={label} className="space-y-2"><span className="block text-xs text-slate-500">{label}</span><strong className="block text-xl">{value}</strong></div>)}</div>;
+export default function PaperLifetimeSummary({ realized, openPnl, closedTrades, maxCapital }: { realized: string; openPnl: string; closedTrades: number | undefined; maxCapital: string }) {
+  return <div className="grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-2 lg:grid-cols-4">{[["Lifetime realized", realized], ["Open P&L", openPnl], ["Lifetime closed trades", closedTrades ?? "--"], ["Max capital required", maxCapital]].map(([label, value]) => <div key={label} className="space-y-2"><span className="block text-xs text-slate-500">{label}</span><strong className="block text-xl">{value}</strong></div>)}</div>;
 }

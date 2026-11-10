@@ -2,6 +2,7 @@
 import { accountFetch } from "../lib/accountFetch";
 import { useEffect, useState } from "react";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
+import { maxPaperCapital } from "../lib/algo/maxPaperCapital";
 import type { btcView } from "../lib/algo/btcPaperEngine";
 import { istDay, istTime } from "../lib/algo/reportDates";
 import { btcProgressionPerformance, btcDateRange } from "../lib/algo/btcPerformance";
@@ -63,7 +64,7 @@ export default function BtcDeltaPaper({ book, legacyEnabled, onSaved, refreshing
       <button type="button" className="algo-action secondary" onClick={() => { setDateFrom(""); setDateTo(""); }}>All dates</button>
     </div>
     {rangeInvalid && <p role="alert">The start date must be on or before the end date.</p>}
-    <PaperLifetimeSummary realized={`${n(performance?.realized)} USD gross`} openPnl={`${n(performance?.unrealized)} USD gross`} closedTrades={performance?.tradeCount} />
+    <PaperLifetimeSummary realized={`${n(performance?.realized)} USD gross`} openPnl={`${n(performance?.unrealized)} USD gross`} closedTrades={performance?.tradeCount} maxCapital={(() => { const o = p; const value = maxPaperCapital((book?.trades ?? []).filter(t => !t.monitoringGap), o, t => t.initialMargin, o?.initialMargin); return value === null ? "--" : (value => `${value.toFixed(2)} USD margin`)(value); })()} />
     <details className="border-b border-slate-200 py-3"><summary className="cursor-pointer text-sm font-semibold">Strategy rules</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>Confirmed 1m high/low cross · valid 10 candles · no range filter</dd></div><div><dt>Entry fills</dt><dd>Observed Delta depth · maximum $5 adverse price difference · unfilled remainder canceled</dd></div><div><dt>Stop / target</dt><dd>Signal candle stop · at +3R move stop to average entry · target 5R</dd></div><div><dt>Position sizing</dt><dd>Start 0.1 BTC · +0.1 after a verified SL · cap 0.8 BTC · target resets to 0.1 · opposite/break-even unchanged</dd></div><div><dt>Other exits</dt><dd>Opposite signal · estimated isolated-margin breach</dd></div></dl></details>
     <p className="text-xs text-slate-500">Gross USD before fees and funding. Liquidation is an isolated-margin estimate, not an actual broker liquidation price.</p>
     {p && <div className="algo-rule-list"><div><span>Position</span><b>{p.side}{p.lateEntry ? " (Entered late)" : ""} · {p.quantityBtc} BTC</b></div><div><span>Signal close / received</span><b>{t(p.signalClosedAt)} / {t(p.signalReceivedAt)}</b></div><div><span>Signal close price / breakout</span><b>{n(p.signalPrice)} / {n(p.trigger)}</b></div><div><span>Actual simulated entry / time</span><b>{n(p.entry)} / {t(p.openedAt)}</b></div><div><span>Entry difference vs breakout</span><b>{n(p.entryDifference)} USD</b></div><div><span>Stop / target</span><b>{n(p.stop)} / {n(p.target)}</b></div><div><span>Capital used · USD margin / estimated liquidation</span><b>{n(p.initialMargin)} / {n(p.estimatedLiquidation)}</b></div></div>}

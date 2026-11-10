@@ -5,6 +5,7 @@ import { emptyHamsState, type HamsState } from "../lib/algo/hamsFinalPaper";
 import { istDay, istTime } from "../lib/algo/reportDates";
 import HistoryDatePicker from "./HistoryDatePicker";
 import PaperLifetimeSummary from "./PaperLifetimeSummary";
+import { maxPaperCapital } from "../lib/algo/maxPaperCapital";
 import PaperAccountSummary from "./PaperAccountSummary";
 import { paperCapital } from "../lib/algo/paperCapital";
 import type { HamsIncident } from "../lib/algo/hamsHistory";
@@ -52,7 +53,7 @@ export default function HamsFinalPaper() {
     <PaperAccountSummary capital={capital} />
     <dl className="paper-operations"><div><dt>Next order</dt><dd>{state.nextLots} lot(s) · no lot cap</dd></div><div><dt>Execution</dt><dd>Limit · emergency market exit</dd></div><div><dt>Session · IST</dt><dd>09:17–14:50</dd></div><div><dt>Status</dt><dd>{state.status.replaceAll("_"," ")}</dd></div></dl>
     <dl className="paper-account-breakdown"><div><dt>Late entry</dt><dd>Current premium ask + ₹4 limit · ten-candle/session expiry</dd></div></dl>
-    <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`₹${amount(state.trades.reduce((sum,t)=>sum+t.pnl,0))} · new net / legacy gross`} openPnl={capital.openPnl===null?"Unavailable":`₹${amount(capital.openPnl)}`} closedTrades={state.trades.length} /></details>
+    <details className="paper-history-totals"><summary>Lifetime results · all rule versions</summary><PaperLifetimeSummary realized={`₹${amount(state.trades.reduce((sum,t)=>sum+t.pnl,0))} · new net / legacy gross`} openPnl={capital.openPnl===null?"Unavailable":`₹${amount(capital.openPnl)}`} closedTrades={state.trades.length} maxCapital={(() => { const o = p; const value = maxPaperCapital(state.trades, o, t => t.entry * t.quantity, o ? o.entry * o.quantity : undefined); return value === null ? "--" : (value => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`)(value); })()} /></details>
     <details className="border-y py-3"><summary>Strategy rules · limit orders</summary><dl className="algo-rule-list"><div><dt>Entry</dt><dd>3-minute signal high → CE / low → PE · next 10 candles</dd></div><div><dt>Contract</dt><dd>ATM · nearest weekly expiry · no 35-point filter</dd></div><div><dt>Stop</dt><dd>Entry − min(20 points, 25% of entry)</dd></div><div><dt>Target</dt><dd>Entry + min(100 points, 100% of entry)</dd></div><div><dt>Sizing</dt><dd>Start 1; +1 after loss; no lot cap or daily reset; profitable trade and positive cumulative net resets to 1</dd></div><div><dt>Session</dt><dd>09:17–14:50 IST · no trailing stop</dd></div><div><dt>Reversal</dt><dd>Opposite breakout · confirm exit fill before opposite entry</dd></div><div><dt>Limits</dt><dd>Initial ask + ₹4 / initial bid − ₹4 · market exits only through the verified emergency control</dd></div></dl></details>
     {p && <dl className="algo-rule-list"><div><dt>Open contract</dt><dd>{p.contract.id}{("lateEntry" in p && p.lateEntry) ? " (Entered late)" : ""} · {p.lots} lots</dd></div><div><dt>Entry / stop / target</dt><dd>{amount(p.entry)} / {amount(p.stop)} / {amount(p.target)}</dd></div><div><dt>Capital used</dt><dd>₹{amount(p.entry * p.quantity)}</dd></div></dl>}
     <HistoryDatePicker label="Entry date · IST" value={date} onChange={setDate} allowAll />
