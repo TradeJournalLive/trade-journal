@@ -39,12 +39,25 @@ function createRibbonStage(file, startAt) {
       return store.receive({ id, strategyId, symbol, interval, action, high, low, closedAt, receivedAt });
     },
     process(at) {
+      if (store.read().state.feedGap) return null;
       return store.advance(store.read().revision, (state, signal) =>
         records(state, receiveLimitSignal(state, signal, at, 20000, true)), { signal: true });
     },
     tick(tick) {
+      if (store.read().state.feedGap) return null;
       return store.advance(store.read().revision, state =>
         records(state, markLimitPaper(state, tick, 20000, true)));
+    },
+    flagFeedGap(at, cause) {
+      const current = store.read();
+      if (!current.state.position || current.state.feedGap) return null;
+      return store.advance(current.revision, state => {
+        const feedGap = { at, cause, signalId: state.position.signalId };
+        return {
+          state: { ...state, feedGap, status: 'FEED_GAP_REVIEW_REQUIRED' },
+          records: [{ id: `feed-gap:${state.position.signalId}:${state.position.openedAt}`, kind: 'INCIDENT', value: feedGap }],
+        };
+      });
     },
     read: () => store.read(),
     flush: transport => store.flush(transport),
@@ -63,9 +76,16 @@ if (require.main === module) {
   if (liveFeed) {
     const { RIBBON_STAGE_FYERS_APP_ID: appId, RIBBON_STAGE_FYERS_TOKEN: accessToken } = process.env;
     if (!appId || !accessToken) throw Error('Missing staging FYERS configuration');
-    if (stage.read().state.position) throw Error('Staging feed-gap review required before resuming open position');
+    stage.flagFeedGap(new Date().toISOString(), 'WORKER_RESTART');
     const { startFyersStageFeed } = require('./ribbon-staging-feed.cjs');
-    stopFeed = startFyersStageFeed({ appId, accessToken, directory: dirname(RIBBON_STAGE_DB), onTick(tick) {
+    stopFeed = startFyersStageFeed({ appId, accessToken, directory: dirname(RIBBON_STAGE_DB), onGap(cause) {
+      stage.flagFeedGap(new Date().toISOString(), cause);
+    }, onTick(tick) {
+      const { state } = stage.read();
+      const lastTick = state.ticks.at(-1)?.at;
+      if (lastTick && Date.parse(tick.at) - Date.parse(lastTick) > 5000) {
+        stage.flagFeedGap(tick.at, 'STALE_INDEX_FEED');
+      }
       stage.tick(tick);
       for (let i = 0; i < 10 && stage.process(tick.at); i++);
     } }).catch(() => { console.error('Ribbon staging FYERS feed could not start'); return null; });

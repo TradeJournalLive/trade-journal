@@ -37,7 +37,7 @@ function makeQuoteReader(contracts, onTick, clock = Date.now) {
   };
 }
 
-async function startFyersStageFeed({ appId, accessToken, directory, onTick }) {
+async function startFyersStageFeed({ appId, accessToken, directory, onTick, onGap = () => {} }) {
   const auth = `${appId}:${accessToken}`;
   const day = ms => new Date(ms + 330 * 60000).toISOString().slice(0, 10);
   const [master, chain] = await Promise.all([
@@ -63,8 +63,8 @@ async function startFyersStageFeed({ appId, accessToken, directory, onTick }) {
   socket.on('message', message => {
     try { reader.receive(message); } catch { reader.clear(); console.warn('Ribbon staging tick rejected'); }
   });
-  socket.on('error', () => reader.clear());
-  socket.on('close', () => reader.clear());
+  socket.on('error', () => { reader.clear(); onGap('FYERS_SOCKET_ERROR'); });
+  socket.on('close', () => { reader.clear(); onGap('FYERS_DISCONNECTED'); });
   socket.connect();
   socket.autoreconnect?.(50);
   return () => socket.close?.();

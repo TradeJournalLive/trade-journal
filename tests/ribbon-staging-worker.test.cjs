@@ -5,7 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { createRibbonStage } = require('../scripts/ribbon-staging-worker.cjs');
 
-test('Ribbon rules preserve a real simulated limit entry and stop during a reporting outage', async t => {
+for (const gap of [false, true]) test(gap
+  ? 'an open position with an unverified feed gap survives restart without an invented exit'
+  : 'Ribbon rules preserve a simulated limit entry and stop during a reporting outage', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ribbon-stage-'));
   const db = path.join(dir, 'ribbon.sqlite');
   const at = n => new Date(Date.parse('2026-11-11T04:00:00Z') + n * 1000).toISOString();
@@ -28,6 +30,20 @@ test('Ribbon rules preserve a real simulated limit entry and stop during a repor
   assert.deepEqual(stage.read().state.position, opened);
   assert.equal(stage.receive(signal), false);
   assert.equal(stage.process(at(3)), null);
+  if (gap) {
+    stage.flagFeedGap(at(3), 'WORKER_RESTART');
+    stage.close();
+    stage = createRibbonStage(db, at(4));
+    assert.equal(tick(4, 22511, 79, 80), null);
+    assert.deepEqual(stage.read().state.position, opened);
+    assert.equal(stage.read().state.status, 'FEED_GAP_REVIEW_REQUIRED');
+    assert.equal(stage.read().state.trades.length, 0);
+    const records = [];
+    await stage.flush(async batch => records.push(...batch));
+    assert.equal(records.filter(record => record.kind === 'INCIDENT').length, 1);
+    assert.equal(records.filter(record => record.kind === 'EXIT').length, 0);
+    return;
+  }
   const closed = tick(4, 22511, 79, 80).state;
   assert.equal(closed.position, null);
   assert.equal(closed.trades.length, 1);
