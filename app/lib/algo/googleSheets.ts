@@ -118,10 +118,15 @@ export async function createSignalSheet(user: string) {
     catch (error) { connection.error = error instanceof Error ? error.message : "Initial sync failed."; await writeSheets(user, connection); throw error; }
   });
 }
-export async function syncSignalSheet(user: string) {
+export async function syncSignalSheet(user: string, dailyDate?: string) {
   return withSheetsLock(user, async () => {
     const connection = await readSheets(user);
     if (!connection?.enabled || !connection.sheetId) return;
+    if (dailyDate) {
+      if (connection.lastDailyAttempt === dailyDate) return;
+      connection.lastDailyAttempt = dailyDate;
+      await writeSheets(user, connection);
+    }
     try { await syncUnlocked(user, connection); }
     catch (error) { connection.error = error instanceof Error ? error.message : "Sheet sync failed."; await writeSheets(user, connection); throw error; }
   });

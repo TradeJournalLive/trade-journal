@@ -232,7 +232,7 @@ export async function POST(request: Request) {
     });
     if (!persistence.ok) return jsonError("Signal was not durably saved. Retry delivery.", 503);
     seenSignals.set(dedupeKey, receivedAt);
-    try { waitUntil(syncWebhookSheet(String(payload.secret ?? ""))); }
+    try { if (process.env.SHEETS_DAILY_SYNC_ENABLED !== "true") waitUntil(syncWebhookSheet(String(payload.secret ?? ""))); }
     catch { /* An unavailable reporting scheduler must not reject a saved signal. */ }
 
     return NextResponse.json(

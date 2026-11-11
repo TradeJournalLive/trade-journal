@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accountFetch } from "../lib/accountFetch";
 
-type Status = { configured: boolean; connected: boolean; enabled: boolean; url: string | null; lastSyncedAt?: string; signalCount: number; tradeCount?: number; error?: string };
+type Status = { configured: boolean; dailySync?: boolean; connected: boolean; enabled: boolean; url: string | null; lastSyncedAt?: string; signalCount: number; tradeCount?: number; error?: string };
 const endpoint = "/api/integrations/google-sheets";
 export default function GoogleSheetsConnection() {
   const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const running = useRef(false), mounted = useRef(true);
+  const dailySync = useRef(false);
   const load = useCallback(async () => {
     const response = await accountFetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(15000) });
     const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to load Sheets connection.");
+    dailySync.current = data.dailySync === true;
     if (mounted.current) setStatus(data as Status);
     return data as Status;
   }, []);
@@ -31,8 +33,8 @@ export default function GoogleSheetsConnection() {
     if (result && result !== "connected") setError(`Google connection: ${result.replaceAll("_", " ")}. Please try connecting again.`);
     void load().catch(e => { if (mounted.current) setError(e.message); });
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible" || running.current) return;
-      void load().then(s => { if (s.enabled && s.url) void action("sync", true); }).catch(e => { if (mounted.current) setError(e.message); });
+      if (document.visibilityState !== "visible" || running.current || dailySync.current) return;
+      void load().then(s => { if (!s.dailySync && s.enabled && s.url) void action("auto-sync", true); }).catch(e => { if (mounted.current) setError(e.message); });
     }, 5 * 60000);
     return () => { mounted.current = false; window.clearInterval(timer); };
   }, [load, action]);
