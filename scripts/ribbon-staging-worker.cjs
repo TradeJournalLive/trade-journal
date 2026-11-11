@@ -1,5 +1,5 @@
 // Staging only: synthetic or read-only market data; no order API.
-const { readFileSync } = require('node:fs');
+const { mkdirSync, readFileSync } = require('node:fs');
 const { dirname, resolve } = require('node:path');
 const Module = require('node:module');
 const { createServer } = require('node:http');
@@ -56,6 +56,7 @@ if (require.main === module) {
   const { RIBBON_STAGE_DB, RIBBON_STAGE_TOKEN, PORT = '3000' } = process.env;
   if (!RIBBON_STAGE_DB || !RIBBON_STAGE_TOKEN || RIBBON_STAGE_TOKEN.length < 32) throw Error('Missing staging configuration');
   process.umask(0o077);
+  mkdirSync(dirname(RIBBON_STAGE_DB), { recursive: true, mode: 0o700 });
   const stage = createRibbonStage(RIBBON_STAGE_DB, new Date().toISOString());
   const liveFeed = Boolean(process.env.RIBBON_STAGE_FYERS_APP_ID || process.env.RIBBON_STAGE_FYERS_TOKEN);
   let stopFeed;
