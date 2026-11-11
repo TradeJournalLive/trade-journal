@@ -33,11 +33,11 @@ let state = emptyHamsState(), decisions = [], pending = null, connection, socket
 let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = false, busy = false, publishing = false, pollAfter;
 let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
-let refreshing=false;
+let refreshing=false,publishRetryAt=0,publishFailures=0;
 const diagnostics=createWorkerDiagnostics({
   emit:value=>fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600}),
   secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,connection?.accessToken,connection?.appId],
-  context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),refreshing})
+  context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),publishFailures,refreshing})
 });
 async function observedFetch(operation,url,init){return diagnostics.run(operation,async()=>{
   const response=await fetch(url,init);
@@ -46,6 +46,7 @@ async function observedFetch(operation,url,init){return diagnostics.run(operatio
 });}
 const storageError=(message,cause)=>new Error(message,{cause:cause||new Error('Missing expected storage acknowledgement')});
 function stopWorker(operation,error,nextStatus){diagnostics.stop(operation,error);status=nextStatus;stopped=true;}
+function retryPublish(error){publishFailures++;publishRetryAt=Date.now()+Math.min(5000,500*2**Math.min(publishFailures-1,4));status='STORAGE_RETRY';diagnostics.failure('snapshot.retry',error);}
 const quotes = new Map(), depths = new Map(), processed = new Set();
 function audit(type, value) { fs.appendFileSync(path.join(directory, `${day(now())}.jsonl`), JSON.stringify({ at: now(), type, value })+'\n', { mode: 0o600 }); }
 function save() {
@@ -53,9 +54,15 @@ function save() {
   const committed = diagnostics.sync('journal.save',()=>journal.save({ owner, state, decisions, incidents, lastControl, pending, pollAfter }));
   revision = committed.revision;
 }
-function owned() { return !stopped && claimed && initialized; }
+function owned() { return !stopped && Date.now()-ack < 10000; }
 function reviewRequired() { return incidents.some(i => !i.acknowledgedAt); }
 function executionAllowed() { return owned() && !reviewRequired(); }
+function guardOwnershipPause(){
+  if(stopped||!claimed||!initialized||!state.position||owned()||reviewRequired())return;
+  const at=now(),id=`ownership-gap:${hash(state.position.signalId+state.position.openedAt)}`;
+  if(!incidents.some(i=>i.id===id&&!i.acknowledgedAt))incidents.push({id,signalId:state.position.signalId,at,status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Verified ownership expired while a position was open. No exit is assumed during the execution pause; review is required.'});
+  state.status='RECOVERY_REVIEW_REQUIRED';diagnostics.write('OWNERSHIP_EXECUTION_PAUSED');save();
+}
 function decide(signal, result) {
   if (result !== 'LOADING_COMPLETED_3M_OPTION_CANDLE') {
     const key = `${signal.strategyId}:${signal.id}`;
@@ -106,12 +113,15 @@ async function publish() {
   try {
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
-    let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id').abortSignal(AbortSignal.timeout(3000));}
+    let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
     catch(error){r={error};}
-    const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle().abortSignal(AbortSignal.timeout(3000)),workerId,at);
+    const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
     lease=confirmed.lease;ack=Date.parse(confirmed.lease);
-    if(!confirmed.committed)throw storageError('HAMS_WRITE_UNCONFIRMED',r.error);
-    save();
+    if(!confirmed.committed){retryPublish(storageError('HAMS_WRITE_UNCONFIRMED',r.error));save();return;}
+    publishFailures=0;publishRetryAt=0;if(status==='STORAGE_RETRY'&&socket?.isConnected())status='READY';save();
+  } catch(error){
+    if(error.code==='HAMS_STORAGE_RETRY'){retryPublish(error);return;}
+    throw error;
   } finally { publishing = false; }
 }
 async function refreshConnection(){
@@ -171,6 +181,7 @@ function onMessage(message) {
         else if (Number(r.bid_price)>0 && Number(r.ask_price)>=Number(r.bid_price)) quotes.set(r.symbol,{ at:new Date(t).toISOString(),bid:Number(r.bid_price),ask:Number(r.ask_price),bidSize:Number(r.bid_size),askSize:Number(r.ask_size) });
       }
       if (spot && Date.now()-spot.at <= 5000) feedAt = new Date(spot.at).toISOString();
+      guardOwnershipPause();
       if (!executionAllowed()) continue;
       if (!state.rulesV2 && state.position && r.symbol === state.position.contract.id) {
         const q = contractQuotes(at).find(c => c.id === r.symbol);
@@ -368,9 +379,10 @@ async function main() {
   let lastRefresh=Date.now();
   while(!stopped) {
     await new Promise(r=>setTimeout(r,250));
-    if(Date.now()-ack>=5000&&!publishing) void diagnostics.run('snapshot.publish',publish).catch(error=>stopWorker('snapshot.publish',error,'LEASE_OR_STORAGE_LOST'));
+    if(Date.now()-ack>2000&&Date.now()>=publishRetryAt&&!publishing) void diagnostics.run('snapshot.publish',publish).catch(error=>stopWorker('snapshot.publish',error,'LEASE_OR_STORAGE_LOST'));
     if(!flushing)void diagnostics.run('ledger.flush',flushLedger).catch(()=>{status='HAMS_LEDGER_SYNC_RETRY';});
     if(!busy) void poll().catch(()=>{status='SIGNAL_STORAGE_UNAVAILABLE';});
+    guardOwnershipPause();
     if(!state.rulesV2||state.position||state.rulesV2.setup?.triggered)tryEntry();
     if(pending && Date.now()-Date.parse(pending.signal.closedAt)>=180000) { decide(pending.signal,'MISSED_SIGNAL_CLOSE');pending=null;save(); }
     if(Date.now()-lastRefresh>60000&&!refreshing){lastRefresh=Date.now();startRefresh();}
