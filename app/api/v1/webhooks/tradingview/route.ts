@@ -170,21 +170,34 @@ function normalizeSignal(payload: TradingViewWebhookPayload): NormalizedSignal {
 export async function POST(request: Request) {
   const receivedAt = Date.now();
   let rawBody = "";
+  let step = "webhook_validation";
+  let signalRef: { signalId: string; strategyId: string } | undefined;
+  function report(outcome: "failed" | "slow", cause: string, upstreamStatus?: number, durationMs = Date.now() - receivedAt) {
+    console.warn(JSON.stringify({
+      event: "tradingview_webhook_diagnostic", at: new Date().toISOString(),
+      step, outcome, cause, durationMs, upstreamStatus, ...signalRef
+    }));
+  }
 
   try {
     rawBody = await request.text();
     const signature = await verifySignature(request, rawBody);
-    if (!signature.ok) return jsonError(signature.error ?? "Invalid signature.", 401);
+    if (!signature.ok) {
+      report("failed", "signature_rejected");
+      return jsonError(signature.error ?? "Invalid signature.", 401);
+    }
 
     let payload: TradingViewWebhookPayload;
     try {
       payload = isolateRibbonSignal(isolateHamsSignal(isolateTrackingSignal(JSON.parse(rawBody) as TradingViewWebhookPayload)));
     } catch {
+      report("failed", "invalid_json");
       return jsonError("Invalid JSON payload.");
     }
 
     const configuredSecret = process.env.TRADINGVIEW_WEBHOOK_SECRET;
     if (configuredSecret && !safeEqual(String(payload.secret ?? ""), configuredSecret)) {
+      report("failed", "secret_rejected");
       return jsonError("Invalid webhook secret.", 401);
     }
     if (!configuredSecret && !payload.secret) {
@@ -217,6 +230,7 @@ export async function POST(request: Request) {
     }
 
     const signal = normalizeSignal(payload);
+    signalRef = { signalId: signal.id.slice(0, 160), strategyId: signal.strategyId.slice(0, 80) };
     const decision: AlgoDecision = signal.strategyId === "nifty_ribbon_test_3m_v1"
       ? { accepted: true, executionMode: "PAPER", stage: "READY_FOR_PAPER", reasons: ["Saved for the isolated NIFTY Ribbon Test worker; receipt is not an entry fill."], checks: [{ label: "Dedicated paper route", ok: true, message: "Ribbon Test only; live execution disabled." }] }
       : signal.strategyId === "nifty_hams_final_3m_v1"
@@ -225,12 +239,21 @@ export async function POST(request: Request) {
     signal.metadata.deliveryTiming=captureDeliveryTiming(payload.alertFiredAt,new Date(receivedAt).toISOString(),new Date().toISOString());
     const event = { receivedAt: new Date(receivedAt).toISOString(), signal, decision };
     recordAlgoEvent(event);
+    step = "supabase_signal_write";
+    const writeStartedAt = Date.now();
     const persistence = await persistAlgoSignalEvent({
       event,
       secret: String(payload.secret ?? ""),
       rawPayload: payload as Record<string, unknown>
     });
-    if (!persistence.ok) return jsonError("Signal was not durably saved. Retry delivery.", 503);
+    const writeMs = Date.now() - writeStartedAt;
+    if (!persistence.ok) {
+      const status = persistence.upstreamStatus;
+      report("failed", persistence.skipped ? "app_configuration_missing" : status === 429 ? "supabase_rate_limit" : status ? "supabase_error_response" : "cause_unconfirmed", status, writeMs);
+      return jsonError("Signal was not durably saved. Retry delivery.", 503);
+    }
+    if (writeMs >= 1000) report("slow", "cause_unconfirmed", undefined, writeMs);
+    step = "webhook_response";
     seenSignals.set(dedupeKey, receivedAt);
     try { if (process.env.SHEETS_DAILY_SYNC_ENABLED !== "true") waitUntil(syncWebhookSheet(String(payload.secret ?? ""))); }
     catch { /* An unavailable reporting scheduler must not reject a saved signal. */ }
@@ -250,6 +273,7 @@ export async function POST(request: Request) {
       { status: 202 }
     );
   } catch (error) {
+    report("failed", step === "supabase_signal_write" ? "cause_unconfirmed" : "webhook_handler_error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "TradingView webhook failed." },
       { status: 500 }

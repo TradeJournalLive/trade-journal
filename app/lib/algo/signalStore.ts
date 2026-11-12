@@ -55,11 +55,11 @@ export async function persistAlgoSignalEvent({ event, secret, rawPayload }: Pers
     raw_payload: scrubRawPayload(rawPayload)
   };
 
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from(TABLE_NAME)
     .upsert(row, { onConflict: "secret_hash,strategy_id,signal_id" });
 
-  if (error) return { ok: false, skipped: false, reason: error.message };
+  if (error) return { ok: false, skipped: false, reason: error.message, upstreamStatus: status };
   return { ok: true, skipped: false };
 }
 

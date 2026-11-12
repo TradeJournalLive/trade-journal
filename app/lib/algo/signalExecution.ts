@@ -1,5 +1,19 @@
 import { getServerSupabase, hashWebhookSecret } from "./signalStore";
 
+export function explainExecutionFailure(status: string, reason: string): string {
+  const code = status.toUpperCase().replaceAll(" ", "_");
+  if (/ownership.*(?:expired|unconfirmed)|(?:expired|unconfirmed).*ownership/i.test(reason)) {
+    return `${reason} Failed step: worker ownership check-in. Cause: unconfirmed; this does not establish a Supabase outage.`;
+  }
+  if (code === "FYERS_DATA_UNAVAILABLE" || code === "FRESH_INDEX_DATA_REQUIRED") {
+    return `${reason} Failed step: obtaining usable market data. Cause: unconfirmed; missing data does not prove a broker outage.`;
+  }
+  if (code === "RECOVERY_REVIEW_REQUIRED" || code === "EXCLUDED_UNVERIFIED" || code === "MONITORING_INTERRUPTED") {
+    return `${reason} Failed step: verifying continuous execution. Cause: not established by this record.`;
+  }
+  return reason;
+}
+
 export type SignalExecution = { status: string; reason: string; source: "Recorded" | "Rule check" | "Not recorded" | "Unavailable"; at?: string };
 type Event = { receivedAt: string; signal: { id: string; symbol: string; strategyId?: string; metadata?: Record<string, unknown> } };
 type Decision = { id: string; status: string; reason: string; decidedAt: string };
@@ -56,7 +70,7 @@ export async function addSignalExecutions<T extends Event>(secret: string, event
     const k = key(market, event.signal.id), d = decisions.get(k), entry = entries.get(k);
     let execution: SignalExecution;
     if (entry && (!d || !["ENTERED", "PARTIALLY_FILLED"].includes(d.status))) execution = { status: "ENTERED", reason: entry, source: "Recorded" };
-    else if (d) execution = { status: d.status, reason: d.reason, source: "Recorded", at: d.decidedAt };
+    else if (d) execution = { status: d.status, reason: explainExecutionFailure(d.status, d.reason), source: "Recorded", at: d.decidedAt };
     else if (market === "GOLD" && event.signal.metadata?.trackingOnly === true) execution = { status: "TRACKING_ONLY", reason: "Gold signal saved. No MT5 paper execution decision has been recorded.", source: "Recorded" };
     else {
       const candle = event.signal.metadata?.niftyPaper as { high?: number; low?: number } | undefined;
