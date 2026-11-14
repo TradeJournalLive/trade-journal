@@ -11,7 +11,7 @@ async function ledger(secret: string, strategy: string) {
   try{return await readHistory(db,hashWebhookSecret(secret),strategy,q=>q.eq("strategy_id",strategy),strategy.endsWith("decision__")?"raw_payload->decision->>decidedAt":undefined);}
   catch{throw Error("Unable to load the complete paper trade ledger.");}
 }
-export async function loadPaperBooks(secret: string) {
+export async function loadPaperBooks(secret: string, includeBtc = true) {
   const db = getServerSupabase();
   if (!db) throw new Error("Saved paper trading is unavailable.");
   const events: PaperEvent[] = [];
@@ -23,14 +23,14 @@ export async function loadPaperBooks(secret: string) {
   let worker:any=summaryRow;
   if(summaryRow&&!publicBook){const fallback=await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash",hashWebhookSecret(secret)).eq("strategy_id","__nifty_paper_worker__").eq("signal_id","state").maybeSingle();if(fallback.error)throw Error("Unable to load legacy options snapshot.");worker=fallback.data;}
   const niftyLedger = await ledger(secret, "__nifty_paper_trade__");
-  const { data: btcSummary, error: btcError } = await db.from("tradingview_signal_events").select("received_at,book:raw_payload->book,pending_trades:raw_payload->saved->state->trades,pending_decisions:raw_payload->saved->state->decisions,worker_status:raw_payload->workerStatus,health:raw_payload->health,trial_started:raw_payload->saved->startedAt,trial_ends:raw_payload->saved->endsAt").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_worker__").eq("signal_id", "state").maybeSingle();
+  const { data: btcSummary, error: btcError } = includeBtc ? await db.from("tradingview_signal_events").select("received_at,book:raw_payload->book,pending_trades:raw_payload->saved->state->trades,pending_decisions:raw_payload->saved->state->decisions,worker_status:raw_payload->workerStatus,health:raw_payload->health,trial_started:raw_payload->saved->startedAt,trial_ends:raw_payload->saved->endsAt").eq("secret_hash", hashWebhookSecret(secret)).eq("strategy_id", "__btc_delta_worker__").eq("signal_id", "state").maybeSingle() : { data: null, error: null };
   if (btcError) throw new Error("Unable to load Delta BTC paper state.");
   const btcProjection=btcSummary as any;
   const compactBtc=btcProjection?.book&&typeof btcProjection.book.enabled==="boolean"&&typeof btcProjection.book.realized==="number"?btcProjection:null;
   let btcWorker:any=btcSummary;
   if(btcSummary&&!compactBtc){const fallback=await db.from("tradingview_signal_events").select("received_at,raw_payload").eq("secret_hash",hashWebhookSecret(secret)).eq("strategy_id","__btc_delta_worker__").eq("signal_id","state").maybeSingle();if(fallback.error)throw Error("Unable to load legacy Delta state.");btcWorker=fallback.data;}
-  const btcLedger = await ledger(secret, "__btc_delta_trade__");
-  const btcDecisionLedger = await ledger(secret, "__btc_delta_decision__");
+  const btcLedger = includeBtc ? await ledger(secret, "__btc_delta_trade__") : [];
+  const btcDecisionLedger = includeBtc ? await ledger(secret, "__btc_delta_decision__") : [];
   const data=await readHistory(db,hashWebhookSecret(secret),"paper-events",q=>q
       .neq("strategy_id", "__hams_final_worker__").neq("strategy_id", "__hams_final_control__").neq("strategy_id", "nifty_hams_final_3m_v1")
       .neq("strategy_id", "__nifty_ribbon_worker__").neq("strategy_id", "__nifty_ribbon_control__").neq("strategy_id", "nifty_ribbon_test_3m_v1")

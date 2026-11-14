@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Cookie" };
 
-export async function GET() {
+export async function GET(request: Request) {
   const secret = await connectionSecret();
   if (!secret) return NextResponse.json({ error: "Connect TradingView in Integrations first." }, { status: 401 });
-  try { return NextResponse.json({ books: await load(secret) }, { headers: privateHeaders }); }
+  try { return NextResponse.json({ books: await load(secret, new URL(request.url).searchParams.get("market") !== "NIFTY") }, { headers: privateHeaders }); }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Paper history unavailable." }, { status: 503 }); }
 }
 export async function POST(request: Request) {
@@ -61,6 +61,6 @@ export async function POST(request: Request) {
       decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.goldBreakoutEnabled !== undefined ? { goldBreakoutEnabled: body.goldBreakoutEnabled } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
-    return NextResponse.json({ books: await load(secret) }, { headers: privateHeaders });
+    return NextResponse.json({ books: await load(secret, body.market !== "NIFTY") }, { headers: privateHeaders });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save switch." }, { status: 503 }); }
 }
