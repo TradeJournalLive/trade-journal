@@ -63,7 +63,7 @@ export async function persistAlgoSignalEvent({ event, secret, rawPayload }: Pers
   return { ok: true, skipped: false };
 }
 
-export async function listPersistedAlgoSignalEvents(secret: string, limit = 100, date?: string) {
+export async function listPersistedAlgoSignalEvents(secret: string, limit = 100, date?: string, includeBtc = true) {
   const supabase = getServerSupabase();
   if (!supabase || !secret.trim()) return { ok: false, events: [], reason: "Supabase service role or secret is missing." };
 
@@ -86,6 +86,7 @@ export async function listPersistedAlgoSignalEvents(secret: string, limit = 100,
     .neq("strategy_id", "__nifty_paper_decision__").neq("strategy_id", "__gold_mt5_worker__").neq("strategy_id", "__gold_mt5_trade__").neq("strategy_id", "__gold_mt5_decision__")
     .order("received_at", { ascending: false })
     .order("signal_id", { ascending: false });
+  if (!includeBtc) query = query.not("symbol", "ilike", "%BTC%").neq("strategy_id", "btc_delta_breakout_v1");
   if (date) {
     const start = new Date(`${date}T00:00:00+05:30`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(start.getTime()) || new Date(start.getTime() + 19800000).toISOString().slice(0, 10) !== date) return { ok: false, events: [], reason: "Invalid signal date." };

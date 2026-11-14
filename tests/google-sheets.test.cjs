@@ -115,7 +115,7 @@ test('create is private, explicit and idempotent; sync writes RAW instrument ran
     assert.deepEqual(signalRow.slice(0,4), ['2026-10-22', '00:00:05', '2026-10-21', '23:59:00']);
     assert.equal(r.googleCalls.filter(c => c.body?.requests?.some(r => r.addSheet)).length, 1);
     const clear = r.googleCalls.find(c => c.url.endsWith('values:batchClear'));
-    assert.ok(clear.body.ranges.some(range => range.startsWith("'BTC Trades'!A2:")));
+    assert.ok(!clear.body.ranges.some(range => range.startsWith("'BTC Trades'!")));
     await assert.rejects(r.api.createSignalSheet('b'), /Connect Google/);
   } finally { r.restore(); }
 });

@@ -15,7 +15,7 @@ export function sheetsOAuth() {
   if (!sheetsConfigured()) throw new Error("Google Sheets server settings are not configured yet.");
   return new OAuth2Client({ clientId: process.env.GOOGLE_SHEETS_CLIENT_ID, clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET, redirectUri: sheetsCallback(), transporterOptions: { timeout: 10000, retry: false } });
 }
-const tabs = ["NIFTY", "BTC", "Other", "NIFTY HAMS"] as const;
+const tabs = ["NIFTY", "Other", "NIFTY HAMS"] as const;
 export function eventTab(event: StoredAlgoEvent) { return event.signal.strategyId === "nifty_ribbon_test_3m_v1" ? "NIFTY Ribbon" : event.signal.strategyId === "nifty_hams_final_3m_v1" ? "NIFTY HAMS" : signalTab(event.signal.symbol); }
 export function signalTab(symbol: string) { return /NIFTY/i.test(symbol) ? "NIFTY" : /BTC/i.test(symbol) ? "BTC" : /GOLD|XAU/i.test(symbol) ? "GOLD" : "Other"; }
 const columns = ["Received date", "Received time (IST)", "Signal date", "Signal time (IST)", "Instrument", "Action", "Signal price", "Timeframe", "Status", "Accepted", "Stage", "Reason", "Strategy", "Signal ID"];
@@ -58,14 +58,14 @@ async function syncUnlocked(user: string, connection: SheetsConnection) {
   if (!connection.sheetId) throw new Error("Create your private sheet first.");
   const secret = await readAccountConnection(user, "webhook");
   if (!secret) throw new Error("Connect your account's signal webhook first.");
-  const history = await listPersistedAlgoSignalEvents(secret, 0);
+  const history = await listPersistedAlgoSignalEvents(secret, 0, undefined, false);
   if (!history.ok) throw new Error("Signal history is unavailable. Previous sheet data was retained.");
   const events = [...history.events].reverse();
-  const trades = [...buildTradeReports(await loadPaperBooks(secret), events), ...await loadHamsTradeReports(secret)];
+  const trades = [...buildTradeReports(await loadPaperBooks(secret, false), events), ...await loadHamsTradeReports(secret)];
   // Rebuild deterministic ranges, rather than append: retries never duplicate signals.
   const reports = [
     ...tabs.map(tab => ({ tab, rows: [columns, ...signalRows(events.filter(e => eventTab(e) === tab))] })),
-    ...["NIFTY", "BTC", "NIFTY HAMS"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
+    ...["NIFTY", "NIFTY HAMS"].map(market => ({ tab: `${market} Trades`, rows: [tradeColumns, ...tradeRows(trades.filter(trade => trade.market === market))] }))
   ];
   const metadata = await google(connection, `/${connection.sheetId}?fields=sheets(properties(sheetId,title))`, "GET");
   const existing = new Map<string, number>((metadata.sheets || []).map((sheet: { properties: { title: string; sheetId: number } }) => [sheet.properties.title, sheet.properties.sheetId]));
