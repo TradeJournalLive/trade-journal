@@ -2,10 +2,10 @@
 
 ## User Steps
 
-1. On the original browser where webhook/FYERS connections were configured, sign in with the account that owns the setup.
-2. Open Algo Trading. Check the verified email in the linking banner.
-3. Select **Link this device's setup to my account** and confirm.
-4. On another device, sign in with that same email and open Algo Trading.
+1. Sign in to the new panel with the Supabase account that should own the setup.
+2. Open TradingView connection and enter the existing webhook secret from the TradingView alert.
+3. Select **Recover existing setup**. Recovery succeeds only when the secret matches saved Supabase signal history and the immutable ownership claim is available to this account.
+4. Open the signal workspace; history loads from the existing Supabase records. TradingView alerts and the paused legacy panel are not changed.
 
 The existing webhook secret, encrypted FYERS record and trade-history partition are retained. No worker is created or restarted by linking. A different email is a different account, even if both emails belong to the same person. An expired broker session still needs renewed authorization, but saved stats do not require broker login.
 
@@ -14,7 +14,7 @@ The existing webhook secret, encrypted FYERS record and trade-history partition 
 - The server verifies Supabase identity for connection lookups. Client-supplied user IDs do not determine ownership.
 - Algo/FYERS requests include the current Supabase access token. Explicit invalid authorization never falls back to a different account's cookie. Off-origin account requests are rejected before tokens are attached.
 - Connection mappings are encrypted; internal partition identifiers use a server-keyed HMAC.
-- Legacy connections require explicit linking from the browser holding the existing HTTP-only connection cookie.
+- Recovery requires an authenticated Supabase account, a same-origin POST, possession of the webhook secret, and matching existing Supabase signal history. It does not rely on the old browser cookie.
 - Immutable unique ownership claims prevent cross-account reuse. Disconnecting does not transfer ownership.
 - Same-account concurrent linking is first-writer-wins. A second device cannot silently replace a connection.
 - Account changes remount the protected workspace. Sign-out clears the server session cookie.
