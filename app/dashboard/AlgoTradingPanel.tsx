@@ -427,7 +427,7 @@ export default function AlgoTradingPanel() {
     }
   }, [tvTestSecret, signalDate]);
 
-  async function sendTradingViewTestSignal(action: "BUY" | "SELL" = "BUY") {
+  const recoverSignalConnection = useCallback(async () => {    const secret = tvTestSecret.trim();    if (!secret || signalLogLoading) return;    setSignalLogLoading(true);    setSignalLogError("");    try {      const response = await accountFetch("/api/algo/recover-account", {        method: "POST",        headers: { "Content-Type": "application/json" },        body: JSON.stringify({ secret }),        cache: "no-store"      });      const data = await response.json() as { error?: string };      if (!response.ok) throw new Error(data.error || "Unable to recover the existing TradingView setup.");      connectedSignalSecret.current = secret;      setWebhookConnected(true);      await refreshSignalLog(true);      setStatus("Recovered the existing TradingView connection and loaded its saved Supabase history.");    } catch (error) {      setSignalLogError(error instanceof Error ? error.message : "Unable to recover the existing TradingView setup.");    } finally {      setSignalLogLoading(false);    }  }, [tvTestSecret, signalLogLoading, refreshSignalLog]);  async function sendTradingViewTestSignal(action: "BUY" | "SELL" = "BUY") {
     const secret = tvTestSecret.trim();
     if (!secret) {
       setSignalLogError("Enter your webhook secret first, then send a test signal.");
@@ -948,7 +948,7 @@ export default function AlgoTradingPanel() {
             <h3>TradingView Webhook</h3>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <span className={`algo-pill ${webhookConnected ? "good" : "pending"}`}>{webhookConnected ? "Connection saved on this browser" : "Connect once with your webhook secret"}</span>
-              <button type="button" className="algo-action secondary" onClick={() => refreshSignalLog()} disabled={signalLogLoading}>{webhookConnected ? "Check connection" : "Save connection"}</button>
+              <button type="button" className="algo-action secondary" onClick={() => refreshSignalLog()} disabled={signalLogLoading}>{webhookConnected ? "Check connection" : "Save connection"}</button>{!webhookConnected && <button type="button" onClick={() => void recoverSignalConnection()} disabled={signalLogLoading || !tvTestSecret.trim()} className="algo-action secondary">{signalLogLoading ? "Recovering..." : "Recover existing setup"}</button>}
               {webhookConnected && <button type="button" className="algo-action secondary" onClick={async () => {
                 const response = await accountFetch("/api/algo/signals", { method: "DELETE" });
                 if (response.ok) { setWebhookConnected(false); setTvTestSecret(""); setSignalEvents([]); }
@@ -1060,7 +1060,7 @@ export default function AlgoTradingPanel() {
       <details open={!webhookConnected} className="border-t border-slate-200 py-4"><summary className="cursor-pointer text-sm font-semibold">TradingView connection</summary><div className="mt-4 space-y-3">
         <label className="block text-sm">Webhook URL<input readOnly value={typeof window !== "undefined" ? `${window.location.origin}${webhookUrl}` : webhookUrl} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
         <label className="block text-sm">Webhook secret<input type="password" value={tvTestSecret} onChange={event => setTvTestSecret(event.target.value)} placeholder={webhookConnected ? "Saved connection" : "Your existing webhook secret"} className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2" /></label>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action primary">{webhookConnected ? "Check connection" : "Save connection"}</button><button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy webhook URL</button></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void refreshSignalLog()} disabled={signalLogLoading} className="algo-action primary">{webhookConnected ? "Check connection" : "Save connection"}</button>{!webhookConnected && <button type="button" onClick={() => void recoverSignalConnection()} disabled={signalLogLoading || !tvTestSecret.trim()} className="algo-action secondary">{signalLogLoading ? "Recovering..." : "Recover existing setup"}</button>}<button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}${webhookUrl}`)} className="algo-action secondary">Copy webhook URL</button></div>
       </div></details>
     </div>;
   }
