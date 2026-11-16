@@ -8,6 +8,7 @@ require('@next/env').loadEnvConfig(process.cwd(), false);
 const { createClient } = require('@supabase/supabase-js');
 const { parse } = require('csv-parse/sync');
 const { fyersDataSocket } = require('fyers-api-v3');
+const { paperFyersConnection } = require('./paper-fyers-connection.cjs');
 const { readDepth, withDepth } = require('./nifty-depth.cjs');
 const { quarantineInterruptedPosition, recoverOnNextSignal } = require('./nifty-independent-recovery.cjs');
 function load(name) {
@@ -34,7 +35,7 @@ if (fs.existsSync(configFile)) {
   env.PAPER_WEBHOOK_SECRET ||= config.webhookSecret;
   env.PAPER_FYERS_APP_ID ||= config.fyersAppId;
 }
-if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !env.PAPER_WEBHOOK_SECRET || !env.PAPER_FYERS_APP_ID) {
+if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !env.PAPER_WEBHOOK_SECRET || (!env.PAPER_FYERS_APP_ID && !env.PAPER_WORKER_PANEL_ORIGIN)) {
   console.error('Missing server configuration: Supabase, PAPER_WEBHOOK_SECRET and PAPER_FYERS_APP_ID are required.'); process.exit(1);
 }
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -85,6 +86,8 @@ async function api(endpoint) {
   return result;
 }
 async function credentials() {
+  const shared = await paperFyersConnection(env, env.PAPER_WEBHOOK_SECRET);
+  if (shared) return shared;
   const { data, error } = await db.from(TABLE).select('raw_payload').eq('strategy_id', '__fyers_connection__').order('received_at', { ascending: false }).limit(100);
   if (error) throw new Error('CONNECTION_STORAGE_UNAVAILABLE');
   const key = crypto.createHash('sha256').update(`fyers:${env.ALGO_CONNECTION_ENCRYPTION_KEY || env.SUPABASE_SERVICE_ROLE_KEY}`).digest();

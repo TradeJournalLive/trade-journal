@@ -9,6 +9,7 @@ const { readDepth } = require('./nifty-depth.cjs');
 const { HamsJournal, selectSnapshot, flushHamsRecords, reconcileHamsPublish, digest, matchesHamsLedgerRecord } = require('./hams-journal.cjs');
 const { hamsPublicView } = require('./hams-public-view.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
+const { paperFyersConnection } = require('./paper-fyers-connection.cjs');
 function loadAlgo(name) {
   const file=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),copy=new Module(file,module);
   copy.require=id=>id.startsWith('./')?loadAlgo(id.slice(2)):require(id);
@@ -36,7 +37,7 @@ let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefre
 let refreshing=false,publishRetryAt=0,publishFailures=0;
 const diagnostics=createWorkerDiagnostics({
   emit:value=>fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600}),
-  secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,connection?.accessToken,connection?.appId],
+  secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,env.PAPER_WORKER_ACCESS_KEY,connection?.accessToken,connection?.appId],
   context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),publishFailures,refreshing})
 });
 async function observedFetch(operation,url,init){return diagnostics.run(operation,async()=>{
@@ -83,6 +84,8 @@ async function one(strategy, secret, id) {
   if (r.error) throw storageError('ACCOUNT_STORAGE_UNAVAILABLE',r.error); return r.data?.raw_payload;
 }
 async function credentials() {
+  const shared = await paperFyersConnection(env, config.webhookSecret);
+  if (shared) return shared;
   // Follow the immutable webhook ownership claim, never choose another account by app ID.
   const key = crypto.createHash('sha256').update(`account:${env.ALGO_CONNECTION_ENCRYPTION_KEY || env.SUPABASE_SERVICE_ROLE_KEY}`).digest();
   const internal = v => crypto.createHmac('sha256', key).update(v).digest('hex');
