@@ -27,7 +27,8 @@ export async function POST(request: Request) {
     if (body.nextCandle !== undefined && typeof body.nextCandle !== "boolean") return NextResponse.json({ error: "Invalid execution rule." }, { status: 400 });
     if (body.niftyOptionsEnabled !== undefined && (body.market !== "NIFTY" || typeof body.niftyOptionsEnabled !== "boolean")) return NextResponse.json({ error: "Invalid options switch." }, { status: 400 });
     if (body.btcBreakoutEnabled !== undefined && (body.market !== "BTC" || typeof body.btcBreakoutEnabled !== "boolean")) return NextResponse.json({ error: "Invalid BTC breakout switch." }, { status: 400 });
-    if (!markets.includes(body.market) || typeof body.enabled !== "boolean") return NextResponse.json({ error: "Invalid market or switch." }, { status: 400 });
+    const optionsOnly = body.market === "NIFTY" && typeof body.niftyOptionsEnabled === "boolean" && body.statusOnly === true;
+    if (!markets.includes(body.market) || (!optionsOnly && typeof body.enabled !== "boolean")) return NextResponse.json({ error: "Invalid market or switch." }, { status: 400 });
     if (body.symbol !== undefined && (typeof body.symbol !== "string" || !/^[A-Z0-9_]+:[A-Z0-9_.!]+$/.test(body.symbol))) return NextResponse.json({ error: "Invalid price feed." }, { status: 400 });
     if (body.slippage !== undefined && (typeof body.slippage !== "number" || !Number.isFinite(body.slippage) || body.slippage < 0 || body.slippage > 100000)) return NextResponse.json({ error: "Invalid slippage assumption." }, { status: 400 });
     const db = getServerSupabase();
@@ -56,11 +57,12 @@ export async function POST(request: Request) {
     const { error } = await db.from("tradingview_signal_events").insert({
       secret_hash: hashWebhookSecret(secret), strategy_id: "__paper_control__", signal_id: id, symbol: body.market,
       action: "EXIT", received_at: now, signal_timestamp: now, status: "VALIDATED", accepted: false,
-      execution_mode: "PAPER", stage: "SIGNAL_RECEIVED", reason: body.enabled ? "Paper enabled" : "Paper paused",
+      execution_mode: "PAPER", stage: "SIGNAL_RECEIVED", reason: (body.niftyOptionsEnabled ?? body.enabled) ? "Paper enabled" : "Paper paused",
       signal: { id, strategyId: "__paper_control__", source: "TRADINGVIEW", symbol: body.market, action: "EXIT", timestamp: now, createdAt: now, metadata: {}, status: "VALIDATED" },
-      decision: {}, raw_payload: { paperControl: { market: body.market, enabled: body.enabled, ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.goldBreakoutEnabled !== undefined ? { goldBreakoutEnabled: body.goldBreakoutEnabled } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
+      decision: {}, raw_payload: { paperControl: { market: body.market, ...(!optionsOnly ? { enabled: body.enabled } : {}), ...(body.stopAndClose ? { stopAndClose: true } : {}), ...(body.deleteTrade ? { deleteTrade: body.deleteTrade } : {}), ...(body.goldBreakoutEnabled !== undefined ? { goldBreakoutEnabled: body.goldBreakoutEnabled } : {}), ...(body.btcBreakoutEnabled !== undefined ? { btcBreakoutEnabled: body.btcBreakoutEnabled } : {}), ...(body.niftyOptionsEnabled !== undefined ? { niftyOptionsEnabled: body.niftyOptionsEnabled } : {}), ...(body.nextCandle !== undefined ? { nextCandle: body.nextCandle } : {}), ...(body.symbol ? { symbol: body.symbol } : {}), ...(body.slippage !== undefined ? { slippage: body.slippage } : {}) } }
     });
     if (error) throw new Error(error.message);
+    if (optionsOnly) return NextResponse.json({ saved: true }, { headers: privateHeaders });
     return NextResponse.json({ books: await load(secret, body.market !== "NIFTY") }, { headers: privateHeaders });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save switch." }, { status: 503 }); }
 }

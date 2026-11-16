@@ -3,7 +3,7 @@ import { accountFetch } from "../lib/accountFetch";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import SignalPaperTrading from "./SignalPaperTrading";
+import NiftyPaperWorkspace from "./NiftyPaperWorkspace";
 import FyersConnection from "./FyersConnection";
 import OptionsChain from "./OptionsChain";
 import BrokerReadinessAlert from "./BrokerReadinessAlert";
@@ -1072,7 +1072,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "create") return renderCreate();
     if (activeSection === "strategies") return renderStrategies();
     if (activeSection === "backtests") return renderBacktests();
-    if (activeSection === "paper") return <SignalPaperTrading />;
+    if (activeSection === "paper") return <NiftyPaperWorkspace />;
     if (activeSection === "live") return renderLive();
     if (activeSection === "templates") return renderTemplates();
     if (activeSection === "positions") return renderPositions();
