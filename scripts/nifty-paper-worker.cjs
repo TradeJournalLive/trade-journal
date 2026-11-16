@@ -19,6 +19,7 @@ function load(name) {
 }
 const { buildNiftyOptionsPaper } = load('niftyPaperEngine');
 const { buildNiftyLimitPaper } = load('niftyLimitAdapter');
+const { niftyFreshSessionAt, niftyPaperStatus } = load('niftyLossCycle');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__nifty_paper_worker__';
 const indexSymbol = 'NSE:NIFTY50-INDEX';
 const hash = text => crypto.createHash('sha256').update(text).digest('hex');
@@ -68,7 +69,7 @@ function advance(events) {
   const before = book?.trades.length ?? 0;
   const previousPosition = book?.position?.openedAt;
   const previousQuantity = book?.position?.quantity;
-  book = buildNiftyLimitPaper(events, now(), state.checkpoint);
+  book = buildNiftyLimitPaper(events, now(), state.checkpoint, niftyFreshSessionAt);
   state.checkpoint = book.checkpoint;
   for (const trade of book.trades.slice(before)) audit('TRADE', trade);
   if (before !== book.trades.length || previousPosition !== book.position?.openedAt || previousQuantity !== book.position?.quantity) saveLocal();
@@ -167,6 +168,10 @@ function summary(value = state) {
   const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), value.checkpoint);
   return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: null, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: Boolean(checkpoint.rulesV2) };
 }
+function paperStatus(value) {
+  const s = value.checkpoint?.rulesV2;
+  return s ? niftyPaperStatus(s, status, s.ticks.at(-1)?.at ?? null, Boolean(value.recoveryIncidents?.some(i=>!i.acknowledgedAt))) : null;
+}
 async function publish() {
   const at = now();
   const snapshot = structuredClone(state);
@@ -190,7 +195,7 @@ async function publish() {
   }
   // Historical fills live in their own immutable-key ledger, not every heartbeat.
   snapshot.checkpoint = result.checkpoint.rulesV2 ? result.checkpoint : { ...result.checkpoint, decisions: (result.checkpoint.decisions || []).slice(-100), trades: [], realizedBase: result.realized - (result.position?.realizedPnl ?? 0), tradeCountBase: result.tradeCount };
-  const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
+  const { data, error } = await db.from(TABLE).update({ received_at: at, raw_payload: { workerId, state: snapshot, book: summary(snapshot), dashboard: paperStatus(snapshot) } }).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', lease).select('id');
   if (error || data?.length !== 1) throw new Error('WORKER_LEASE_OR_STORAGE_LOST');
   lease = at; lastPublish = Date.now(); saveLocal();
 }
@@ -223,12 +228,12 @@ async function main() {
     advance([{ ...event('enable', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: true } } }]);
   } else {
     quarantineInterruptedPosition(state,now());
-    book=buildNiftyLimitPaper([],now(),state.checkpoint);
+    book=buildNiftyLimitPaper([],now(),state.checkpoint,niftyFreshSessionAt);
     advance([]);
   }
   pollAfter = old ? new Date(Date.parse(old.received_at) - 60000).toISOString() : state.startedAt;
   const claimedAt = now();
-  const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: claimedAt, signal_timestamp: claimedAt, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary() } };
+  const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: claimedAt, signal_timestamp: claimedAt, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary(), dashboard: paperStatus(state) } };
   const claim = old ? await db.from(TABLE).update(row).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', old.received_at).select('id') : await db.from(TABLE).insert(row).select('id');
   if (claim.error) throw new Error('WORKER_LEASE_WRITE_FAILED', { cause: claim.error });
   if (claim.data?.length !== 1) throw new Error('WORKER_LEASE_CHANGED_DURING_STARTUP');

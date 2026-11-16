@@ -20,6 +20,7 @@ const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsF
 const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
 const { initializeHamsLimits, receiveHamsLimit, markHamsLimit, emergencyHamsLimit } = loadAlgo('hamsLimitAdapter');
 const { canArmNifty } = loadAlgo('niftyLimitPaper');
+const { niftyFreshSessionAt, startNiftyLossCycle, niftyPaperStatus } = loadAlgo('niftyLossCycle');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
 const root = path.resolve('.paper-worker'), directory = path.join(root, 'hams-final');
 fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -114,9 +115,11 @@ async function publish() {
   if (publishing || stopped) return;
   publishing = true;
   try {
+    initializeLossCycle();
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
-    let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot)})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
+    const dashboard=state.rulesV2?niftyPaperStatus(state.rulesV2,snapshot.workerStatus,feedAt,reviewRequired()):null;
+    let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot),dashboard})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
     catch(error){r={error};}
     const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
     lease=confirmed.lease;ack=Date.parse(confirmed.lease);
@@ -201,9 +204,16 @@ function onMessage(message) {
     }
   } catch(error) { stopWorker('feed.processing',error,'PROCESSING_ERROR'); }
 }
+function initializeLossCycle() {
+  if(!state.rulesV2||reviewRequired())return;
+  state.rulesV2.lossCycleFrom ??= niftyFreshSessionAt;
+  startNiftyLossCycle(state.rulesV2,now());
+  state.nextLots=state.rulesV2.nextLots;
+}
 function tryEntry() {
   if(state.rulesV2){
     if(!executionAllowed()||!spot||(!state.rulesV2.emergency?.pending&&Date.now()-spot.at>5000))return;
+    initializeLossCycle();
     const at=now(),before=state.position,closed=state.trades.length;
     state=markHamsLimit(state,{at,spot:spot.price,chain:state.position||state.rulesV2.setup?contractQuotes(at):[]});
     decisions=state.rulesV2.decisions;
@@ -345,6 +355,7 @@ async function main() {
   if(!reviewRequired()){
     const upgrading=!state.rulesV2;
     state=initializeHamsLimits(state,now());
+    initializeLossCycle();
     if(upgrading)state.rulesV2.decisions=structuredClone(decisions);
   }
   pollAfter=saved?.pollAfter || previous.data?.received_at || now();

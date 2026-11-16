@@ -1,9 +1,11 @@
 import { newLimitState, markLimitPaper, receiveLimitSignal, requestNiftyEmergency, canArmNifty, type LimitState, type LimitQuote } from "./niftyLimitPaper";
 import type { NiftyPaperCheckpoint } from "./niftyPaperEngine";
 import type { PaperEvent } from "./paperEngine";
-export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?: NiftyPaperCheckpoint) {
+import { startNiftyLossCycle } from "./niftyLossCycle";
+export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?: NiftyPaperCheckpoint, lossCycleFrom?: string) {
   if (!initial?.rulesV2 && initial?.position) throw Error("RULE_UPGRADE_REQUIRES_FLAT_POSITION");
   let s: LimitState = initial?.rulesV2 ? structuredClone(initial.rulesV2) : newLimitState(now,1,true,initial?.enabled??false);
+  if (lossCycleFrom) { s.lossCycleFrom ??= lossCycleFrom; startNiftyLossCycle(s,now); }
   if(!initial?.rulesV2){s.decisions=structuredClone(initial?.decisions??[]);s.seen=s.decisions.map(d=>d.id);}
   for(const event of events){
     const control=event.raw.paperControl;
