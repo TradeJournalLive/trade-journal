@@ -162,7 +162,7 @@ async function subscriptions() {
 }
 function summary(value = state) {
   const { checkpoint, ...result } = buildNiftyOptionsPaper([], now(), value.checkpoint);
-  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: value.endsAt, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: Boolean(checkpoint.rulesV2) };
+  return { ...result, trades: [], trial: { startedAt: value.startedAt, endsAt: null, timeframe: '1', executionVersion: 2, depthSymbols: depths.size, workerStatus: status, heartbeatAt: now() }, feesIncluded: Boolean(checkpoint.rulesV2) };
 }
 async function publish() {
   const at = now();
@@ -216,8 +216,7 @@ async function main() {
     if (local.owner === secretHash && Date.parse(local.savedAt) > Date.parse(state?.savedAt || '1970-01-01')) state = local;
   }
   if (!state) {
-    const startedAt = now(), end = new Date(startedAt); end.setUTCMonth(end.getUTCMonth() + 1);
-    state = { startedAt, endsAt: end.toISOString() };
+    state = { startedAt: now() };
     advance([{ ...event('enable', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: true } } }]);
   } else {
     quarantineInterruptedPosition(state,now());
@@ -225,15 +224,13 @@ async function main() {
     advance([]);
   }
   pollAfter = old ? new Date(Date.parse(old.received_at) - 60000).toISOString() : state.startedAt;
-  lease = now();
-  const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: lease, signal_timestamp: lease, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary() } };
+  const claimedAt = now();
+  const row = { secret_hash: secretHash, strategy_id: STRATEGY, signal_id: 'state', symbol: 'NIFTY', action: 'EXIT', received_at: claimedAt, signal_timestamp: claimedAt, status: 'VALIDATED', accepted: false, execution_mode: 'PAPER', stage: 'SIGNAL_RECEIVED', signal: event('state', { kind: 'WORKER' }).signal, decision: {}, raw_payload: { workerId, state, book: summary() } };
   const claim = old ? await db.from(TABLE).update(row).eq('secret_hash', secretHash).eq('strategy_id', STRATEGY).eq('signal_id', 'state').eq('received_at', old.received_at).select('id') : await db.from(TABLE).insert(row).select('id');
-  if (claim.error || claim.data?.length !== 1) throw new Error('WORKER_LEASE_UNAVAILABLE');
+  if (claim.error) throw new Error('WORKER_LEASE_WRITE_FAILED', { cause: claim.error });
+  if (claim.data?.length !== 1) throw new Error('WORKER_LEASE_CHANGED_DURING_STARTUP');
+  lease = claimedAt;
   saveLocal();
-  if (Date.now() >= Date.parse(state.endsAt) && !book.position) {
-    advance([{ ...event('trial-end', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: false } } }]);
-    status = 'TRIAL_COMPLETE'; await publish(); process.exit(0);
-  }
   await connect();
   let lastHistory = 0, lastCredentials = Date.now();
   console.log('NIFTY paper worker started; broker order calls are disabled.');
@@ -241,7 +238,6 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     await queue;
     await poll();
-    if (Date.now() >= Date.parse(state.endsAt)) advance([{ ...event('trial-end', {}), raw: { paperControl: { market: 'NIFTY', niftyOptionsEnabled: false } } }]);
     if (Date.now() - lastHistory > 30000) {
       lastHistory = Date.now();
       try { await subscriptions(); } catch { status = 'SUBSCRIPTION_REFRESH_FAILED'; }
@@ -253,10 +249,8 @@ async function main() {
     }
     if (lastMasterDay !== day(now())) throw new Error('DAILY_RESTART_REQUIRED');
     if (Date.now() - lastPublish >= 5000) await publish();
-    if (Date.now() >= Date.parse(state.endsAt) && !book.position) break;
   }
-  if (failed) throw new Error('PAPER_WORKER_STOPPED');
-  await publish(); process.exit(0);
+  throw new Error('PAPER_WORKER_STOPPED');
 }
 process.on('SIGINT', () => { saveLocal(); process.exit(0); });
 process.on('SIGTERM', () => { saveLocal(); process.exit(0); });

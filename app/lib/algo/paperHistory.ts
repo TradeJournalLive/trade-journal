@@ -45,7 +45,7 @@ export async function loadPaperBooks(secret: string) {
       const capitalState=_checkpoint&&"rulesV2" in _checkpoint?_checkpoint.rulesV2:undefined;
       const capital=paperCapital(publicBook&&typeof publicBook.balance==="number"?{initial:publicBook.initialCapital??1000000,balance:publicBook.balance,position:options.position,mark:options.mark,fresh:!options.stale}:capitalState?{initial:1000000,balance:capitalState.balance,position:capitalState.position,mark:options.mark,fresh:!options.stale}:null);
       const publicOptions={...optionView,capital};
-      const trial=(publicBook?(publicBook as Summary&{trial?:unknown}).trial:worker?.raw_payload?.book?.trial??null) as {startedAt:string;endsAt:string;workerStatus?:string}|null;
+      const trial=(publicBook?(publicBook as Summary&{trial?:unknown}).trial:worker?.raw_payload?.book?.trial??null) as {startedAt:string;endsAt:string|null;workerStatus?:string}|null;
       const workerAge=Date.parse(now)-Date.parse(worker?.received_at??"");
       const workerOnline = Boolean(worker && workerAge>=0&&workerAge < 15000 && !String((trial as {workerStatus?:string}|null)?.workerStatus || "").startsWith("STOPPED_"));
       const ledgerTrades = niftyLedger.map(row => row.raw_payload?.trade).filter(Boolean) as typeof options.trades;

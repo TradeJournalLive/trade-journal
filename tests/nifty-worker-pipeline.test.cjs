@@ -10,9 +10,29 @@ function worker(kind){
  const context=vm.createContext({require(id){if(id==='node:fs')return io;if(id==='@next/env')return {loadEnvConfig(){}};if(id==='@supabase/supabase-js')return {createClient:()=>db};if(id==='fyers-api-v3')return {fyersDataSocket:{}};return realRequire(id);},module,__dirname:path.dirname(file),process:{cwd:()=>root,env:{NEXT_PUBLIC_SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service'},argv:[],on(){},exit(){throw Error('Unexpected worker exit');}},Date:Clock,console:{log(){},error(){}},Buffer,URL,AbortSignal,structuredClone,setTimeout,clearTimeout,fetch(){throw Error('Unexpected external request');}});
  let source=fs.readFileSync(file,'utf8').replace(/main\(\)\.catch\([\s\S]*$/,'');
  source+=hams?`\nglobalThis.harness={start(s,contracts){state=s;master=contracts;initialized=true;claimed=true;ack=Date.now();status='READY';let saved;journal={save(v){saved={...v,revision:1};return saved;},read(){return saved;}};},send:onMessage,poll,publish,startRefresh,configureRefresh(fn){connection={accessToken:'original'};credentials=fn;api=async()=>({data:{optionsChain:[]}});socket={isConnected:()=>true,subscribe(){}};},get:()=>({state,decisions,incidents,status,stopped,refreshing,owned:owned(),executionAllowed:executionAllowed(),ack,publishFailures,publishRetryAt}),pulse:tryEntry,heartbeat(){ack=Date.now();}};`:`\nglobalThis.harness={start(s,contracts){state={checkpoint:s,startedAt:new Date(Date.now()).toISOString(),endsAt:'2026-12-01T00:00:00Z'};master=contracts;advance([]);},send:marketTick,poll,get:()=>({state:book.checkpoint,decisions:book.checkpoint.decisions,status})};`;
+ if(!hams) source+=`\nglobalThis.harness.boot=()=>{connect=async()=>{throw Error('REACHED_FEED');};return main();};globalThis.harness.lease=()=>lease;`;
  vm.runInContext(source,context,{filename:file});
  return {...context.harness,setTime(n){clock=base+n*1000;},setRows(v){rows=v;},setPublishResults(write,read){writeResult=write;readResult=read;},audit};
 }
+test('NIFTY starts after legacy trial expiry and preserves the existing entries switch',async()=>{
+ for(const enabled of [false,true]){
+  const w=worker('nifty'),rulesV2=load('niftyLimitPaper').newLimitState(at(-3600),1,true,enabled);
+  let saved;
+  w.setPublishResults(value=>{saved=value;return {data:[{id:1}]};},{data:{received_at:at(-60),raw_payload:{state:{startedAt:at(-3600),endsAt:at(-300),checkpoint:{rulesV2,enabled,trades:[]}}}}});
+  await assert.rejects(w.boot(),/REACHED_FEED/);
+  assert.equal(saved.raw_payload.book.trial.startedAt,at(-3600));
+  assert.equal(saved.raw_payload.book.trial.endsAt,null);
+  assert.equal(saved.raw_payload.state.checkpoint.enabled,enabled);
+ }
+});
+test('NIFTY distinguishes a rejected lease write from a changed lease without assuming ownership',async()=>{
+ for(const [write,reason] of [[{error:{code:'fixture'}},/WORKER_LEASE_WRITE_FAILED/],[{data:[]},/WORKER_LEASE_CHANGED_DURING_STARTUP/]]){
+  const w=worker('nifty');
+  w.setPublishResults(write,{data:{received_at:at(-60),raw_payload:{state:{startedAt:at(-3600)}}}});
+  await assert.rejects(w.boot(),reason);
+  assert.ok(!w.lease());
+ }
+});
 const contracts=['CE','PE'].map(side=>({id:side,side,strike:22500,expiry:'2026-11-03',lotSize:65}));
 test('HAMS slow 30-second credential refresh does not block snapshot renewals or signal polls and stays single-flight',async()=>{
  const w=worker('hams'),v=load('niftyLimitPaper').newLimitState(at(-60),3,false,true);
