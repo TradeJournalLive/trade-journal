@@ -33,9 +33,43 @@ const definitions={NIFTY:'nifty-paper-worker.cjs',HAMS:'hams-final-worker.cjs',B
 const active=new Set((process.env.CLOUD_WORKERS_ENABLED||'').split(',').filter(Boolean));
 for(const name of active)if(!definitions[name])throw Error('INVALID_WORKER_SELECTION');
 const children=new Map(),timers=new Set(),exits=new Map();let stopping=false;
+function cleanDiagnostic(value){
+  let text=String(value??'').slice(0,300);
+  const privateValues=[secret,...Object.entries(process.env).filter(([key])=>/(SECRET|TOKEN|KEY|PASSWORD)/i.test(key)).map(([,value])=>value)].filter(value=>typeof value==='string'&&value.length>=4);
+  for(const value of privateValues)text=text.split(value).join('[REDACTED]');
+  return text.replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]')
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g,'[JWT]')
+    .replace(/(https?:\/\/[^?\s"'<>]+)\?[^\s"'<>]+/g,'$1?[REDACTED]');
+}
+function workerLogTail(name){
+  const file=path.join(directory,'cloud-'+name.toLowerCase()+'.log');
+  try{
+    const fd=fs.openSync(file,'r'),size=fs.fstatSync(fd).size,b=Buffer.alloc(Math.min(size,65536));
+    fs.readSync(fd,b,0,b.length,Math.max(0,size-b.length));fs.closeSync(fd);
+    return b.toString().split(/\r?\n/).filter(Boolean);
+  }catch{return [];}
+}
 function stoppedReason(name){
-  const file=path.join(directory,`cloud-${name.toLowerCase()}.log`);
-  try{const fd=fs.openSync(file,'r'),size=fs.fstatSync(fd).size,b=Buffer.alloc(Math.min(size,8192));fs.readSync(fd,b,0,b.length,Math.max(0,size-b.length));fs.closeSync(fd);const matches=[...b.toString().matchAll(/(?:stopped: |"message":")([A-Z][A-Z_]+)(?:"|\s|$)/g)];return matches.at(-1)?.[1]||null;}catch{return null;}
+  const lines=workerLogTail(name);
+  for(let i=lines.length-1;i>=0;i--){const match=lines[i].match(/"message":"([A-Z][A-Z0-9_]*)"/);if(match)return match[1];}
+  for(let i=lines.length-1;i>=0;i--){const match=lines[i].match(/Paper worker stopped:\s*([A-Z][A-Z0-9_]*)/);if(match)return match[1];}
+  return null;
+}
+function lastFailure(name){
+  const lines=workerLogTail(name);
+  for(let i=lines.length-1;i>=0;i--){
+    try{
+      const row=JSON.parse(lines[i]),stop=row.firstStop||null,error=stop?.error||row.error;
+      if(!error)continue;
+      const cause=error.cause||{};
+      return {at:cleanDiagnostic(stop?.at||row.at||exits.get(name)?.at),operation:cleanDiagnostic(stop?.operation||row.operation),errorName:cleanDiagnostic(error.name),errorCode:cleanDiagnostic(error.code||cause.code),errorMessage:cleanDiagnostic(error.message||cause.message)};
+    }catch{}
+  }
+  for(let i=lines.length-1;i>=0;i--){
+    const match=lines[i].match(/Paper worker stopped:\s*([A-Z][A-Z0-9_]*)/);
+    if(match)return {at:exits.get(name)?.at||null,errorCode:match[1],errorMessage:'Worker stopped with this recorded reason.'};
+  }
+  return null;
 }
 function launch(name){
   if(stopping)return;
@@ -54,7 +88,7 @@ function stateInfo(name){
 const server=http.createServer((req,res)=>{
   if(req.url!=='/'&&req.url!=='/health'){res.writeHead(404);res.end();return;}
   res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-  res.end(JSON.stringify({mode:'PAPER_WORKER_HOST',realOrdersEnabled:false,uptimeSeconds:Math.floor((Date.now()-started)/1000),migrationLoaded:fs.existsSync(migrationFile),workers:Object.fromEntries(Object.keys(definitions).map(n=>[n,{selected:active.has(n),processRunning:!!children.get(n),lastExit:exits.get(n)||null,lastRecordedStop:stoppedReason(n),checkpoint:stateInfo(n)}]))}));
+  res.end(JSON.stringify({mode:'PAPER_WORKER_HOST',realOrdersEnabled:false,uptimeSeconds:Math.floor((Date.now()-started)/1000),migrationLoaded:fs.existsSync(migrationFile),workers:Object.fromEntries(Object.keys(definitions).map(n=>[n,{selected:active.has(n),processRunning:!!children.get(n),lastExit:exits.get(n)||null,lastRecordedStop:stoppedReason(n),lastFailure:lastFailure(n),checkpoint:stateInfo(n)}]))}));
 });
 server.listen(Number(process.env.PORT)||3000,'0.0.0.0');
 function stop(){if(stopping)return;stopping=true;for(const timer of timers)clearTimeout(timer);for(const child of children.values())child.kill('SIGTERM');server.close();const timer=setInterval(()=>{if(!children.size){clearInterval(timer);process.exit(0);}},100);setTimeout(()=>{for(const child of children.values())child.kill('SIGKILL');process.exit(0);},10000).unref();}
