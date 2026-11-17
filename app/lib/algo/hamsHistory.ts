@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emptyHamsState, nextHamsLots, type HamsState, type HamsPosition, type HamsTrade } from "./hamsFinalPaper";
 import { readHistory } from "./historyReads";
-import { finishNiftyCycleTrade } from "./niftyLossCycle";
+import { balanceAfterNiftyCapitalReset, finishNiftyCycleTrade } from "./niftyLossCycle";
 export type HamsIncident = { id: string; signalId: string; at: string; status: string; reason: string; position?: HamsPosition; acknowledgedAt?: string };
 export type HamsRecord = { id: string; type: string; at: string; value: unknown };
 const key = (t: HamsPosition) => `${t.signalId}:${t.openedAt}`;
@@ -42,6 +42,7 @@ export function hamsRecoveryView(saved: HamsState | null, storedIncidents: HamsI
       for(const t of state.trades as (HamsTrade & {sizing?:{version:number}})[]){
         if(t.ruleVersion===2&&t.sizing?.version===2)finishNiftyCycleTrade(state.rulesV2,t.pnl,t.reason);
       }
+      if(state.rulesV2.capitalReset)state.balance=balanceAfterNiftyCapitalReset(state.rulesV2.lossCycle,state.rulesV2.capitalReset);
       lots=state.rulesV2.nextLots;
     }
     state.nextLots=lots;state.rulesV2.balance=state.balance;state.rulesV2.nextLots=lots;

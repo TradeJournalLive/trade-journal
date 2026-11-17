@@ -8,7 +8,7 @@ const ts = require('typescript');
 function load(name) {
   const file = path.join(__dirname, '../app/lib/algo', `${name}.ts`), compiled = new Module(file, module);
   compiled.require = id => id.startsWith('./') ? load(id.slice(2)) : require(id);
-  compiled._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, file);
+  compiled._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, file);
   return compiled.exports;
 }
 const { niftyFreshSessionAt, niftyLotsForLoss, startNiftyLossCycle, finishNiftyCycleTrade } = load('niftyLossCycle');
@@ -19,7 +19,7 @@ test('worksheet thresholds advance on the exact paisa, not on each losing trade'
   }
 });
 
-test('rollout waits until IST cutoff and a flat account, starts at one, and never rebases history', () => {
+test('rollout waits until IST cutoff and a flat account, funds ten lakh, and retains old trades', () => {
   const s = { position: null, nextLots: 11, balance: 987654, trades: [{ pnl: -12346 }], lossCycleFrom: niftyFreshSessionAt };
   startNiftyLossCycle(s, '2026-11-16T18:29:59.999Z');
   assert.equal(s.nextLots, 11);
@@ -27,12 +27,13 @@ test('rollout waits until IST cutoff and a flat account, starts at one, and neve
   assert.equal(s.lossCycle, undefined);
   s.position = null; startNiftyLossCycle(s, niftyFreshSessionAt);
   assert.equal(s.nextLots, 1);
-  assert.equal(s.balance, 987654);
+  assert.equal(s.balance, 1000000);
+  assert.deepEqual(s.capitalReset, { at: niftyFreshSessionAt, previousBalance: 987654, netAtReset: 0 });
   assert.deepEqual(s.trades, [{ pnl: -12346 }]);
 });
 
 test('net losses and partial profits carry through restart and the next day; a target resets only the deficit', () => {
-  let s = { position: null, nextLots: 1, lossCycleFrom: niftyFreshSessionAt };
+  let s = { position: null, nextLots: 1, balance: 1000000, lossCycleFrom: niftyFreshSessionAt };
   startNiftyLossCycle(s, niftyFreshSessionAt);
   finishNiftyCycleTrade(s, -1299.99, 'PREMIUM_SL'); assert.equal(s.nextLots, 1);
   finishNiftyCycleTrade(s, -0.01, 'TIME_EXIT'); assert.equal(s.nextLots, 2);
@@ -44,6 +45,28 @@ test('net losses and partial profits carry through restart and the next day; a t
   finishNiftyCycleTrade(s, 1300, 'OPPOSITE_BREAKOUT'); assert.equal(s.nextLots, 3);
   finishNiftyCycleTrade(s, 2000, 'PREMIUM_TARGET'); assert.equal(s.nextLots, 1);
   assert.deepEqual(s.lossCycle, { loss: 0, net: -5700, count: 7 });
+});
+
+test('a reset after activation is one-time and HAMS recovery uses only net cash changes since it', () => {
+  const { newLimitState } = load('niftyLimitPaper');
+  const { emptyHamsState } = load('hamsFinalPaper');
+  const { hamsRecoveryView } = load('hamsHistory');
+  const trade = (n, pnl, version) => ({ signalId: `t${n}`, openedAt: `2026-11-17T04:0${n}:00Z`, closedAt: `2026-11-17T04:0${n}:01Z`, pnl, sizing: { version }, ruleVersion: 2, reason: 'TIME_EXIT' });
+  const rulesV2 = newLimitState(niftyFreshSessionAt, 3, false, true);
+  Object.assign(rulesV2, { lossCycleFrom: niftyFreshSessionAt, lossCycle: { loss: 1400, net: -1400, count: 1 }, balance: 1050000, nextLots: 2 });
+  startNiftyLossCycle(rulesV2, '2026-11-17T04:02:00Z');
+  assert.equal(rulesV2.balance, 1000000);
+  assert.equal(rulesV2.nextLots, 2);
+  assert.equal(rulesV2.capitalReset.netAtReset, -1400);
+  rulesV2.balance = 1000199.50;
+  startNiftyLossCycle(rulesV2, '2026-11-17T04:04:00Z');
+  assert.equal(rulesV2.balance, 1000199.50);
+  const saved = { ...emptyHamsState(), balance: rulesV2.balance, rulesV2, trades: [trade(0, 51400, 1), trade(1, -1400, 2)] };
+  const { state } = hamsRecoveryView(saved, [], [{ type: 'TRADE', value: trade(3, 199.50, 2) }]);
+  assert.equal(state.balance, 1000199.50);
+  assert.equal(state.rulesV2.balance, 1000199.50);
+  assert.equal(state.trades.length, 3);
+  assert.equal(state.rulesV2.capitalReset.previousBalance, 1050000);
 });
 
 test('execution uses the planned lots and actual net P&L without changing premium rules', () => {

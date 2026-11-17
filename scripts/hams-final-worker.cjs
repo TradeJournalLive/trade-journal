@@ -209,6 +209,7 @@ function initializeLossCycle() {
   state.rulesV2.lossCycleFrom ??= niftyFreshSessionAt;
   startNiftyLossCycle(state.rulesV2,now());
   state.nextLots=state.rulesV2.nextLots;
+  state.balance=state.rulesV2.balance;
 }
 function tryEntry() {
   if(state.rulesV2){

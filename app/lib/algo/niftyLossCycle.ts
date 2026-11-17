@@ -1,8 +1,11 @@
 export const niftyFreshSessionAt = "2026-11-16T18:30:00.000Z"; // 17 Nov, midnight IST
 const stepPaise = 130_000;
+const freshPaperCapital = 1_000_000;
 
 export type NiftyLossCycle = { loss: number; net: number; count: number };
+export type NiftyCapitalReset = { at: string; previousBalance: number; netAtReset: number };
 type CycleState = { lossCycleFrom?: string; lossCycle?: NiftyLossCycle; nextLots: number; position: unknown };
+type FundedCycleState = CycleState & { balance: number; capitalReset?: NiftyCapitalReset };
 const money = (amount: number) => Math.round(amount * 100) / 100;
 
 export function niftyLotsForLoss(loss: number) {
@@ -14,10 +17,20 @@ export function niftyLotsForLoss(loss: number) {
   return threshold + 1;
 }
 
-export function startNiftyLossCycle(s: CycleState, at: string) {
-  if (s.lossCycle || s.position || !s.lossCycleFrom || !(Date.parse(at) >= Date.parse(s.lossCycleFrom))) return;
-  s.lossCycle = { loss: 0, net: 0, count: 0 };
-  s.nextLots = 1;
+export function startNiftyLossCycle(s: FundedCycleState, at: string) {
+  if (s.position || !s.lossCycleFrom || !(Date.parse(at) >= Date.parse(s.lossCycleFrom))) return;
+  if (!s.lossCycle) {
+    s.lossCycle = { loss: 0, net: 0, count: 0 };
+    s.nextLots = 1;
+  }
+  if (!s.capitalReset) {
+    s.capitalReset = { at, previousBalance: s.balance, netAtReset: s.lossCycle.net };
+    s.balance = freshPaperCapital;
+  }
+}
+
+export function balanceAfterNiftyCapitalReset(cycle: NiftyLossCycle, reset: NiftyCapitalReset) {
+  return money(freshPaperCapital + cycle.net - reset.netAtReset);
 }
 
 export function finishNiftyCycleTrade(s: CycleState, pnl: number, reason: string) {
