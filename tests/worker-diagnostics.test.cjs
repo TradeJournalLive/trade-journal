@@ -19,3 +19,7 @@ test('task latency and outstanding task age distinguish network waiting from sch
 test('failed diagnostics output cannot change a task return value or throw into execution',async()=>{
  const d=createWorkerDiagnostics({emit(){throw Error('disk full');}});assert.doesNotThrow(()=>d.stop('main',new Error('original')));assert.equal(await d.run('test',async()=>42),42);assert.throws(()=>d.sync('journal.save',()=>{throw Error('SQLITE_BUSY');}),/SQLITE_BUSY/);
 });
+test('PostgREST transport details and hints survive with secrets removed',()=>{
+ const f=fixture();f.d.failure('supabase.signal.poll',new Error('SIGNAL_STORAGE_READ_FAILED',{cause:{message:'fetch failed',code:'',details:'ConnectTimeoutError at https://example.test/data?secret=private-webhook',hint:'retry private-access-token'}}));
+ const cause=f.rows[0].error.cause;assert.match(cause.details,/ConnectTimeoutError/);assert.equal(cause.details.includes('?secret='),false);assert.equal(cause.hint,'retry [REDACTED]');
+});

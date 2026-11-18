@@ -62,7 +62,7 @@ function lastFailure(name){
       const row=JSON.parse(lines[i]),stop=row.firstStop||null,error=stop?.error||row.error;
       if(!error)continue;
       const cause=error.cause||{};
-      return {at:cleanDiagnostic(stop?.at||row.at||exits.get(name)?.at),operation:cleanDiagnostic(stop?.operation||row.operation),errorName:cleanDiagnostic(error.name),errorCode:cleanDiagnostic(error.code||cause.code),errorMessage:cleanDiagnostic(error.message||cause.message)};
+      return {at:cleanDiagnostic(stop?.at||row.at||exits.get(name)?.at),operation:cleanDiagnostic(stop?.operation||row.operation),errorName:cleanDiagnostic(error.name),errorCode:cleanDiagnostic(error.code||cause.code),errorMessage:cleanDiagnostic(error.message||cause.message),causeCode:cleanDiagnostic(cause.code),causeMessage:cleanDiagnostic(cause.message)};
     }catch{}
   }
   for(let i=lines.length-1;i>=0;i--){

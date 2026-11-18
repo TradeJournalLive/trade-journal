@@ -7,7 +7,7 @@ function createWorkerDiagnostics({emit,context=()=>({}),secrets=()=>[],clock=Dat
     return text.replace(/https?:\/\/[^\s"'<>]+/g,url=>{try{const u=new URL(url);return u.origin+u.pathname;}catch{return '[URL]';}})
       .replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]').replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g,'[JWT]');
   }
-  function errorInfo(error,depth=0){if(depth>3)return {message:'Cause depth exceeded'};return {name:clean(error?.name||'Error'),code:clean(error?.code??''),message:clean(error?.message??error),stack:error?.stack?clean(error.stack):undefined,...(error?.cause?{cause:errorInfo(error.cause,depth+1)}:{})};}
+  function errorInfo(error,depth=0){if(depth>3)return {message:'Cause depth exceeded'};return {name:clean(error?.name||'Error'),code:clean(error?.code??''),message:clean(error?.message??error),stack:error?.stack?clean(error.stack):undefined,...(error?.details?{details:clean(error.details)}:{}),...(error?.hint?{hint:clean(error.hint)}:{}),...(error?.cause?{cause:errorInfo(error.cause,depth+1)}:{})};}
   function write(type,details={}){try{emit({at:new Date(clock()).toISOString(),type,...context(),...details});}catch{/* Diagnostics must not stop the execution engine. */}}
   function begin(operation,meta={}){
     const id=++sequence,start=mono(),at=clock();active.set(id,{operation,at});last[operation]={startedAt:new Date(at).toISOString()};
