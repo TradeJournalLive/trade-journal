@@ -21,6 +21,7 @@ function load(name) {
 }
 const { buildNiftyOptionsPaper } = load('niftyPaperEngine');
 const { buildNiftyLimitPaper } = load('niftyLimitAdapter');
+const { observeLimitIndex } = load('niftyLimitPaper');
 const { niftyFreshSessionAt, niftyPaperStatus } = load('niftyLossCycle');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__nifty_paper_worker__';
 const indexSymbol = 'NSE:NIFTY50-INDEX';
@@ -81,9 +82,20 @@ function audit(type, data) {
 function event(id, data, action = 'EXIT', timestamp = now()) {
   return { receivedAt: timestamp, signal: { id, strategyId: 'nifty_paper_feed_v1', symbol: 'NSE:NIFTY', action, timeframe: '1', metadata: { niftyPaper: data } }, raw: { automation: { mode: 'PAPER' } } };
 }
+function observePausedPrices(events) {
+  const s=state?.checkpoint?.rulesV2;
+  if(!s)return;
+  for(const e of events){
+    const data=e.signal?.metadata?.niftyPaper,age=Date.now()-Date.parse(data?.timestamp);
+    if(e.signal?.symbol!=='NSE:NIFTY'||data?.kind!=='TICK'||!Number.isFinite(age)||age<0||age>5000)continue;
+    // Record real observations, never evaluate the unknown position's exits.
+    s.ticks=observeLimitIndex(s.ticks,String(data.timestamp),Number(data.price));
+  }
+}
 function advance(events) {
-  if (!guardOwnership()) return;
+  if (!guardOwnership()) { observePausedPrices(events); return; }
   if(state?.recoveryIncidents?.some(i=>!i.acknowledgedAt)) {
+    observePausedPrices(events);
     for(const e of events){
       const control=e.raw?.paperControl;
       if(control?.market==='NIFTY' && typeof control.niftyOptionsEnabled==='boolean') {

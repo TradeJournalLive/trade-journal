@@ -38,3 +38,14 @@ Deploy with new entries paused and HAMS flat. Preserve any explicitly approved
 unverified Current position and its incident history. Restore switches only
 after checking the deployed commit, process health, fresh feed and review
 state. Never infer trade readiness from `processRunning` alone.
+
+## Recovery history follow-up
+
+Review originally froze both trade execution and observed index history. The
+first independent signal could therefore exclude the old position and then
+reject itself against stale history two milliseconds later. Continue storing
+validated FYERS index observations during review, without evaluating the old
+position, its stop, target or P&L. The shared bounded observation function
+retains intra-second high/low evidence and is also used by normal execution.
+Genuine feed gaps remain rejected. Do not replay a historical rejected signal
+or extend its original ten-candle window.

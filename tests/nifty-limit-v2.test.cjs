@@ -1,12 +1,18 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),ts=require('typescript');
 function load(name){const f=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),m=new Module(f,module);m.require=id=>id.startsWith('./')?load(id.slice(2)):require(id);m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);return m.exports;}
-const {newLimitState,markLimitPaper,receiveLimitSignal,limitFill,optionCosts}=load('niftyLimitPaper');
+const {newLimitState,markLimitPaper,receiveLimitSignal,limitFill,optionCosts,observeLimitIndex}=load('niftyLimitPaper');
 const at=n=>new Date(Date.parse('2026-10-29T04:00:00Z')+n*1000).toISOString();
 const quote=(side,t,bid=99,ask=100,size=5000)=>({id:side,side,expiry:'2026-11-03',strike:22500,lotSize:65,at:at(t),bid,ask,bidSize:size,askSize:size});
 const tick=(s,t,spot=22500,bid=99,ask=100)=>markLimitPaper(s,{at:at(t),spot,chain:[quote('CE',t,bid,ask),quote('PE',t,bid,ask)]});
 const signal=(action='BUY',id='buy',t=1,interval=1,high=22510,low=22490)=>({id,action,receivedAt:at(t),closedAt:at(0),high,low,interval});
 function ready(interval=1,filter=true){return tick(newLimitState(at(-60),interval,filter,true),0);}
 function opened(){return tick(receiveLimitSignal(ready(),signal()),2,22511);}
+test('index observation alone is immutable, compacted, bounded and ignores invalid or out-of-order prices',()=>{
+ const before=[{at:at(0),price:22500,high:22500,low:22500}];
+ const next=observeLimitIndex(before,at(.5),22510);assert.equal(before[0].price,22500);assert.equal(next.length,1);assert.equal(next[0].high,22510);assert.equal(next[0].low,22500);
+ assert.deepEqual(observeLimitIndex(next,at(.4),22520),next);assert.deepEqual(observeLimitIndex(next,at(1),NaN),next);
+ const later=observeLimitIndex(next,at(2200),22520);assert.equal(later.length,1);assert.equal(later[0].price,22520);
+});
 test('ATM limit breakout entry, new premium stop/target and ten-lakh capital',()=>{
  const s=opened();assert.equal(s.position.contract.id,'CE');assert.equal(s.position.entry,100);assert.equal(s.position.stop,80);assert.equal(s.position.target,200);assert.equal(s.position.orderType,'LIMIT');assert.equal(s.position.entryLimit,104);assert.equal(s.balance,1000000);
 });

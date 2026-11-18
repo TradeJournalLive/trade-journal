@@ -144,16 +144,21 @@ export function receiveLimitSignal(previous: LimitState, signal: LimitSignal, pr
   }
   s.setup=signal;decision(s,signal,at,"WAITING_FOR_INDEX_BREAK","Prepared ATM side; waiting for the confirmed signal high/low breakout within ten candles.");return s;
 }
+export function observeLimitIndex(ticks: LimitState["ticks"], at: string, spot: number): LimitState["ticks"] {
+  const last=ticks.at(-1);
+  if(!positive(spot)||!Number.isFinite(time(at))||(last&&time(at)<=time(last.at)))return ticks;
+  const next=last&&Math.floor(time(last.at)/1000)===Math.floor(time(at)/1000)
+    ? [...ticks.slice(0,-1),{at,price:spot,high:Math.max(last.high??last.price,spot),low:Math.min(last.low??last.price,spot)}]
+    : [...ticks,{at,price:spot,high:spot,low:spot}];
+  return next.filter(t=>time(at)-time(t.at)<=35*60000);
+}
 export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }, breakoutGraceMs=0, allowLateEntry=false): LimitState {
   const s=structuredClone(previous),at=tick.at,session=istSession(at),last=s.ticks.at(-1);
   if(!positive(tick.spot)||!Number.isFinite(time(at))||(last&&time(at)<=time(last.at)))return s;
   startNiftyLossCycle(s,at);
   // Bound checkpoint size without losing an intra-second pre-delivery breakout.
-  if(!s.emergency?.pending){
-    if(last&&Math.floor(time(last.at)/1000)===Math.floor(time(at)/1000))s.ticks[s.ticks.length-1]={at,price:tick.spot,high:Math.max(last.high??last.price,tick.spot),low:Math.min(last.low??last.price,tick.spot)};
-    else s.ticks.push({at,price:tick.spot,high:tick.spot,low:tick.spot});
-  }
-  s.ticks=s.ticks.filter(t=>time(at)-time(t.at)<=35*60000);
+  if(!s.emergency?.pending)s.ticks=observeLimitIndex(s.ticks,at,tick.spot);
+  else s.ticks=s.ticks.filter(t=>time(at)-time(t.at)<=35*60000);
   let setup=s.setup;
   if(allowLateEntry&&setup?.triggered&&setup.breakoutAt){
     if(time(at)-time(setup.breakoutAt)>20000)setup.lateEntry=true;

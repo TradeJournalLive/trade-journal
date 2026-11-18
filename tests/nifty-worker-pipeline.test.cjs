@@ -10,7 +10,7 @@ function worker(kind){
  const context=vm.createContext({require(id){if(id==='node:fs')return io;if(id==='@next/env')return {loadEnvConfig(){}};if(id==='@supabase/supabase-js')return {createClient:()=>db};if(id==='fyers-api-v3')return {fyersDataSocket:{}};return realRequire(id);},module,__dirname:path.dirname(file),process:{cwd:()=>root,env:{NEXT_PUBLIC_SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service'},argv:[],on(){},exit(){throw Error('Unexpected worker exit');}},Date:Clock,console:{log(){},error(){}},Buffer,URL,AbortSignal,structuredClone,setTimeout,clearTimeout,fetch(){throw Error('Unexpected external request');}});
  let source=fs.readFileSync(file,'utf8').replace(/main\(\)\.catch\([\s\S]*$/,'');
  source+=hams?`\nglobalThis.harness={start(s,contracts){state=s;master=contracts;initialized=true;claimed=true;ack=Date.now();status='READY';let saved;journal={save(v){saved={...v,revision:1};return saved;},read(){return saved;}};},send:onMessage,poll,publish,startRefresh,configureRefresh(fn){connection={accessToken:'original'};credentials=fn;api=async()=>({data:{optionsChain:[]}});socket={isConnected:()=>true,subscribe(){}};},get:()=>({state,decisions,incidents,status,stopped,refreshing,owned:owned(),executionAllowed:executionAllowed(),ack,publishFailures,publishRetryAt}),pulse:tryEntry,heartbeat(){ack=Date.now();}};`:`\nglobalThis.harness={start(s,contracts){state={checkpoint:s,startedAt:new Date(Date.now()).toISOString(),endsAt:'2026-12-01T00:00:00Z'};master=contracts;advance([]);},send:marketTick,poll,get:()=>({state:book.checkpoint,decisions:book.checkpoint.decisions,status})};`;
- if(!hams) source+=`\nglobalThis.harness.boot=()=>{connect=async()=>{throw Error('REACHED_FEED');};return main();};globalThis.harness.lease=()=>lease;Object.assign(globalThis.harness,{startPoll,startPublish,startLedgerFlush,publish,guardOwnership,paperStatus:()=>paperStatus(state),setLease(at){lease=at;},storage:()=>({failed,polling,publishing,pollFailures,publishFailures,feedAt,pollOffset,outer:state})});`;
+ if(!hams) source+=`\nglobalThis.harness.boot=()=>{connect=async()=>{throw Error('REACHED_FEED');};return main();};globalThis.harness.lease=()=>lease;Object.assign(globalThis.harness,{startPoll,startPublish,startLedgerFlush,publish,guardOwnership,quarantine(at){quarantineInterruptedPosition(state,at);},paperStatus:()=>paperStatus(state),setLease(at){lease=at;},storage:()=>({failed,polling,publishing,pollFailures,publishFailures,feedAt,pollOffset,outer:state})});`;
  vm.runInContext(source,context,{filename:file});
  return {...context.harness,setTime(n){clock=base+n*1000;},setRows(v){rows=v;},setPollResult(v){pollResult=v;},setPublishResults(write,read){writeResult=write;readResult=read;},audit,ranges};
 }
@@ -158,4 +158,24 @@ test('NIFTY cannot continue verified trade processing after a prolonged ownershi
 test('NIFTY stops on confirmed ownership transfer and does not process another fill',async()=>{
  const w=openCurrent();w.setTime(5);w.setPublishResults({data:[],error:null},{data:{received_at:at(4),worker_id:'another-worker'},error:null});
  await w.startPublish();assert.equal(w.storage().failed,true);price(w,6,'CE',{bid_price:70,ask_price:71,bid_size:5000,ask_size:5000});assert.equal(w.get().state.trades.length,0);
+});
+for(const alreadyBroken of [false,true])test(`NIFTY records index history during review and accepts the first ${alreadyBroken?'verified late breakout':'future breakout'}`,async()=>{
+ const w=openCurrent();w.quarantine(at(0));
+ for(let n=1;n<=13;n++){
+  w.setLease(at(n));price(w,n,'NSE:NIFTY50-INDEX',{ltp:alreadyBroken&&n>10?22511:22500});
+  price(w,n+.1,'CE',{bid_price:70,ask_price:71,bid_size:5000,ask_size:5000});
+ }
+ assert.equal(w.get().state.trades.length,0);assert.equal(w.get().state.position.signalId,'storage-open');
+ const before=w.storage().outer.checkpoint.rulesV2;assert.equal(before.ticks.at(-1).at,at(13.1));assert.equal(before.position.stop,80);assert.equal(before.balance,1000000);
+ const sig={id:'after-review',strategyId:'nifty',symbol:'NSE:NIFTY',action:'BUY',timeframe:'1',metadata:{niftyPaper:{kind:'SIGNAL',closedAt:at(10),high:22510,low:22490}}};
+ w.setTime(13.2);w.setRows([{id:'after-review-row',received_at:at(13),signal:sig,raw_payload:{automation:{mode:'PAPER'}}}]);await w.poll();
+ assert.equal(w.storage().outer.recoveryIncidents[0].status,'EXCLUDED_UNVERIFIED');assert.equal(w.get().decisions.at(-1).status,alreadyBroken?'LATE_ENTRY_PENDING':'WAITING_FOR_INDEX_BREAK');
+ price(w,14,'CE',{bid_price:99,ask_price:100,bid_size:5000,ask_size:5000});price(w,14.1,'NSE:NIFTY50-INDEX',{ltp:22511});
+ assert.equal(w.get().state.position.signalId,'after-review');assert.equal(w.get().state.position.entry,100);assert.equal(w.get().state.trades.length,0);
+});
+test('NIFTY still rejects the first independent signal if no fresh prices actually arrived during review',async()=>{
+ const w=openCurrent();w.quarantine(at(0));w.setLease(at(13));w.setTime(13);
+ const signal={id:'real-feed-gap',strategyId:'nifty',symbol:'NSE:NIFTY',action:'BUY',timeframe:'1',metadata:{niftyPaper:{kind:'SIGNAL',closedAt:at(10),high:22510,low:22490}}};
+ w.setRows([{id:'real-gap-row',received_at:at(13),signal,raw_payload:{automation:{mode:'PAPER'}}}]);await w.poll();
+ assert.equal(w.get().decisions.at(-1).status,'UNVERIFIABLE_BREAKOUT_HISTORY');assert.equal(w.get().state.position,null);assert.equal(w.get().state.trades.length,0);
 });
