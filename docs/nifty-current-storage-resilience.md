@@ -49,3 +49,15 @@ position, its stop, target or P&L. The shared bounded observation function
 retains intra-second high/low evidence and is also used by normal execution.
 Genuine feed gaps remain rejected. Do not replay a historical rejected signal
 or extend its original ten-candle window.
+
+## Optional market logging
+
+Full option-chain tick dumps previously grew without bounds and were written
+before evaluating each price update. A diagnostic write failure could therefore
+interrupt execution. New market diagnostics sample at most once per second,
+retain only the index and active option's best quote, and stop writing at a
+16 MiB daily or 128 MiB total budget. A failure disables only these optional
+samples. They are not a complete price replay source. Entry, trade, decision,
+incident and checkpoint storage remain separate; required durable-write
+failures are not ignored. Existing log files are never deleted or truncated.
+Historical storage exhaustion must still be remediated before deployment.

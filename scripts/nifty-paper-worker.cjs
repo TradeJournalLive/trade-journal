@@ -13,6 +13,7 @@ const { readDepth, withDepth } = require('./nifty-depth.cjs');
 const { quarantineInterruptedPosition, recoverOnNextSignal } = require('./nifty-independent-recovery.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
 const { reconcileHamsPublish } = require('./hams-journal.cjs');
+const { createTickAudit } = require('./nifty-tick-audit.cjs');
 function load(name) {
   const file = path.resolve(__dirname, `../app/lib/algo/${name}.ts`), copy = new Module(file, module);
   copy.require = id => id.startsWith('./') ? load(id.slice(2)) : require(id);
@@ -58,6 +59,7 @@ let queue = Promise.resolve();
 const depths = new Map();
 const persistedTrades = new Set();
 const persistedDecisions = new Map();
+const auditTick = createTickAudit({ directory, io: fs, clock: Date.now, onDisabled: value => console.error(JSON.stringify({ at: now(), operation: 'optional.tick.audit', ...value })) });
 const diagnostics = createWorkerDiagnostics({
   emit: value => { audit('DIAGNOSTIC', value); if (['TASK_FAILED', 'ERROR', 'STOP_REQUESTED'].includes(value.type)) console.error(JSON.stringify(value)); },
   secrets: () => [env.PAPER_WEBHOOK_SECRET, env.SUPABASE_SERVICE_ROLE_KEY, env.ALGO_CONNECTION_ENCRYPTION_KEY, env.PAPER_WORKER_ACCESS_KEY, connection?.accessToken],
@@ -183,7 +185,7 @@ function marketTick(message) {
     const nearestExpiry = master.map(c => c.expiry).sort()[0];
     const contracts = master.filter(c => (c.expiry === nearestExpiry && Math.abs(c.strike - index.price) <= 700) || c.id === book?.position?.contract.id).map(c => ({ ...c, ...(withDepth(quotes.get(c.id), depths.get(c.id), timestampISO) || { bid: 0, ask: 0, timestamp: '' }) }));
     const tick = { kind: 'TICK', executionVersion: 2, indexSymbol: 'NSE:NIFTY', timestamp: timestampISO, price: index.price, nearestExpiry, chainComplete: true, previous15m: trail, contracts };
-    audit('TICK', tick);
+    auditTick(tick, book?.position?.contract.id);
     advance([event(`tick-${crypto.randomUUID()}`, tick, 'EXIT', timestampISO)]);
   }
 }
