@@ -82,13 +82,14 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save the change."); }
     finally { setBusy(false); }
   }
-  const status = !value ? "Checking worker…" : !value.workerOnline ? "Worker offline" : fresh ? "Worker online · live data" : "Worker online · awaiting live data";
+  const status = !value ? "Checking worker…" : !value.workerOnline ? "Worker offline" : d?.reviewRequired ? "Worker online · position monitoring paused" : d?.workerStatus === "OWNERSHIP_UNCONFIRMED" ? "Worker online · ownership unconfirmed" : fresh ? "Worker online · live data" : "Worker online · awaiting live data";
   return <section className="space-y-4" aria-label={names[strategy]}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-lg font-semibold">{names[strategy]}</h2><p className="text-sm text-slate-600">{strategy === "current" ? "1-minute" : "3-minute"} signals · Paper only</p></div>
       <div className="flex flex-wrap items-center gap-4"><button type="button" className="algo-action secondary" onClick={() => void refresh(true)}>Refresh</button><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" role="switch" aria-label={`${names[strategy]} paper entries`} checked={d?.enabled ?? false} disabled={!d || busy || (!d.enabled && (!value?.workerOnline || d.reviewRequired))} onChange={() => void post(strategy === "current" ? { market: "NIFTY", niftyOptionsEnabled: !d?.enabled, statusOnly: true } : { enabled: !d?.enabled })} />{busy ? "Updating…" : d?.enabled ? "Entries armed" : "Entries off"}</label></div>
     </div>
-    <div role="status" className="flex flex-wrap items-center gap-2 border-y border-slate-200 py-2.5 text-sm"><span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${value?.workerOnline ? "bg-emerald-600" : "bg-slate-400"}`} /><strong>{status}</strong>{value?.workerOnline === false && d && <span className="text-slate-600">· {wording(d.workerStatus)}</span>}</div>
+    <div role="status" className="flex flex-wrap items-center gap-2 border-y border-slate-200 py-2.5 text-sm"><span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${d?.reviewRequired || d?.workerStatus === "OWNERSHIP_UNCONFIRMED" ? "bg-amber-500" : value?.workerOnline ? "bg-emerald-600" : "bg-slate-400"}`} /><strong>{status}</strong>{value?.workerOnline === false && d && <span className="text-slate-600">· {wording(d.workerStatus)}</span>}</div>
+    {d?.workerStatus === "SIGNAL_STORAGE_RETRY" && <p role="alert" className="text-sm text-amber-700">Signal database read failed; retrying. New alerts may be delayed.</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {d?.pendingExit && <p role="alert" className="text-sm text-red-700">Exit awaiting verified quote · {wording(d.pendingExit)}</p>}
     {d?.reviewRequired && <div role="alert" className="flex flex-wrap items-center gap-3 border-l-2 border-amber-500 pl-3 text-sm"><strong>Unverified position needs review</strong>{strategy === "hams" && <button type="button" className="algo-action secondary" disabled={busy || !value?.workerOnline} onClick={() => { if(window.confirm("Exclude the unverified result and keep its audit record?")) void post({ action: "acknowledgeRecovery", excludeUnverified: true }); }}>Exclude and continue</button>}</div>}
@@ -99,7 +100,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
       <div><dt className="text-xs text-slate-600">Available paper cash</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{display(d?.cash)}</dd></div>
     </dl>
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 text-sm"><h3 className="font-semibold">Open position</h3>{!p && <span className="text-slate-600">{d ? "No open position" : "Awaiting worker status"}</span>}
-      {p && <div className="w-full space-y-1"><p className="font-medium">{p.contract} · {p.lots} lots · {p.quantity} qty{p.lateEntry ? " · Entered late" : ""}</p><p className="flex flex-wrap gap-x-4 text-xs text-slate-600"><span>Entry {display(p.entry)}</span><span>Stop {display(p.stop)}</span><span>Target {display(p.target)}</span><span>Capital {display(p.entry*p.quantity)}</span><span>Open P&amp;L {display(fresh && p.mark != null ? (p.mark-p.entry)*p.quantity : null)}</span></p></div>}
+      {p && <div className="w-full space-y-1"><p className="font-medium">{p.contract} · {p.lots} lots · {p.quantity} qty{p.lateEntry ? " · Entered late" : ""}</p><p className="flex flex-wrap gap-x-4 text-xs text-slate-600"><span>Entry {display(p.entry)}</span><span>Stop {display(p.stop)}</span><span>Target {display(p.target)}</span><span>Capital {display(p.entry*p.quantity)}</span><span>Open P&amp;L {display(fresh && !d?.reviewRequired && p.mark != null ? (p.mark-p.entry)*p.quantity : null)}</span></p></div>}
     </div>
     <SessionHistory strategy={strategy} />
   </section>;
