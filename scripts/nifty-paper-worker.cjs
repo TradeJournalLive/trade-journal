@@ -217,7 +217,8 @@ function summary(value = state) {
 function paperStatus(value) {
   const s = value.checkpoint?.rulesV2;
   const review = Boolean(value.recoveryIncidents?.some(i=>!i.acknowledgedAt));
-  const result = s ? niftyPaperStatus(s, review ? 'RECOVERY_REVIEW_REQUIRED' : !owned() ? 'OWNERSHIP_UNCONFIRMED' : pollFailures ? 'SIGNAL_STORAGE_RETRY' : publishFailures ? 'SNAPSHOT_STORAGE_RETRY' : status, feedAt, review) : null;
+  const entries = (value.recoveryIncidents || []).flatMap(i => i.position ? [i.position] : []);
+  const result = s ? niftyPaperStatus(s, review ? 'RECOVERY_REVIEW_REQUIRED' : !owned() ? 'OWNERSHIP_UNCONFIRMED' : pollFailures ? 'SIGNAL_STORAGE_RETRY' : publishFailures ? 'SNAPSHOT_STORAGE_RETRY' : status, feedAt, review, value.checkpoint.trades, entries) : null;
   if (result?.position && review) result.position.mark = null;
   return result;
 }

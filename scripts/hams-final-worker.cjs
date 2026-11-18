@@ -118,7 +118,7 @@ async function publish() {
     initializeLossCycle();
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
-    const dashboard=state.rulesV2?niftyPaperStatus(state.rulesV2,snapshot.workerStatus,feedAt,reviewRequired()):null;
+    const dashboard=state.rulesV2?niftyPaperStatus(state.rulesV2,snapshot.workerStatus,feedAt,reviewRequired(),state.trades,incidents.flatMap(i=>i.position?[i.position]:[])):null;
     let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot),dashboard})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
     catch(error){r={error};}
     const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
