@@ -4,6 +4,7 @@ import { accountFetch } from "../lib/accountFetch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import NiftyPaperWorkspace from "./NiftyPaperWorkspace";
+import dynamic from "next/dynamic";
 import FyersConnection from "./FyersConnection";
 import OptionsChain from "./OptionsChain";
 import BrokerReadinessAlert from "./BrokerReadinessAlert";
@@ -11,6 +12,8 @@ import GoogleSheetsConnection from "./GoogleSheetsConnection";
 import HistoryDatePicker from "./HistoryDatePicker";
 import SignalExecutionTable from "./SignalExecutionTable";
 import { signalGroup, signalGroups } from "../lib/algo/signalGroups";
+
+const LiveTestingWorkspace = dynamic(() => import("./LiveTestingWorkspace"), { loading: () => <p role="status" className="text-sm text-slate-500">Loading testing workspace...</p> });
 
 type AlgoSection =
   | "dashboard"
@@ -237,7 +240,7 @@ const allNavGroups: NavGroup[] = [
 ];
 
 const navGroups: NavGroup[] = [
-  { label: "Trading", items: [{ label: "Paper Trading", id: "paper" }, { label: "Premium Calculator", id: "calculator" }] },
+  { label: "Trading", items: [{ label: "Paper Trading", id: "paper" }, { label: "Live Testing", id: "live" }, { label: "Premium Calculator", id: "calculator" }] },
   { label: "Connections & Data", items: [
     { label: "Signals · TradingView", id: "tradingview" },
     { label: "Market Data · FYERS", id: "fyers" },
@@ -300,10 +303,12 @@ const initialDhanOrderTicket: DhanOrderTicket = {
 
 export default function AlgoTradingPanel() {
   const [activeSection, setActiveSection] = useState<AlgoSection>("paper");
+  const [sectionReady, setSectionReady] = useState(false);
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("section");
     const item = navGroups.flatMap(group => group.items).find(item => item.id === requested);
     if (item) setActiveSection(item.id);
+    setSectionReady(true);
   }, []);
   const [status, setStatus] = useState("");
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -857,10 +862,6 @@ export default function AlgoTradingPanel() {
       <div className="grid gap-4 xl:grid-cols-2"><div className="algo-os-card"><div className="algo-card-head"><h3>Paper Positions</h3><span className="algo-pill pending">{paperPositions.length} open</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Security ID</th><th>Segment</th><th>Net Qty</th><th>Avg Price</th><th>Value</th></tr></thead><tbody>{paperPositions.length ? paperPositions.map((position) => <tr key={`${position.exchangeSegment}-${position.securityId}`}><td>{position.securityId}</td><td>{position.exchangeSegment}</td><td>{position.netQuantity}</td><td>₹{position.avgPrice.toFixed(2)}</td><td>₹{position.investedValue.toLocaleString("en-IN")}</td></tr>) : <tr><td colSpan={5}>No paper positions yet.</td></tr>}</tbody></table></div></div><div className="algo-os-card"><div className="algo-card-head"><h3>Paper Orders</h3><span className="algo-pill pending">{paperOrders.length} filled</span></div><div className="overflow-auto"><table className="algo-os-table"><thead><tr><th>Order</th><th>Side</th><th>Security</th><th>Qty</th><th>Fill</th><th>Value</th></tr></thead><tbody>{paperOrders.length ? paperOrders.map((order) => <tr key={order.id}><td>{order.id}</td><td>{order.side}</td><td>{order.securityId}</td><td>{order.quantity}</td><td>₹{order.fillPrice.toFixed(2)}</td><td>₹{order.value.toLocaleString("en-IN")}</td></tr>) : <tr><td colSpan={6}>No paper orders yet.</td></tr>}</tbody></table></div></div></div></div>;
   }
 
-  function renderLive() {
-    return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="algo-os-card"><h3>Live Strategies</h3><p>Native, TradingView and API signals all normalize to the same Signal object before risk and execution.</p><div className="algo-lifecycle-line">{["Draft", "Backtested", "Paper", "Ready", "Live"].map((item, index) => <span key={item} className={index === 0 || (paperModeActive && index === 2) ? "active" : ""}>{item}</span>)}</div><button type="button" onClick={() => setStatus("Live deployment blocked until Dhan is connected and strategy passes risk validation.")} className="algo-action secondary wide">Check live readiness</button></div><div className="algo-os-card"><h3>Execution Guardrails</h3><div className="algo-rule-list"><div><span>Idempotency</span><b>Required</b></div><div><span>Risk validation</span><b>Before order</b></div><div><span>Broker status</span><b>Dhan pending</b></div><div><span>Kill switch</span><b>{killSwitchActive ? "Active" : "Ready"}</b></div></div></div></div>;
-  }
-
   function renderTemplates() {
     return <div className="algo-os-grid three">{["EMA Crossover", "VWAP Pullback", "Opening Range", "Iron Condor", "Straddle Breakout", "Supertrend Trail"].map((name) => <div key={name} className="algo-os-card"><h3>{name}</h3><p>Start with a reusable template, then save as your own strategy version.</p><button type="button" onClick={() => { setSavedStrategyName(name); setBuilderOpen(true); }} className="algo-action secondary wide">Use template</button></div>)}</div>;
   }
@@ -1073,7 +1074,7 @@ export default function AlgoTradingPanel() {
     if (activeSection === "strategies") return renderStrategies();
     if (activeSection === "backtests") return renderBacktests();
     if (activeSection === "paper") return <NiftyPaperWorkspace />;
-    if (activeSection === "live") return renderLive();
+    if (activeSection === "live") return <LiveTestingWorkspace />;
     if (activeSection === "templates") return renderTemplates();
     if (activeSection === "positions") return renderPositions();
     if (activeSection === "orders") return renderOrders();
@@ -1105,7 +1106,7 @@ export default function AlgoTradingPanel() {
           <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">{navGroups.map((group) => <div key={group.label} className="mb-4"><div className="algo-nav-label">{group.label}</div><div className="space-y-1">{group.items.map((item) => <button key={item.id} type="button" onClick={() => selectSection(item.id)} className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left font-bold transition ${activeSection === item.id ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-white/8 hover:text-white"}`}><span>{item.label}</span>{activeSection === item.id ? <span className="text-[10px]">●</span> : null}</button>)}</div></div>)}</nav>
           <div className="border-t border-white/10 p-4 text-[11px] text-slate-400">NIFTY · Delta BTC</div>
         </aside>
-        <div className="min-w-0 flex-1"><header className="sticky top-0 z-20 border-b border-slate-200 bg-white"><div className="flex min-h-[60px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7"><div className="flex items-center gap-4 text-sm font-bold"><Link href="/dashboard" className="text-slate-500 hover:text-slate-900">Journal</Link><Link href="/dashboard/algo" className="border-b-2 border-blue-600 py-2 text-blue-700">Algo Trading</Link></div><span className="text-xs font-bold text-emerald-700">PAPER ONLY</span></div></header><section className="space-y-5 px-4 py-6 lg:px-7"><h1 className="text-2xl font-bold">{sectionTitle}</h1><BrokerReadinessAlert onConnect={() => selectSection("fyers")} />{status && <div role="status" className="border-l-2 border-blue-500 bg-blue-50 px-4 py-3 text-sm">{status}</div>}{renderSection()}</section></div>
+        <div className="min-w-0 flex-1"><header className="sticky top-0 z-20 border-b border-slate-200 bg-white"><div className="flex min-h-[60px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7"><div className="flex items-center gap-4 text-sm font-bold"><Link href="/dashboard" className="text-slate-500 hover:text-slate-900">Journal</Link><Link href="/dashboard/algo" className="border-b-2 border-blue-600 py-2 text-blue-700">Algo Trading</Link></div><span className="text-xs font-bold text-emerald-700">{activeSection === "live" ? "REAL ORDERS DISABLED" : "PAPER ONLY"}</span></div></header><section className="space-y-5 px-4 py-6 lg:px-7"><h1 className="text-2xl font-bold">{sectionTitle}</h1>{sectionReady && activeSection !== "live" && <BrokerReadinessAlert onConnect={() => selectSection("fyers")} />}{status && <div role="status" className="border-l-2 border-blue-500 bg-blue-50 px-4 py-3 text-sm">{status}</div>}{sectionReady ? renderSection() : <p role="status" className="text-sm text-slate-500">Loading workspace...</p>}</section></div>
       </div>
       {builderOpen ? <div className="algo-modal-backdrop"><div className="algo-modal"><div className="algo-card-head"><div><h3>Create strategy</h3><p>Saved as draft first. Backtest before deployment.</p></div><button type="button" onClick={() => setBuilderOpen(false)}>×</button></div><div className="algo-form-grid"><label>Strategy name<input value={savedStrategyName} onChange={(event) => setSavedStrategyName(event.target.value)} /></label><label>Instrument<select><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option></select></label><label>Timeframe<select><option>5 Minutes</option><option>15 Minutes</option><option>1 Hour</option></select></label><label>Entry action<select><option>Buy ATM CE</option><option>Buy ATM PE</option><option>Sell option spread</option></select></label></div><label className="algo-textarea-label">Rules<textarea defaultValue="EMA(9) crosses above EMA(21) AND RSI(14) > 55 AND Close > VWAP" /></label><div className="algo-modal-actions"><button type="button" onClick={() => setBuilderOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={saveStrategy} className="algo-action primary">Save draft</button></div></div></div> : null}
       {brokerOpen ? <div className="algo-modal-backdrop"><div className="algo-modal small"><div className="algo-card-head"><div><h3>Connect Dhan</h3><p>Runs a read-only test against Dhan profile, funds, positions and orders. No trade is placed.</p></div><button type="button" onClick={() => setBrokerOpen(false)}>×</button></div><div className="algo-form-grid single"><label>Client ID<input value={dhanClientId} onChange={(event) => setDhanClientId(event.target.value)} placeholder="Dhan client ID" /></label><label>Access token<input value={dhanAccessToken} onChange={(event) => setDhanAccessToken(event.target.value)} placeholder="Paste current Dhan access token" type="password" /></label></div>{dhanTestResult?.error ? <div className="algo-alert-box"><b>Last test failed</b><span>{dhanTestResult.error}</span></div> : null}<div className="algo-modal-actions"><button type="button" onClick={() => setBrokerOpen(false)} className="algo-action secondary">Cancel</button><button type="button" onClick={connectDhan} className="algo-action primary" disabled={dhanTesting}>{dhanTesting ? "Testing..." : "Test connection"}</button></div></div></div> : null}
