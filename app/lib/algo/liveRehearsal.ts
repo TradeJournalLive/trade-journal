@@ -39,14 +39,15 @@ export function buildRehearsalPlan(draft: RehearsalDraft, market: RehearsalMarke
   const capital = quantity !== null && validPrices && validCharges ? money(draft.limit * quantity + draft.estimatedCharges) : null;
   const plannedLoss = quantity !== null && validPrices && validCharges ? money((draft.limit - draft.stop) * quantity + draft.estimatedCharges) : null;
   const plannedProfit = quantity !== null && validPrices && validCharges ? money((draft.target - draft.limit) * quantity - draft.estimatedCharges) : null;
-  const age = now - marketTimestamp(market?.timestamp ?? null);
+  const quoteAt = marketTimestamp(market?.timestamp ?? null), age = now - quoteAt;
+  const dateOnly = Number.isFinite(quoteAt) && quoteAt % 86400000 === 0;
   const validBook = market?.status === "ok" && finite(market.bid ?? NaN) && finite(market.ask ?? NaN) && Number(market.bid) > 0 && Number(market.ask) >= Number(market.bid);
   const remainingLossBudget = finite(draft.dailyLossLimit) && finite(draft.dayNet) ? money(Math.max(0, draft.dailyLossLimit + Math.min(0, draft.dayNet))) : null;
   check("INPUTS", "Numeric values", validInputs, validInputs ? "Values are finite and within rehearsal bounds." : "Enter valid numbers in every numeric field.");
   check("CONTRACT", "NIFTY option contract", /^NSE:NIFTY[A-Z0-9]+(?:CE|PE)$/.test(draft.symbol), "NSE NIFTY CE or PE contract required.");
   check("MARKET_MATCH", "Market snapshot", market?.symbol === draft.symbol, "The snapshot must match this exact contract.");
   check("LOT_SIZE", "Exchange lot size", validSize, validSize ? `${size} units per lot from the contract master.` : "Load a verified contract size; no fallback lot size is used.");
-  check("FRESH_QUOTE", "Quote freshness", Number.isFinite(age) && age >= 0 && age <= 5000, Number.isFinite(age) ? `Snapshot age ${Math.max(0, Math.round(age / 1000))}s; maximum 5s, future quotes rejected.` : "A dated market timestamp is required.");
+  check("FRESH_QUOTE", "Quote freshness", !dateOnly && Number.isFinite(age) && age >= 0 && age <= 5000, dateOnly ? "FYERS returned a midnight timestamp. Tick freshness is unverified; timestamped streaming data is required." : Number.isFinite(age) ? `Snapshot age ${Math.max(0, Math.round(age / 1000))}s; maximum 5s, future quotes rejected.` : "A dated market timestamp is required.");
   check("BOOK", "Bid and ask", Boolean(validBook), "Both prices must be positive and the book cannot be crossed.");
   check("SPREAD", "Spread limit", Boolean(validBook) && finite(draft.maxSpread) && draft.maxSpread >= 0 && Number(market?.ask) - Number(market?.bid) <= draft.maxSpread + 1e-8, "Ask minus bid must stay within the draft spread limit.");
   check("LIMIT_PRICE", "Limit slippage", Boolean(validBook) && finite(draft.maxSlippage) && draft.maxSlippage >= 0 && draft.limit > 0 && draft.limit <= Number(market?.ask) + draft.maxSlippage + 1e-8, "Buy limit cannot exceed ask plus the draft slippage allowance. A lower limit may remain unfilled.");

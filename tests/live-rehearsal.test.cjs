@@ -36,6 +36,11 @@ test('contract, quote and exchange size must match with no hard-coded size fallb
   blocked(build({ ...draft(), symbol: 'NSE:BANKNIFTY26NOVCE' }, quote(), now), 'CONTRACT');
   assert.equal(build(draft(), { ...quote(), lotSize: 75 }, now).quantity, 75);
 });
+test('midnight/date-only REST timestamps cannot masquerade as fresh streaming ticks', () => {
+  const midnight = Date.parse('2026-11-19T00:00:00Z');
+  const p = build(draft(), { ...quote(), timestamp: midnight/1000 }, midnight + 1000);
+  blocked(p, 'FRESH_QUOTE'); assert.match(p.checks.find(c => c.code === 'FRESH_QUOTE').detail, /midnight timestamp/);
+});
 test('invalid, crossed and wide books cannot validate an order plan', () => {
   for (const change of [{bid: null},{ask: null},{bid: 101},{ask: 0},{status:'error'}]) blocked(build(draft(), { ...quote(), ...change }, now), 'BOOK');
   blocked(build({ ...draft(), maxSpread: 0.5 }, quote(), now), 'SPREAD');

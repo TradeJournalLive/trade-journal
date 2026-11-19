@@ -94,6 +94,7 @@ export default function LiveTestingWorkspace() {
     return <label className="min-w-0 text-xs font-medium text-slate-600" key={key}>{label}<input type="number" aria-label={label} value={Number.isNaN(draft[key]) ? "" : draft[key]} min={options.min} step={options.step ?? "0.01"} onChange={e => change(key, e.target.value)} className={fieldClass} /></label>;
   }
   const gaps = [
+    ["Trusted option tick timestamps", "Streaming verification pending"],
     ["Broker order permissions & static IP", "Not verified"],
     ["Actual funds & margin", "Not queried"],
     ["Broker-side SL / target protection", "Not verified"],
