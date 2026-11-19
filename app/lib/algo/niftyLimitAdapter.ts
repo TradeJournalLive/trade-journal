@@ -23,7 +23,7 @@ export function buildNiftyLimitPaper(events: PaperEvent[], now: string, initial?
   const legacy=initial?.trades.filter(t=>(t as {ruleVersion?:number}).ruleVersion!==2)??[];
   const mapPosition=(p:NonNullable<LimitState["position"]>)=>({...p,indexSymbol:"NSE:NIFTY",contract:{...p.contract,timestamp:p.contract.at},initialLots:p.lots,initialQuantity:p.quantity,realizedPnl:0,entryFill:{price:p.entry,initialAsk:p.entryLimit-4,slippage:p.entry-(p.entryLimit-4),fills:[{price:p.entry,quantity:p.quantity}]}});
   const position=s.position?mapPosition(s.position):null;
-  const trades=[...legacy,...s.trades.map(t=>({...mapPosition(t),exit:t.exit,closedAt:t.closedAt,reason:t.reason,pnl:t.pnl,grossPnl:t.grossPnl,costs:t.costs,exitLimit:t.exitLimit,exitOrderType:t.exitOrderType}))];
+  const trades=[...legacy,...s.trades.map(t=>({...mapPosition(t),exit:t.exit,closedAt:t.closedAt,reason:t.reason,pnl:t.pnl,grossPnl:t.grossPnl,costs:t.costs,exitLimit:t.exitLimit,exitOrderType:t.exitOrderType,reconstruction:t.reconstruction}))];
   const lastTickAt=s.ticks.at(-1)?.at??null;
   const setup=s.setup?{...s.setup,indexSymbol:"NSE:NIFTY",intervalMinutes:s.interval}:null;
   const size={lots:s.nextLots,consecutiveLosses:0};

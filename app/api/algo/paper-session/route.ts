@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       const visible = ((data as unknown as { trade: SessionTrade | null }[] | null) ?? []).flatMap(({ trade: t }) =>
         t?.sizing?.version === 2 && Date.parse(t.openedAt) >= Date.parse(niftyFreshSessionAt) ? [{
           id: t.signalId, openedAt: t.openedAt, closedAt: t.closedAt, contract: t.contract.id, lots: t.lots,
-          entry: t.entry, exit: t.exit, charges: t.costs.total, pnl: t.pnl, reason: t.reason
+          entry: t.entry, exit: t.exit, charges: t.costs.total, pnl: t.pnl, reason: t.reason, reconstruction: t.reconstruction ?? null
         }] : []);
       return reply({ trades: visible });
     }

@@ -12,7 +12,7 @@ const PaperRecoveryReview = dynamic(() => import("./PaperRecoveryReview"));
 const names = { current: "NIFTY Current", hams: "NIFTY HAMS Final" } as const;
 type Strategy = keyof typeof names;
 type Snapshot = { dashboard: NiftyPaperStatus | null; workerOnline: boolean; heartbeatAt: string | null };
-type Trade = { id: string; openedAt: string; closedAt: string; contract: string; lots: number; entry: number; exit: number; pnl: number; charges: number; reason: string };
+type Trade = { id: string; openedAt: string; closedAt: string; contract: string; lots: number; entry: number; exit: number; pnl: number; charges: number; reason: string; reconstruction?: {fillVerified:false} | null };
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
 const display = (n: number | null | undefined) => n == null ? "—" : money.format(n);
 const wording = (reason: string) => reason.toLowerCase().replaceAll("_", " ");
@@ -36,7 +36,7 @@ function SessionHistory({ strategy }: { strategy: Strategy }) {
     if (!open || trades || error) return;
     const controller = new AbortController();
     void read(`/api/algo/paper-session?strategy=${strategy}&view=trades`, controller.signal)
-      .then(body => { if (!controller.signal.aborted) setTrades(body.trades); })
+      .then(body => { if (!controller.signal.aborted) setTrades(body.trades.map((t:Trade)=>({...t,reason:t.reconstruction?"RECONSTRUCTED_ESTIMATE_"+t.reason:t.reason}))); })
       .catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [strategy, open, generation, trades, error]);
@@ -44,6 +44,7 @@ function SessionHistory({ strategy }: { strategy: Strategy }) {
     <summary className="cursor-pointer py-3 text-sm font-semibold">Closed trades</summary>
     {open && <div className="space-y-2 pb-3">
       <div className="flex justify-between gap-3 text-xs text-slate-600"><span>Latest 50 · from {istDay(niftyFreshSessionAt)}</span><button type="button" className="underline" disabled={!trades && !error} onClick={() => { setError(""); setTrades(null); setGeneration(n=>n+1); }}>Refresh trades</button></div>
+      {trades?.some(t=>t.reconstruction)&&<p className="text-xs text-amber-800">Includes user-approved candle-reconstructed estimates, not verified bid/depth fills.</p>}
       {error ? <p role="alert">{error}</p> : !trades ? <p role="status">Loading trades…</p> : !trades.length ? <p className="text-sm text-slate-600">No closed trades in this session yet.</p> :
         <div className="overflow-x-auto"><table className="algo-os-table"><thead><tr><th>Contract</th><th>Lots</th><th>Entry · IST</th><th>Exit · IST</th><th>Entry price</th><th>Exit price</th><th>Charges</th><th>Net P&amp;L</th><th>Exit reason</th></tr></thead><tbody>{trades.map(t=><tr key={`${t.id}:${t.openedAt}`}><td>{t.contract}</td><td>{t.lots}</td><td>{istDay(t.openedAt)} {istTime(t.openedAt)}</td><td>{istDay(t.closedAt)} {istTime(t.closedAt)}</td><td>{display(t.entry)}</td><td>{display(t.exit)}</td><td>{display(t.charges)}</td><td>{display(t.pnl)}</td><td>{wording(t.reason)}</td></tr>)}</tbody></table></div>}
     </div>}
@@ -94,6 +95,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
     <div role="status" className="flex flex-wrap items-center gap-2 border-y border-slate-200 py-2.5 text-sm"><span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${d?.reviewRequired || d?.workerStatus === "OWNERSHIP_UNCONFIRMED" ? "bg-amber-500" : value?.workerOnline ? "bg-emerald-600" : "bg-slate-400"}`} /><strong>{status}</strong>{value?.workerOnline === false && d && <span className="text-slate-600">· {wording(d.workerStatus)}</span>}</div>
     {d?.workerStatus === "SIGNAL_STORAGE_RETRY" && <p role="alert" className="text-sm text-amber-700">Signal database read failed; retrying. New alerts may be delayed.</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {d?.hasReconstructedResults&&<p className="text-xs text-amber-800">Balances and recovery calculations include approved reconstructed paper estimates.</p>}
     {d?.pendingExit && <p role="alert" className="text-sm text-red-700">Exit awaiting verified quote · {wording(d.pendingExit)}</p>}
     {d?.reviewRequired && <div role="alert" className="flex flex-wrap items-center gap-3 border-l-2 border-amber-500 pl-3 text-sm"><strong>Unverified position needs review</strong>{strategy === "hams" && <button type="button" className="algo-action secondary" disabled={busy || !value?.workerOnline} onClick={() => { if(window.confirm("Exclude the unverified result and keep its audit record?")) void post({ action: "acknowledgeRecovery", excludeUnverified: true }); }}>Exclude and continue</button>}</div>}
     <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-3 xl:grid-cols-5">
