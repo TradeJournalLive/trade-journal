@@ -8,6 +8,7 @@ import NiftyEmergency from "./NiftyEmergency";
 import dynamic from "next/dynamic";
 
 const PaperRecoveryReview = dynamic(() => import("./PaperRecoveryReview"));
+const PaperIncidentHistory = dynamic(() => import("./PaperIncidentHistory"));
 
 const names = { current: "NIFTY Current", hams: "NIFTY HAMS Final" } as const;
 type Strategy = keyof typeof names;
@@ -110,6 +111,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
     </div>
     {d?.reviewRequired && <PaperRecoveryReview strategy={strategy} />}
     <SessionHistory strategy={strategy} />
+    <PaperIncidentHistory strategy={strategy} />
   </section>;
 }
 
