@@ -8,6 +8,7 @@ function endpoint({authenticated=true,position=null,incidents=[]}={}) {
   if(id.endsWith('/signalStore'))return {getServerSupabase:()=>db,hashWebhookSecret:()=> 'owned-fixture'};
   if(id.endsWith('/fyersConnection'))return {fyersDevice:()=>{throw Error('Unexpected FYERS credential read');}};
   if(id.endsWith('/paperRecoveryReview'))return {};
+  if(id.endsWith('/niftyLimitPaper'))return {};
   return require(id);
  };
  m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,f);

@@ -3,6 +3,7 @@ import { connectionSecret } from "../../../lib/algo/connection";
 import { getServerSupabase, hashWebhookSecret } from "../../../lib/algo/signalStore";
 import { fyersDevice, readFyers } from "../../../lib/algo/fyersConnection";
 import { normalizeRecoveryCandles, recoverySessionEnd, reviewRecoveryCandles, type RecoveryPosition } from "../../../lib/algo/paperRecoveryReview";
+import { optionCosts } from "../../../lib/algo/niftyLimitPaper";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ export async function GET(request: Request) {
     const signals = await db.from("tradingview_signal_events").select("received_at,signal").eq("secret_hash",owner).eq(current?"signal->metadata->niftyPaper->>kind":"signal->metadata->hamsFinalPaper->>kind","SIGNAL").gte("received_at",incident.at).lte("received_at",cutoff).order("received_at").limit(101);
     if(signals.error || (signals.data?.length??0)>100) throw Error("Signal history could not be fully verified; no outcome assumed.");
     const opposite = (signals.data??[]).filter(r=>r.signal?.action===(position.contract.side==="CE"?"SELL":"BUY")).map(r=>r.received_at);
-    return reply({strategy,position,incident:{at:incident.at,reason:incident.reason??"Verified ownership expired; position retained for review."},snapshotAt:saved?.received_at,checkedAt:new Date().toISOString(),review:reviewRecoveryCandles(position,incident.at,candles,opposite,Date.now()),candles,oppositeSignals:opposite,realOrdersEnabled:false,recordsChanged:false});
+    const review = reviewRecoveryCandles(position,incident.at,candles,opposite,Date.now());
+    const chargesEstimate = review.exitEstimate === null ? null : optionCosts(position.entry,review.exitEstimate,position.quantity).total;
+    const netEstimate = review.grossEstimate === null || chargesEstimate === null ? null : Math.round((review.grossEstimate-chargesEstimate)*100)/100;
+    return reply({strategy,position,incident:{at:incident.at,reason:incident.reason??"Verified ownership expired; position retained for review."},snapshotAt:saved?.received_at,checkedAt:new Date().toISOString(),review:{...review,chargesEstimate,netEstimate},candles:candles.filter(c=>Date.parse(c.at)+60000>Date.parse(incident.at)),oppositeSignals:opposite,realOrdersEnabled:false,recordsChanged:false});
   } catch {
     return reply({error:"Recovery review unavailable. The original position and audit history remain unchanged."},503);
   }

@@ -5,6 +5,9 @@ import { accountFetch } from "../lib/accountFetch";
 import { niftyFreshSessionAt, type NiftyPaperStatus } from "../lib/algo/niftyLossCycle";
 import { istDay, istTime } from "../lib/algo/reportDates";
 import NiftyEmergency from "./NiftyEmergency";
+import dynamic from "next/dynamic";
+
+const PaperRecoveryReview = dynamic(() => import("./PaperRecoveryReview"));
 
 const names = { current: "NIFTY Current", hams: "NIFTY HAMS Final" } as const;
 type Strategy = keyof typeof names;
@@ -103,6 +106,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 text-sm"><h3 className="font-semibold">Open position</h3>{!p && <span className="text-slate-600">{d ? "No open position" : "Awaiting worker status"}</span>}
       {p && <div className="w-full space-y-1"><p className="font-medium">{p.contract} · {p.lots} lots · {p.quantity} qty{p.lateEntry ? " · Entered late" : ""}</p><p className="flex flex-wrap gap-x-4 text-xs text-slate-600"><span>Entry {display(p.entry)}</span><span>Stop {display(p.stop)}</span><span>Target {display(p.target)}</span><span>Capital {display(p.entry*p.quantity)}</span><span>Open P&amp;L {display(fresh && !d?.reviewRequired && p.mark != null ? (p.mark-p.entry)*p.quantity : null)}</span></p></div>}
     </div>
+    {d?.reviewRequired && <PaperRecoveryReview strategy={strategy} />}
     <SessionHistory strategy={strategy} />
   </section>;
 }
