@@ -27,11 +27,11 @@ async function startIndependentFeed({appId,accessToken,directory,onTick,onError=
   await refresh();
   socket=socketFactory?socketFactory(auth,directory):require('fyers-api-v3').fyersDataSocket.getInstance(auth,directory,false);
   socket.on('connect',()=>{reader.clear();subscribed.clear();const ids=contracts.map(c=>c.id);socket.subscribe([INDEX,...ids]);socket.subscribe(ids,true);ids.forEach(id=>subscribed.add(id));});
-  socket.on('message',message=>{try{reader.receive(message);}catch(error){reader.clear();onError({step:'feed.processing',code:error.code||error.message||'FEED_PROCESSING_FAILED'});}});
+  socket.on('message',message=>{try{reader.receive(message);}catch(error){reader.clear();onError({step:'feed.processing',code:error.code||'FEED_PROCESSING_FAILED',error});}});
   socket.on('close',()=>{reader.clear();onError({step:'feed.connection',code:'FYERS_SOCKET_CLOSED'});});
-  socket.on('error',error=>{reader.clear();onError({step:'feed.connection',code:error?.code||'FYERS_SOCKET_ERROR'});});
+  socket.on('error',error=>{reader.clear();onError({step:'feed.connection',code:error?.code||'FYERS_SOCKET_ERROR',error});});
   socket.connect();socket.autoreconnect?.(50);
-  const timer=setInterval(()=>{void refresh().catch(error=>onError({step:'fyers.subscription.refresh',code:error.code||'FYERS_OPTION_CHAIN_UNAVAILABLE'}));},60000);timer.unref();
+  const timer=setInterval(()=>{void refresh().catch(error=>onError({step:'fyers.subscription.refresh',code:error.code||'FYERS_OPTION_CHAIN_UNAVAILABLE',error}));},60000);timer.unref();
   return ()=>{closed=true;clearInterval(timer);socket.close?.();};
 }
 module.exports={quoteReader,startIndependentFeed};
