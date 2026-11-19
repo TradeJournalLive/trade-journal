@@ -12,6 +12,7 @@ const { paperFyersConnection } = require('./paper-fyers-connection.cjs');
 const { readDepth, withDepth } = require('./nifty-depth.cjs');
 const { quarantineInterruptedPosition, recoverOnNextSignal } = require('./nifty-independent-recovery.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
+const { incidentReport, observedRequest, flushIncidentReports } = require('./paper-incident-report.cjs');
 const { reconcileHamsPublish } = require('./hams-journal.cjs');
 const { createTickAudit } = require('./nifty-tick-audit.cjs');
 function load(name) {
@@ -46,7 +47,7 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !env.PAPE
 }
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
-  global: { fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(8000) }) }
+  global: { fetch: (url, init) => observedRequest(diagnostics,'SUPABASE','supabase.http',url, { ...init, signal: AbortSignal.timeout(8000) }) }
 });
 const secretHash = hash(env.PAPER_WEBHOOK_SECRET), workerId = crypto.randomUUID();
 let state, book, lease, connection, socket, master = [], quotes = new Map(), index, trail, lastMasterDay;
@@ -60,8 +61,10 @@ let queue = Promise.resolve();
 const depths = new Map();
 const persistedTrades = new Set();
 const persistedDecisions = new Map();
+const persistedIncidents = new Set();
 const auditTick = createTickAudit({ directory, io: fs, clock: Date.now, onDisabled: value => console.error(JSON.stringify({ at: now(), operation: 'optional.tick.audit', ...value })) });
 const diagnostics = createWorkerDiagnostics({
+  storagePath:directory,
   emit: value => { audit('DIAGNOSTIC', value); if (['TASK_FAILED', 'ERROR', 'STOP_REQUESTED'].includes(value.type)) console.error(JSON.stringify(value)); },
   secrets: () => [env.PAPER_WEBHOOK_SECRET, env.SUPABASE_SERVICE_ROLE_KEY, env.ALGO_CONNECTION_ENCRYPTION_KEY, env.PAPER_WORKER_ACCESS_KEY, connection?.accessToken],
   context: () => ({ workerId, strategy: 'NIFTY', status, feedAt, leaseAgeMs: lease ? Date.now() - Date.parse(lease) : null, openPosition: Boolean(book?.position) })
@@ -73,7 +76,7 @@ function guardOwnership() {
   if (!lease || owned()) return true;
   if (!state?.recoveryIncidents?.some(i => !i.acknowledgedAt) && quarantineInterruptedPosition(state, now())) {
     const incident=state.recoveryIncidents.find(i=>!i.acknowledgedAt);
-    if(incident)incident.diagnostic=diagnostics.incident();
+    if(incident){incident.diagnostic=diagnostics.incident();incident.report=incidentReport('current',incident);}
     diagnostics.write('OWNERSHIP_EXECUTION_PAUSED',{incidentAt:incident?.at,providerFault:'UNCONFIRMED'});
     saveLocal();
   }
@@ -144,13 +147,13 @@ function saveLocal() {
   fs.renameSync(`${localFile}.tmp`, localFile);
 }
 async function api(endpoint) {
-  const response = await fetch(`https://api-t1.fyers.in/${endpoint}`, { headers: { Authorization: `${connection.appId}:${connection.accessToken}` }, signal: AbortSignal.timeout(12000) });
+  const response = await observedRequest(diagnostics,'FYERS','fyers.http',`https://api-t1.fyers.in/${endpoint}`, { headers: { Authorization: `${connection.appId}:${connection.accessToken}` }, signal: AbortSignal.timeout(12000) });
   const result = await response.json();
   if (!response.ok || result.s === 'error') throw new Error('FYERS_DATA_UNAVAILABLE');
   return result;
 }
 async function credentials() {
-  const shared = await paperFyersConnection(env, env.PAPER_WEBHOOK_SECRET);
+  const shared = await paperFyersConnection(env, env.PAPER_WEBHOOK_SECRET,(url,init)=>observedRequest(diagnostics,'VERCEL_PANEL','panel.credentials.http',url,init));
   if (shared) return shared;
   const { data, error } = await db.from(TABLE).select('raw_payload').eq('strategy_id', '__fyers_connection__').order('received_at', { ascending: false }).limit(100);
   if (error) throw new Error('CONNECTION_STORAGE_UNAVAILABLE');
@@ -242,6 +245,7 @@ function paperStatus(value) {
   return result;
 }
 async function flushLedgers() {
+  await flushIncidentReports(db,secretHash,'current',state.recoveryIncidents||[],persistedIncidents);
   const at = now();
   const result = buildNiftyOptionsPaper([], at, structuredClone(state.checkpoint));
   const decisions = (result.checkpoint.decisions || []).filter(d => persistedDecisions.get(d.id) !== JSON.stringify(d));

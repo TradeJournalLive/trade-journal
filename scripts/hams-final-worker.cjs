@@ -9,6 +9,7 @@ const { readDepth } = require('./nifty-depth.cjs');
 const { HamsJournal, selectSnapshot, flushHamsRecords, reconcileHamsPublish, digest, matchesHamsLedgerRecord } = require('./hams-journal.cjs');
 const { hamsPublicView } = require('./hams-public-view.cjs');
 const { createWorkerDiagnostics } = require('./worker-diagnostics.cjs');
+const { incidentReport, observedRequest, flushIncidentReports } = require('./paper-incident-report.cjs');
 const { paperFyersConnection } = require('./paper-fyers-connection.cjs');
 function loadAlgo(name) {
   const file=path.resolve(__dirname,`../app/lib/algo/${name}.ts`),copy=new Module(file,module);
@@ -37,16 +38,14 @@ let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = f
 let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
 let refreshing=false,publishRetryAt=0,publishFailures=0;
+const persistedIncidents=new Set();
 const diagnostics=createWorkerDiagnostics({
+  storagePath:directory,
   emit:value=>{if(['TASK_FAILED','ERROR','STOP_REQUESTED','OWNERSHIP_EXECUTION_PAUSED'].includes(value.type))console.error(JSON.stringify(value));fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600});},
   secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,env.PAPER_WORKER_ACCESS_KEY,connection?.accessToken,connection?.appId],
   context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),publishFailures,refreshing})
 });
-async function observedFetch(operation,url,init){return diagnostics.run(operation,async()=>{
-  const response=await fetch(url,init);
-  if(!response.ok)diagnostics.failure(operation,Object.assign(new Error(`HTTP ${response.status}`),{code:response.status}));
-  return response;
-});}
+async function observedFetch(operation,url,init){return observedRequest(diagnostics,operation.startsWith('supabase')?'SUPABASE':'FYERS',operation,url,init);}
 const storageError=(message,cause)=>new Error(message,{cause:cause||new Error('Missing expected storage acknowledgement')});
 function stopWorker(operation,error,nextStatus){diagnostics.stop(operation,error);status=nextStatus;stopped=true;}
 function retryPublish(error){publishFailures++;publishRetryAt=Date.now()+Math.min(5000,500*2**Math.min(publishFailures-1,4));status='STORAGE_RETRY';diagnostics.failure('snapshot.retry',error);}
@@ -64,7 +63,7 @@ function guardOwnershipPause(){
   if(stopped||!claimed||!initialized||!state.position||owned()||reviewRequired())return;
   const at=now(),id=`ownership-gap:${hash(state.position.signalId+state.position.openedAt)}`;
   if(!incidents.some(i=>i.id===id&&!i.acknowledgedAt))incidents.push({id,signalId:state.position.signalId,at,status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Verified ownership expired while a position was open. No exit is assumed during the execution pause; review is required.'});
-  const incident=incidents.find(i=>i.id===id&&!i.acknowledgedAt);if(incident)incident.diagnostic=diagnostics.incident();
+  const incident=incidents.find(i=>i.id===id&&!i.acknowledgedAt);if(incident){incident.diagnostic=diagnostics.incident();incident.report=incidentReport('hams',incident);}
   state.status='RECOVERY_REVIEW_REQUIRED';diagnostics.write('OWNERSHIP_EXECUTION_PAUSED',{incidentAt:at,providerFault:'UNCONFIRMED'});save();
 }
 function decide(signal, result) {
@@ -87,7 +86,7 @@ async function one(strategy, secret, id) {
   if (r.error) throw storageError('ACCOUNT_STORAGE_UNAVAILABLE',r.error); return r.data?.raw_payload;
 }
 async function credentials() {
-  const shared = await paperFyersConnection(env, config.webhookSecret);
+  const shared = await paperFyersConnection(env, config.webhookSecret,(url,init)=>observedRequest(diagnostics,'VERCEL_PANEL','panel.credentials.http',url,init));
   if (shared) return shared;
   // Follow the immutable webhook ownership claim, never choose another account by app ID.
   const key = crypto.createHash('sha256').update(`account:${env.ALGO_CONNECTION_ENCRYPTION_KEY || env.SUPABASE_SERVICE_ROLE_KEY}`).digest();
@@ -153,6 +152,7 @@ async function flushLedger() {
   if (flushing || !claimed || stopped) return;
   flushing = true;
   try {
+    await flushIncidentReports(db,owner,'hams',incidents,persistedIncidents);
     await flushHamsRecords(journal, async records => {
       const rows = records.map(r => row(`ledger:${r.id}`, r.record.at, { record:r.record, recordHash:digest(r.record) }));
       const result = await db.from(TABLE).upsert(rows,{onConflict:'secret_hash,strategy_id,signal_id',ignoreDuplicates:true});

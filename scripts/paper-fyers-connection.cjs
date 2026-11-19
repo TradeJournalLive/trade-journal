@@ -14,7 +14,7 @@ async function paperFyersConnection(env, webhookSecret, request = fetch) {
   const response = await request(new URL('/api/brokers/fyers/paper-worker', url), {
     method: 'POST', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8000),
     headers: { Authorization: `Bearer ${key}`, 'x-paper-webhook-secret': webhookSecret }
-  }).catch(() => { throw Error('PAPER_WORKER_PANEL_UNREACHABLE'); });
+  }).catch(cause => { throw new Error('PAPER_WORKER_PANEL_UNREACHABLE',{cause}); });
   const value = await response.json().catch(() => null);
   if (!response.ok) throw Error(errors.has(value?.code) ? value.code : 'PAPER_WORKER_CONNECTION_UNAVAILABLE');
   if (!/^[A-Za-z0-9]{5,76}-100$/.test(value?.appId || '') || typeof value?.accessToken !== 'string' || !value.accessToken) {
