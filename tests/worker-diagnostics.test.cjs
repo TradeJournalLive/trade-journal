@@ -23,3 +23,9 @@ test('PostgREST transport details and hints survive with secrets removed',()=>{
  const f=fixture();f.d.failure('supabase.signal.poll',new Error('SIGNAL_STORAGE_READ_FAILED',{cause:{message:'fetch failed',code:'',details:'ConnectTimeoutError at https://example.test/data?secret=private-webhook',hint:'retry private-access-token'}}));
  const cause=f.rows[0].error.cause;assert.match(cause.details,/ConnectTimeoutError/);assert.equal(cause.details.includes('?secret='),false);assert.equal(cause.hint,'retry [REDACTED]');
 });
+test('incident evidence is bounded, causal, independent of later mutations and does not assign provider blame',()=>{
+ const f=fixture();for(let i=0;i<25;i++)f.d.failure('supabase.http',new Error('timeout private-webhook'));
+ const finish=f.d.begin('snapshot.publish');f.set(10001);const evidence=f.d.incident();
+ assert.equal(evidence.recent.length,12);assert.equal(evidence.deadlineMs,10000);assert.equal(evidence.providerFault,'UNCONFIRMED');assert.equal(evidence.active[0].ageMs,10001);
+ assert.equal(JSON.stringify(evidence).includes('private-webhook'),false);assert.ok(evidence.runId);finish();assert.equal(evidence.active.length,1);
+});

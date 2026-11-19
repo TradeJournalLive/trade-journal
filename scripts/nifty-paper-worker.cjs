@@ -24,6 +24,7 @@ const { buildNiftyOptionsPaper } = load('niftyPaperEngine');
 const { buildNiftyLimitPaper } = load('niftyLimitAdapter');
 const { observeLimitIndex } = load('niftyLimitPaper');
 const { niftyFreshSessionAt, niftyPaperStatus } = load('niftyLossCycle');
+const { applyReconstruction } = load('paperReconciliation');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__nifty_paper_worker__';
 const indexSymbol = 'NSE:NIFTY50-INDEX';
 const hash = text => crypto.createHash('sha256').update(text).digest('hex');
@@ -70,7 +71,12 @@ const retryDelay = n => Math.min(15000, 1000 * 2 ** Math.min(n - 1, 4));
 function owned() { return Boolean(lease && Date.now() - Date.parse(lease) < 10000); }
 function guardOwnership() {
   if (!lease || owned()) return true;
-  if (!state?.recoveryIncidents?.some(i => !i.acknowledgedAt) && quarantineInterruptedPosition(state, now())) saveLocal();
+  if (!state?.recoveryIncidents?.some(i => !i.acknowledgedAt) && quarantineInterruptedPosition(state, now())) {
+    const incident=state.recoveryIncidents.find(i=>!i.acknowledgedAt);
+    if(incident)incident.diagnostic=diagnostics.incident();
+    diagnostics.write('OWNERSHIP_EXECUTION_PAUSED',{incidentAt:incident?.at,providerFault:'UNCONFIRMED'});
+    saveLocal();
+  }
   return false;
 }
 function fail(operation, error) {
@@ -96,6 +102,19 @@ function observePausedPrices(events) {
 }
 function advance(events) {
   if (!guardOwnership()) { observePausedPrices(events); return; }
+  for(const e of events) {
+    const command=e.raw?.paperControl?.reconstruction;
+    if(!command)continue;
+    try {
+      const result=applyReconstruction(state.checkpoint.rulesV2,state.recoveryIncidents||[],command,env.ALGO_CONNECTION_ENCRYPTION_KEY||env.SUPABASE_SERVICE_ROLE_KEY,secretHash,'current',now());
+      if(result.applied) {
+        state.checkpoint.rulesV2=result.state;state.recoveryIncidents=result.incidents;
+        book=buildNiftyLimitPaper([],now(),state.checkpoint,niftyFreshSessionAt);state.checkpoint=book.checkpoint;
+        saveLocal();audit('PAPER_RECONSTRUCTION',{id:command.payload.id,fillVerified:false});
+        events=events.filter(value=>Date.parse(value.receivedAt)>=Date.parse(e.receivedAt));
+      }
+    } catch(error) { diagnostics.failure('paper.reconstruction',error);throw error; }
+  }
   if(state?.recoveryIncidents?.some(i=>!i.acknowledgedAt)) {
     observePausedPrices(events);
     for(const e of events){

@@ -91,6 +91,23 @@ for(const kind of ['nifty','hams'])test(`${kind} actual worker consumes verified
  // Emergency premium exits remain possible even if the index feed stops updating.
  price(w,7,'CE',{bid_price:90,ask_price:91,bid_size:5000,ask_size:5000});assert.equal(w.get().state.position,null);assert.equal(w.get().state.trades.at(-1).exitOrderType,'MARKET');assert.equal(w.get().state.trades.at(-1).reason,'EMERGENCY_MARKET_EXIT');assert.notEqual(w.get().status,'PROCESSING_ERROR');
 });
+for(const kind of ['nifty','hams'])test(`${kind} actual worker applies signed reconstruction once, keeps entries off and preserves the incident`,async()=>{
+ const hams=kind==='hams',w=worker(kind),core=load('niftyLimitPaper'),approval=load('paperReconciliation'),crypto=require('node:crypto');
+ const v=core.newLimitState(at(-60),hams?3:1,!hams,true);v.lossCycle={loss:1300,net:-1300,count:1};
+ v.position={contract:{...contracts[0],at:at(0),bid:99,ask:100,bidSize:5000,askSize:5000},signalId:'reconstruct-'+kind,signalClosedAt:at(-3),receivedAt:at(-2),openedAt:at(-1),entry:100,stop:80,target:200,quantity:65,lots:1,ruleVersion:2,orderType:'LIMIT',entryLimit:104,sizing:{version:2}};
+ w.start(hams?{...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,position:v.position,balance:1000000}:{rulesV2:v,enabled:true,trades:[]},contracts);
+ if(hams)price(w,12,'NSE:NIFTY50-INDEX',{ltp:22500});else w.quarantine(at(12));
+ const incident=hams?w.get().incidents[0]:w.storage().outer.recoveryIncidents[0],owner=crypto.createHash('sha256').update('fixture-secret').digest('hex');
+ const position=w.get().state.rulesV2.position,strategy=hams?'hams':'current',evidence={candles:[{at:at(19200),open:150}],oppositeSignals:[]};
+ const payload={version:1,owner,strategy,id:approval.reconstructionId(owner,strategy,position),position,incidentAt:incident.at,approvedAt:at(19260),source:'FYERS_1M_OHLC',fillVerified:false,reason:'TIME_EXIT',exit:150,windowStart:at(19200),windowEnd:at(19260),net:Math.round((3250-core.optionCosts(100,150,65).total)*100)/100,evidence,evidenceHash:approval.reconstructionHash(evidence)};
+ const reconstruction=approval.signReconstruction(payload,'fixture-service');
+ w.setTime(19260);if(hams)w.heartbeat();else w.setLease(at(19260));
+ const row={id:'approved-control',strategy_id:hams?'__hams_final_control__':'__paper_control__',received_at:at(19260),signal:{},raw_payload:hams?{enabled:false,reconstruction}:{paperControl:{market:'NIFTY',niftyOptionsEnabled:false,reconstruction}}};
+ w.setRows([row]);await w.poll();
+ assert.equal(w.get().state.position,null);assert.equal(w.get().state.enabled,false);assert.equal(w.get().state.trades.length,1);assert.equal(w.get().state.trades[0].reconstruction.fillVerified,false);
+ assert.equal((hams?w.get().incidents:w.storage().outer.recoveryIncidents)[0].status,'CLOSED_RECONSTRUCTED_ESTIMATE');
+ w.setRows([{...row,id:'replayed-control'}]);await w.poll();assert.equal(w.get().state.trades.length,1);assert.equal(w.get().state.rulesV2.lossCycle.count,2);
+});
 for(const kind of ['nifty','hams'])test(`${kind} actual worker permits verified late breakout within twenty seconds`,async()=>{
  const w=worker(kind),hams=kind==='hams',v=load('niftyLimitPaper').newLimitState(at(-60),hams?3:1,!hams,true);
  w.start(hams?{...load('hamsFinalPaper').emptyHamsState(),enabled:true,rulesV2:v,balance:1000000}:{rulesV2:v,enabled:true,trades:[]},contracts);

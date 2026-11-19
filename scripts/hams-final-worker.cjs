@@ -18,7 +18,8 @@ function loadAlgo(name) {
 }
 const { emptyHamsState, setHamsEnabled, enterHams, markHams, hamsContract, hamsFinalRules } = loadAlgo('hamsFinalPaper');
 const { loadHamsRecords, hamsRecoveryView } = loadAlgo('hamsHistory');
-const { initializeHamsLimits, receiveHamsLimit, markHamsLimit, emergencyHamsLimit } = loadAlgo('hamsLimitAdapter');
+const { initializeHamsLimits, receiveHamsLimit, markHamsLimit, emergencyHamsLimit, project } = loadAlgo('hamsLimitAdapter');
+const { applyReconstruction } = loadAlgo('paperReconciliation');
 const { canArmNifty } = loadAlgo('niftyLimitPaper');
 const { niftyFreshSessionAt, startNiftyLossCycle, niftyPaperStatus } = loadAlgo('niftyLossCycle');
 const TABLE = 'tradingview_signal_events', STRATEGY = '__hams_final_worker__', INDEX = 'NSE:NIFTY50-INDEX';
@@ -37,7 +38,7 @@ let journal, initialized = false, claimed = false, incidents = [], lastControl =
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
 let refreshing=false,publishRetryAt=0,publishFailures=0;
 const diagnostics=createWorkerDiagnostics({
-  emit:value=>fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600}),
+  emit:value=>{if(['TASK_FAILED','ERROR','STOP_REQUESTED','OWNERSHIP_EXECUTION_PAUSED'].includes(value.type))console.error(JSON.stringify(value));fs.appendFileSync(path.join(directory,`${day(now())}-diagnostics.jsonl`),JSON.stringify(value)+'\n',{mode:0o600});},
   secrets:()=>[config.webhookSecret,env.SUPABASE_SERVICE_ROLE_KEY,env.ALGO_CONNECTION_ENCRYPTION_KEY,env.PAPER_WORKER_ACCESS_KEY,connection?.accessToken,connection?.appId],
   context:()=>({workerId,pid:process.pid,status,revision,leaseAgeMs:ack?Date.now()-ack:null,feedAgeMs:feedAt?Date.now()-Date.parse(feedAt):null,openPosition:Boolean(state.position),reviewRequired:incidents.some(i=>!i.acknowledgedAt),publishFailures,refreshing})
 });
@@ -63,7 +64,8 @@ function guardOwnershipPause(){
   if(stopped||!claimed||!initialized||!state.position||owned()||reviewRequired())return;
   const at=now(),id=`ownership-gap:${hash(state.position.signalId+state.position.openedAt)}`;
   if(!incidents.some(i=>i.id===id&&!i.acknowledgedAt))incidents.push({id,signalId:state.position.signalId,at,status:'OPEN_POSITION_REQUIRES_REVIEW',position:structuredClone(state.position),reason:'Verified ownership expired while a position was open. No exit is assumed during the execution pause; review is required.'});
-  state.status='RECOVERY_REVIEW_REQUIRED';diagnostics.write('OWNERSHIP_EXECUTION_PAUSED');save();
+  const incident=incidents.find(i=>i.id===id&&!i.acknowledgedAt);if(incident)incident.diagnostic=diagnostics.incident();
+  state.status='RECOVERY_REVIEW_REQUIRED';diagnostics.write('OWNERSHIP_EXECUTION_PAUSED',{incidentAt:at,providerFault:'UNCONFIRMED'});save();
 }
 function decide(signal, result) {
   if (result !== 'LOADING_COMPLETED_3M_OPTION_CANDLE') {
@@ -279,9 +281,20 @@ async function poll() {
   try {
     const r=await db.from(TABLE).select('id,received_at,strategy_id,signal,raw_payload').eq('secret_hash',owner).in('strategy_id',[hamsFinalRules.strategyId,'__hams_final_control__']).gte('received_at',pollAfter).order('received_at').order('id').limit(1000);
     if (r.error || r.data?.length===1000) throw storageError('SIGNAL_STORAGE_UNAVAILABLE',r.error);
-    for(const value of r.data||[]) {
+    // Audited recovery controls must precede any queued independent signals.
+    const rows=[...(r.data||[])].sort((a,b)=>Number(Boolean(b.raw_payload?.reconstruction))-Number(Boolean(a.raw_payload?.reconstruction)));
+    for(const value of rows) {
       if(processed.has(value.id)) continue;
       if(value.strategy_id==='__hams_final_control__') {
+        if(value.raw_payload?.reconstruction) {
+          const result=applyReconstruction(state.rulesV2,incidents,value.raw_payload.reconstruction,env.ALGO_CONNECTION_ENCRYPTION_KEY||env.SUPABASE_SERVICE_ROLE_KEY,owner,'hams',now());
+          if(result.applied) {
+            state=project(state,result.state);incidents=result.incidents;decisions=structuredClone(result.state.decisions);pending=null;mark=null;
+            lastControl={id:value.id,at:value.received_at,enabled:false};
+            save();audit('PAPER_RECONSTRUCTION',{id:value.raw_payload.reconstruction.payload.id,fillVerified:false});
+          }
+          processed.add(value.id);continue;
+        }
         if(lastControl && (Date.parse(value.received_at)<Date.parse(lastControl.at) || (value.received_at===lastControl.at && value.id===lastControl.id))) { processed.add(value.id);continue; }
         if(value.raw_payload?.acknowledgeRecovery===true) {
           const at=now();
