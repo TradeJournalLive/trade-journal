@@ -1,6 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
 const {independentSelftest}=require('./independent-paper-selftest.cjs');
 const {startIndependentPaperRunner}=require('./independent-paper-runner.cjs');
+const {createStageWeb,readFyersSession}=require('./independent-paper-stage-web.cjs');
 
 function stageConfiguration(env){
   const token=env.RIBBON_STAGE_TOKEN;
@@ -18,12 +19,21 @@ async function startCloudwaysStage(env=process.env){
   const disk=fs.statfsSync(directory),free=Number(disk.bavail)*Number(disk.bsize);
   if(free<1024**3)throw Error('STAGING_REQUIRES_ONE_GIB_FREE');
   const selftest=await independentSelftest(directory);
+  const sessionFile=path.join(directory,'fyers-session.json');
+  const oauthAppId=config.INDEPENDENT_FYERS_APP_ID;
+  const savedSession=readFyersSession(sessionFile,oauthAppId);
+  if(savedSession)config.INDEPENDENT_FYERS_TOKEN=savedSession.accessToken;
+  // OAuth setup must remain available before a market-data token exists.
+  if(!config.INDEPENDENT_FYERS_TOKEN)delete config.INDEPENDENT_FYERS_APP_ID;
   const marker=path.join(directory,'installation.json');
   const previous=fs.existsSync(marker)?JSON.parse(fs.readFileSync(marker,'utf8')):null;
   const installation={id:previous?.id||crypto.randomUUID(),boots:(previous?.boots||0)+1};
   fs.writeFileSync(marker+'.tmp',JSON.stringify(installation),{mode:0o600});fs.renameSync(marker+'.tmp',marker);
-  config.stageHealth=()=>({phase:config.INDEPENDENT_FYERS_APP_ID&&config.INDEPENDENT_FYERS_TOKEN?'FEED_CONFIGURATION_PRESENT':'AWAITING_FYERS_CONFIGURATION',isolated:true,productionStateImported:false,reportingDestination:'NOT_CONFIGURED',installationId:installation.id,bootCount:installation.boots,storageSurvivedPriorBoot:Boolean(previous),freeBytes:Number(fs.statfsSync(directory).bavail)*Number(fs.statfsSync(directory).bsize),selftest});
-  const runner=startIndependentPaperRunner(config);
+  let runner;
+  const web=createStageWeb({origin:'https://nodejs-1686001-6780032.cloudwaysnodeapps.com',password:config.INDEPENDENT_STAGE_ADMIN_PASSWORD,appId:oauthAppId,appSecret:config.INDEPENDENT_FYERS_SECRET,sessionFile,getEngine:()=>runner.engine,getRuntime:()=>runner.health(),signalConfigurationVerified:Boolean(config.INDEPENDENT_CURRENT_STRATEGY_ID)});
+  config.stageRoutes=web.handle;
+  config.stageHealth=()=>({phase:config.INDEPENDENT_FYERS_APP_ID&&config.INDEPENDENT_FYERS_TOKEN?'FEED_CONFIGURATION_PRESENT':'AWAITING_FYERS_CONFIGURATION',isolated:true,productionStateImported:false,reportingDestination:'NOT_CONFIGURED',installationId:installation.id,bootCount:installation.boots,storageSurvivedPriorBoot:Boolean(previous),freeBytes:Number(fs.statfsSync(directory).bavail)*Number(fs.statfsSync(directory).bsize),selftest,setup:web.health()});
+  runner=startIndependentPaperRunner(config);
   if(runner.engine.store.db.prepare('PRAGMA quick_check').get().quick_check!=='ok'){await runner.close();throw Error('STAGING_DATABASE_INTEGRITY_FAILED');}
   console.log(JSON.stringify({event:'INDEPENDENT_SHADOW_STAGE_STARTED',mode:'SHADOW',realOrdersEnabled:false,selftest}));
   return runner;

@@ -1,10 +1,11 @@
 const {createServer}=require('node:http');
 const {timingSafeEqual}=require('node:crypto');
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&timingSafeEqual(x,y);};
-function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthetic=false}){
+function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthetic=false,handleRequest}){
   if(webhookSecret?.length<16||adminToken?.length<32||!webhookSecret||!adminToken)throw Error('PRIVATE_EXECUTION_CONFIGURATION_REQUIRED');
   const server=createServer(async(req,res)=>{
     const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));};
+    if(handleRequest){try{if(await handleRequest(req,res))return;}catch{return send(503,{error:'Private staging request failed'});}}
     if(req.method==='GET'&&req.url==='/health')return send(200,engine.health());
     const direct=req.method==='POST'&&req.url==='/api/v1/webhooks/tradingview';
     if(!direct&&!equal(req.headers.authorization,'Bearer '+adminToken))return send(401,{error:'Unauthorized'});
