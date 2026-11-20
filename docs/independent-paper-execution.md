@@ -20,6 +20,11 @@ Use a dedicated absolute database path outside production .paper-worker storage.
 
 Run node scripts/independent-paper-runner.cjs. The runner binds localhost on PORT (default 3019). It is not externally exposed by the existing Cloudways host. A synthetic test requires INDEPENDENT_SYNTHETIC_INPUT=1. Read-only live data requires both INDEPENDENT_FYERS_APP_ID and INDEPENDENT_FYERS_TOKEN and forbids synthetic input. Local HTTP signal receipts alone do not prove an entry; inspect the durable decisions.
 
+### Existing Cloudways Staging App
+The separate entry `scripts/cloudways-independent-stage.cjs` reuses the stopped staging app's existing private `RIBBON_STAGE_TOKEN` through domain-separated HMAC credentials. It never starts Ribbon or imports production state. It ignores the old `/tmp/ribbon-local-staging.sqlite`, creates `worker-private-storage/independent-shadow/shadow.sqlite` under the runtime user's non-temporary HOME, and requires 1 GiB free before starting. Verify the installation ID survives a redeployment; a non-temporary path alone is not proof of durable storage.
+
+Each boot runs an isolated synthetic self-test of both strategy entries, reporting outage/exit, duplicate receipts, lost acknowledgements and flat/open-position restarts. This makes no external requests and does not simulate a real Supabase network outage. Public health distinguishes these synthetic results from a configured live FYERS feed and shows feed freshness, processing latency, memory and installation boot count. Both shadow entry switches start disabled. Fresh FYERS credentials, actual Current strategy ID and direct test alerts are separate release gates; an online HTTP process is not a running live-feed paper trial.
+
 ## Tests And Remaining Release Gates
 Automated checks cover durable receipts, duplicate delivery, database-reporting outage, hanging reporting, lost reporting acknowledgement, local writer competition, restart with open position, missing index/option prices, a hard process exit before COMMIT and genuine SQLite capacity exhaustion. These are local tests, not a completed Cloudways live-feed trial.
 

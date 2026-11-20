@@ -10,15 +10,16 @@ function startIndependentPaperRunner(env=process.env){
   if(file.includes('/.paper-worker/')||file.endsWith('checkpoint.json'))throw Error('PRODUCTION_STORAGE_PATH_FORBIDDEN');
   if((env.INDEPENDENT_FYERS_APP_ID||env.INDEPENDENT_FYERS_TOKEN)&&(!env.INDEPENDENT_FYERS_APP_ID||!env.INDEPENDENT_FYERS_TOKEN||env.INDEPENDENT_SYNTHETIC_INPUT==='1'))throw Error('COMPLETE_READ_ONLY_FEED_CONFIGURATION_REQUIRED');
   const engine=createIndependentPaperEngine({file,owner:crypto.createHash('sha256').update(webhookSecret).digest('hex'),currentStrategyId:env.INDEPENDENT_CURRENT_STRATEGY_ID||'nifty_paper_feed_v1'});
-  let stopped=false,lastFailure=null;
+  let stopped=false,lastFailure=null,lastTickAt=null,tickCount=0,maxTickMs=0;
+  const feedConfigured=Boolean(env.INDEPENDENT_FYERS_APP_ID&&env.INDEPENDENT_FYERS_TOKEN);
   const diagnostics=createWorkerDiagnostics({emit:value=>console.error(JSON.stringify(value)),storagePath:path.dirname(file),secrets:()=>[webhookSecret,adminToken,env.INDEPENDENT_FYERS_TOKEN],context:()=>({mode:'SHADOW',stopped})});
-  const server=createIndependentPaperHttp({engine:{...engine,health:()=>({...engine.health(),runnerStatus:stopped?'EXECUTION_STOPPED':'RUNNING',lastFailure}),control(...args){if(stopped)throw Error('EXECUTION_STOPPED');return engine.control(...args);}},webhookSecret,adminToken,allowSynthetic:env.INDEPENDENT_SYNTHETIC_INPUT==='1'});
+  const server=createIndependentPaperHttp({engine:{...engine,health:()=>({...engine.health(),runnerStatus:stopped?'EXECUTION_STOPPED':'RUNNING',lastFailure,feed:{configured:feedConfigured,lastTickAt,ageMs:lastTickAt?Date.now()-Date.parse(lastTickAt):null,tickCount,maxTickMs},resources:{rssBytes:process.memoryUsage().rss},...(env.stageHealth?{staging:env.stageHealth()}:{} )}),control(...args){if(stopped)throw Error('EXECUTION_STOPPED');return engine.control(...args);}},webhookSecret,adminToken,allowSynthetic:env.INDEPENDENT_SYNTHETIC_INPUT==='1'});
   let feed;
   const recordFailure=value=>{const raw=String(value.code||'UNKNOWN'),code=/^[A-Z][A-Z0-9_]{0,99}$|^\d+$/.test(raw)?raw:'FEED_PROCESSING_FAILED';if(value.step==='feed.processing')stopped=true;const error=value.error||Object.assign(new Error(code),{code});lastFailure={at:new Date().toISOString(),step:value.step,code,error:diagnostics.errorInfo(error)};diagnostics.failure(value.step,error);};
   if(env.INDEPENDENT_FYERS_APP_ID||env.INDEPENDENT_FYERS_TOKEN){
     const {startIndependentFeed}=require('./independent-paper-feed.cjs');
     const required=()=>[...new Set(['current','hams'].flatMap(s=>{const r=engine.read(s).state.rules;return [r.position?.contract.id,r.setup?.attempt?.contractId,r.setup?.prepared?.contractId].filter(Boolean);}))];
-    feed=startIndependentFeed({appId:env.INDEPENDENT_FYERS_APP_ID,accessToken:env.INDEPENDENT_FYERS_TOKEN,directory:path.dirname(file),required,request:(url,init)=>observedRequest(diagnostics,'FYERS','fyers.http',url,init),onTick:tick=>{if(!stopped)engine.tick(tick);},onError:recordFailure}).catch(error=>{recordFailure({step:'feed.start',code:error.code||'FYERS_FEED_START_FAILED',error});return null;});
+    feed=startIndependentFeed({appId:env.INDEPENDENT_FYERS_APP_ID,accessToken:env.INDEPENDENT_FYERS_TOKEN,directory:path.dirname(file),required,request:(url,init)=>observedRequest(diagnostics,'FYERS','fyers.http',url,init),onTick:tick=>{if(!stopped){const start=performance.now();engine.tick(tick);maxTickMs=Math.max(maxTickMs,performance.now()-start);lastTickAt=tick.at;tickCount++;}},onError:recordFailure}).catch(error=>{recordFailure({step:'feed.start',code:error.code||'FYERS_FEED_START_FAILED',error});return null;});
   }
   const timer=setInterval(()=>{if(stopped)return;try{engine.renew();engine.watchdog();}catch(error){stopped=true;recordFailure({step:'local.renewal_or_watchdog',code:error.code||'LOCAL_PERSISTENCE_FAILURE',error});}},1000);
   timer.unref();server.listen(Number(env.PORT||3019),'127.0.0.1');
