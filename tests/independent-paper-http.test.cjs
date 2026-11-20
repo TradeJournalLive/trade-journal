@@ -10,6 +10,12 @@ test('direct HTTP receipts are durable, authenticated, bounded and unambiguously
  try{
  assert.equal((await fetch(root+'/state/current')).status,401);
  assert.equal((await post('/api/v1/webhooks/tradingview',{...payload,secret:'wrong'})).status,401);
+ const probe={secret:webhookSecret,strategyId:'independent_delivery_check_v1',signalId:'shadow-check-fixture-1',metadata:{diagnostic:true}};
+ assert.equal((await post('/api/v1/webhooks/tradingview',{...probe,secret:'wrong'})).status,401);
+ const checked=await post('/api/v1/webhooks/tradingview',probe);assert.equal(checked.status,202);assert.equal((await checked.json()).diagnostic,true);
+ assert.equal((await (await post('/api/v1/webhooks/tradingview',probe)).json()).duplicate,true);
+ assert.equal(engine.health().pendingSignals,0);assert.equal(engine.health().deliveryChecks.count,1);assert.equal(engine.read('current').revision,0);
+ assert.equal((await post('/api/v1/webhooks/tradingview',{...probe,metadata:{diagnostic:true,niftyPaper:{kind:'SIGNAL'}}})).status,422);
  let r=await post('/api/v1/webhooks/tradingview',payload);assert.equal(r.status,202);const receipt=await r.json();assert.equal(receipt.stored,true);assert.equal(receipt.executionComplete,false);assert.equal(receipt.mode,'SHADOW');
  assert.equal((await (await post('/api/v1/webhooks/tradingview',payload)).json()).duplicate,true);
  assert.equal((await post('/api/v1/webhooks/tradingview',{...payload,action:'SELL'})).status,409);

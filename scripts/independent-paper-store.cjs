@@ -19,6 +19,7 @@ class IndependentPaperStore {
       CREATE TABLE IF NOT EXISTS inbox(seq INTEGER PRIMARY KEY AUTOINCREMENT,strategy TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,UNIQUE(strategy,id));
       CREATE TABLE IF NOT EXISTS outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,body TEXT NOT NULL,sent INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS incidents(id TEXT PRIMARY KEY,body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS delivery_checks(id TEXT PRIMARY KEY,received_at TEXT NOT NULL);
     `);
     try{this.tx(()=>{
       const old=this.db.prepare('SELECT owner,mode FROM identity WHERE id=1').get();
@@ -52,9 +53,12 @@ class IndependentPaperStore {
   });}
   incident(value){if(!value?.id||Buffer.byteLength(JSON.stringify(value))>65536)throw issue('INVALID_INCIDENT_SIZE');return this.tx(()=>{const previous=this.db.prepare('SELECT body FROM incidents WHERE id=?').get(value.id);if(previous){if(!isDeepStrictEqual(JSON.parse(previous.body),value))throw issue('INCIDENT_CONFLICT');return;}this.db.prepare('INSERT INTO incidents VALUES(?,?)').run(value.id,JSON.stringify(value));this.record({id:'incident:'+value.id,kind:'INCIDENT',owner:this.owner,strategy:value.strategy,mode:this.mode,value});});}
   incidents(limit=25){return this.db.prepare('SELECT body FROM incidents ORDER BY rowid DESC LIMIT ?').all(Math.min(100,Math.max(1,limit))).map(r=>JSON.parse(r.body));}
+  probe(id){if(typeof id!=='string'||!/^shadow-check-[a-zA-Z0-9-]{1,100}$/.test(id))throw issue('INVALID_DELIVERY_CHECK');return this.tx(()=>{const exists=this.db.prepare('SELECT id FROM delivery_checks WHERE id=?').get(id);if(!exists&&this.probeHealth().count>=100)throw issue('DELIVERY_CHECK_LIMIT_REACHED');const result=this.db.prepare('INSERT OR IGNORE INTO delivery_checks VALUES(?,?)').run(id,new Date(this.clock()).toISOString());return {stored:true,duplicate:result.changes===0};});}
+  probeHealth(){const row=this.db.prepare('SELECT COUNT(*) count,MAX(received_at) lastReceivedAt FROM delivery_checks').get();return {count:row.count,lastReceivedAt:row.lastReceivedAt||null};}
+  recentSignals(limit=12){return this.db.prepare('SELECT strategy,body,processed FROM inbox ORDER BY seq DESC LIMIT ?').all(Math.min(50,Math.max(1,limit))).map(row=>({...JSON.parse(row.body),strategy:row.strategy,processed:Boolean(row.processed)}));}
   pending(limit=25){return this.db.prepare('SELECT id,body FROM outbox WHERE sent=0 ORDER BY seq LIMIT ?').all(limit).map(r=>JSON.parse(r.body));}
   async flush(transport){if(this.flushing)return 0;this.flushing=true;try{const rows=this.pending();if(!rows.length)return 0;const ack=await transport(rows);if(!Array.isArray(ack)||!rows.every(r=>ack.includes(r.id)))throw issue('REPORTING_ACK_MISSING');this.tx(()=>{for(const row of rows)this.db.prepare('UPDATE outbox SET sent=1 WHERE id=?').run(row.id);});return rows.length;}finally{this.flushing=false;}}
-  health(){return {mode:this.mode,realOrdersEnabled:false,pendingSignals:this.db.prepare('SELECT COUNT(*) n FROM inbox WHERE processed=0').get().n,pendingReports:this.db.prepare('SELECT COUNT(*) n FROM outbox WHERE sent=0').get().n};}
+  health(){return {mode:this.mode,realOrdersEnabled:false,pendingSignals:this.db.prepare('SELECT COUNT(*) n FROM inbox WHERE processed=0').get().n,pendingReports:this.db.prepare('SELECT COUNT(*) n FROM outbox WHERE sent=0').get().n,deliveryChecks:this.probeHealth()};}
   close(){this.db.close();}
 }
 module.exports={IndependentPaperStore,hash,issue};

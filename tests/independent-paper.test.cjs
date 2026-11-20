@@ -37,3 +37,8 @@ test('a completely silent feed creates a durable, queryable interruption, even w
  const f=fixture(),e=boot(f);e.control('current',{enabled:true,id:'arm'});e.tick({at:at(0),spot:25255,chain:[q(0)]});e.signal('current',signal());f.set(1);e.tick({at:at(1),spot:25255,chain:[q(1)]});f.set(2);e.tick({at:at(2),spot:25261,chain:[q(2)]});f.set(8);e.watchdog();assert.equal(e.store.incidents()[0].code,'MARKET_PRICE_GAP');assert.equal(e.read('current').state.rules.trades.length,0);e.close();f.cleanup();
 });
 module.exports={fixture,signal,q,at};
+test('flat shadow strategies keep fresh observations after an idle gap without creating a trade review',()=>{
+ const f=fixture(),e=boot(f);e.tick({at:at(0),spot:25255,chain:[q(0)]});for(const n of [10,20,30]){f.set(n);e.renew();}e.tick({at:at(30),spot:25255,chain:[q(30)]});
+ for(const strategy of ['current','hams']){assert.equal(e.read(strategy).state.review,null);assert.equal(e.read(strategy).state.rules.position,null);assert.equal(e.read(strategy).state.feedAt,at(30));}
+ e.close();f.cleanup();
+});

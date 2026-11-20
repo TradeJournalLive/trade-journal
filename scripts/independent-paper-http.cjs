@@ -17,6 +17,10 @@ function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthe
       const body=JSON.parse(Buffer.concat(parts).toString('utf8'));
       if(direct){
         if(!equal(body.secret,webhookSecret))return send(401,{error:'Unauthorized'});
+        if(body.metadata?.diagnostic===true){
+          if(body.strategyId!=='independent_delivery_check_v1'||body.metadata.niftyPaper||body.metadata.hamsFinalPaper||body.metadata.btcPaper||body.metadata.ribbonPaper)return send(422,{error:'Invalid delivery check'});
+          return send(202,{...engine.store.probe(body.signalId),mode:'SHADOW',realOrdersEnabled:false,executionComplete:false,diagnostic:true});
+        }
         const strategy=body.metadata?.hamsFinalPaper?'hams':body.metadata?.niftyPaper?'current':null;
         if(!strategy)return send(422,{error:'Unsupported paper strategy'});
         const receipt=engine.signal(strategy,body);

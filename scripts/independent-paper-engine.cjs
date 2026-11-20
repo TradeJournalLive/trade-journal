@@ -50,7 +50,7 @@ function createIndependentPaperEngine({file,owner,clock=Date.now,workerId=crypto
     for(const strategy of ['current','hams']){
       const saved=store.read(strategy).state,position=saved.rules.position;
       const q=position&&tick.chain.find(q=>q.id===position.contract.id&&Date.parse(q.at)<=now&&now-Date.parse(q.at)<=5000);
-      if(!saved.review&&((saved.feedAt&&at-Date.parse(saved.feedAt)>5000)||(position&&saved.activeQuoteAt&&!q&&now-Date.parse(saved.activeQuoteAt)>5000)))pause(strategy,'MARKET_PRICE_GAP','Fresh market observations were missing for more than five seconds. The exact intervening price path is unknown.',stamp(now));
+      if(!saved.review&&((saved.rules.position||saved.rules.setup)&&saved.feedAt&&at-Date.parse(saved.feedAt)>5000||(position&&saved.activeQuoteAt&&!q&&now-Date.parse(saved.activeQuoteAt)>5000)))pause(strategy,'MARKET_PRICE_GAP','Fresh market observations were missing for more than five seconds. The exact intervening price path is unknown.',stamp(now));
       step(strategy,state=>{
         if(state.review){state.rules.ticks=core.observeLimitIndex(state.rules.ticks,tick.at,tick.spot);return state;}
         state.feedAt=tick.at;if(q)state.activeQuoteAt=q.at;

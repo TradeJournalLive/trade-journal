@@ -30,7 +30,7 @@ async function startCloudwaysStage(env=process.env){
   const installation={id:previous?.id||crypto.randomUUID(),boots:(previous?.boots||0)+1};
   fs.writeFileSync(marker+'.tmp',JSON.stringify(installation),{mode:0o600});fs.renameSync(marker+'.tmp',marker);
   let runner;
-  const web=createStageWeb({origin:'https://nodejs-1686001-6780032.cloudwaysnodeapps.com',password:config.INDEPENDENT_STAGE_ADMIN_PASSWORD,appId:oauthAppId,appSecret:config.INDEPENDENT_FYERS_SECRET,sessionFile,getEngine:()=>runner.engine,getRuntime:()=>runner.health(),signalConfigurationVerified:Boolean(config.INDEPENDENT_CURRENT_STRATEGY_ID)});
+  const web=createStageWeb({origin:'https://nodejs-1686001-6780032.cloudwaysnodeapps.com',password:config.INDEPENDENT_STAGE_ADMIN_PASSWORD,appId:oauthAppId,appSecret:config.INDEPENDENT_FYERS_SECRET,sessionFile,loadedTokenAt:savedSession?.connectedAt,webhookSecret:config.INDEPENDENT_PAPER_WEBHOOK_SECRET,currentStrategyId:config.INDEPENDENT_CURRENT_STRATEGY_ID,getEngine:()=>runner.engine,getRuntime:()=>runner.health(),signalConfigurationVerified:Boolean(config.INDEPENDENT_CURRENT_STRATEGY_ID)});
   config.stageRoutes=web.handle;
   config.stageHealth=()=>({phase:config.INDEPENDENT_FYERS_APP_ID&&config.INDEPENDENT_FYERS_TOKEN?'FEED_CONFIGURATION_PRESENT':'AWAITING_FYERS_CONFIGURATION',isolated:true,productionStateImported:false,reportingDestination:'NOT_CONFIGURED',installationId:installation.id,bootCount:installation.boots,storageSurvivedPriorBoot:Boolean(previous),freeBytes:Number(fs.statfsSync(directory).bavail)*Number(fs.statfsSync(directory).bsize),selftest,setup:web.health()});
   runner=startIndependentPaperRunner(config);
