@@ -1,5 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{createServer}=require('node:http');
 const {createStageWeb,readFyersSession}=require('../scripts/independent-paper-stage-web.cjs');
+test('staging password diagnostics distinguish missing and too-short configuration without exposing it',()=>{
+ for(const [password,status] of [[undefined,'MISSING'],['short-private-value','TOO_SHORT'],['fixture-private-staging-password','READY']]){
+  const web=createStageWeb({origin:'https://stage.example',password,sessionFile:'/nonexistent/stage-token',getEngine:()=>null});
+  assert.equal(web.health().adminConfiguration,status);if(password)assert.equal(JSON.stringify(web.health()).includes(password),false);
+ }
+});
 test('staging OAuth requires private login, origin/CSRF, one-use state and flat workers; token persists privately',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'stage-oauth-')),file=path.join(dir,'fyers.json'),origin='https://stage.example',password='fixture-private-staging-password',accessToken='fixture-private-fyers-access-token';let exchange=0,enabled=false,feedReady=false;
  const engine={read:()=>({state:{rules:{enabled,position:null,setup:null,status:'DISABLED'}}}),control(s,v){enabled=v.enabled;}};

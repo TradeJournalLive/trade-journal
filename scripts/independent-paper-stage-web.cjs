@@ -7,6 +7,7 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,getEngine,g
   if(!origin||new URL(origin).protocol!=='https:')throw Error('EXPLICIT_HTTPS_STAGING_ORIGIN_REQUIRED');
   const sessions=new Map();let failures=[],lastAuthError=null;
   const callback=origin+'/stage/fyers/callback',configured=Boolean(appId&&appSecret);
+  const adminConfiguration=!password?'MISSING':password.length<20?'TOO_SHORT':'READY';
   function page(res,status,body){res.writeHead(status,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api-t1.fyers.in https://login.fyers.in; base-uri 'none'; frame-ancestors 'none'"});res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Independent Paper Test</title><style>body{margin:0;font:15px system-ui;color:#172026;background:#f5f7f8}main{max-width:800px;margin:32px auto;padding:24px}h1{font-size:26px}h2{font-size:18px}section{padding:20px 0;border-top:1px solid #ced5d9}label{display:block;margin:12px 0}input{box-sizing:border-box;max-width:100%;padding:10px;border:1px solid #9faeb6;border-radius:4px}button{padding:10px 14px;background:#176c48;color:white;border:0;border-radius:4px;cursor:pointer}button:disabled{opacity:.45}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #dce1e4}a{color:#1559a0}small{color:#51616a}code{overflow-wrap:anywhere}</style></head><body><main><h1>Independent Paper Test</h1><p><strong>SHADOW · Broker orders disabled</strong></p>'+body+'</main></body></html>');}
   const redirect=(res,to)=>{res.writeHead(303,{location:to,'cache-control':'no-store','referrer-policy':'no-referrer'});res.end();};
   async function form(req){let n=0,parts=[];for await(const chunk of req){n+=chunk.length;if(n>4096)throw Error('FORM_TOO_LARGE');parts.push(chunk);}return new URLSearchParams(Buffer.concat(parts).toString('utf8'));}
@@ -18,7 +19,7 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,getEngine,g
     const url=new URL(req.url,origin),route=url.pathname;
     if(route==='/'&&req.method==='GET'){redirect(res,'/stage');return true;}
     if(!route.startsWith('/stage'))return false;
-    if(!password||password.length<20){page(res,503,'<h2>Private setup required</h2><p>Staging administrator password is not configured.</p>');return true;}
+    if(adminConfiguration!=='READY'){page(res,503,'<h2>Private setup required</h2><p>'+(adminConfiguration==='TOO_SHORT'?'Staging password must contain at least 20 characters.':'Staging administrator password is not configured.')+'</p>');return true;}
     const {session,id}=current(req);
     if(route==='/stage/login'&&req.method==='POST'){
       if(req.headers.origin!==origin){page(res,403,'<p>Origin rejected.</p>');return true;}
@@ -64,6 +65,6 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,getEngine,g
     }
     page(res,404,'<p>Not found.</p>');return true;
   }
-  return {handle,health:()=>({adminConfigured:Boolean(password&&password.length>=20),oauthConfigured:configured,tokenSaved:fs.existsSync(sessionFile),lastAuthError})};
+  return {handle,health:()=>({adminConfigured:adminConfiguration==='READY',adminConfiguration,oauthConfigured:configured,tokenSaved:fs.existsSync(sessionFile),lastAuthError})};
 }
 module.exports={createStageWeb,savePrivate,readFyersSession};
