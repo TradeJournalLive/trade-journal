@@ -72,7 +72,15 @@ async function createService(env, { fetcher } = {}) {
 }
 
 if (require.main === module) {
-  createService(process.env).then(server => server.listen(Number(process.env.PORT || 3000), '0.0.0.0')).catch(() => {
+  const listen = server => server.listen(Number(process.env.PORT || 3000), '0.0.0.0');
+  if (!process.env.LIVE_FYERS_APP_ID) {
+    listen(createServer((req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.statusCode = req.method === 'GET' && req.url === '/health' ? 200 : 503;
+      res.end('Live FYERS is not configured. Order submission disabled.');
+    }));
+  } else createService(process.env).then(listen).catch(() => {
     console.error('Live FYERS service could not start. Check private configuration.');
     process.exitCode = 1;
   });
