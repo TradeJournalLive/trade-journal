@@ -35,6 +35,7 @@ export type NiftyPaperStatus = {
   hasReconstructedResults?: boolean;
   enabled: boolean; status: string; workerStatus: string; feedAt: string | null;
   cycle: NiftyLossCycle | null; lots: number | null; cash: number | null; pendingExit: string | null;
+  winRate?: { wins: number; closed: number } | null;
   maxCapitalRequired?: number | null;
   reviewRequired: boolean; position: { contract: string; entry: number; stop: number; target: number; lots: number; quantity: number; mark: number | null; lateEntry: boolean } | null;
 };
@@ -45,10 +46,12 @@ type ProjectedState = Pick<import("./niftyLimitPaper").LimitState, "enabled"|"st
 export function niftyPaperStatus(s: ProjectedState, workerStatus: string, feedAt: string | null, reviewRequired = false, history = s.trades, previousEntries: readonly CapitalEntry[] = []): NiftyPaperStatus {
   const p = s.position;
   const recorded = history?.filter(t => Date.parse(t.openedAt) >= Date.parse(niftyFreshSessionAt));
+  const verified = recorded?.filter(t => !t.reconstruction && Number.isFinite(t.pnl));
   const open = p && Date.parse(p.openedAt) >= Date.parse(niftyFreshSessionAt) ? p : null;
   const entries = previousEntries.filter(p => Date.parse(p.openedAt) >= Date.parse(niftyFreshSessionAt)).map(p => ({ openedAt: p.openedAt, capital: p.entry * p.quantity }));
   const maxCapitalRequired = recorded ? maxPaperCapital(recorded, open, t => t.entry * t.quantity, open ? open.entry * open.quantity : undefined, entries) : null;
   return { hasReconstructedResults: Boolean(recorded?.some(t=>t.reconstruction)), enabled: s.enabled, status: s.status, workerStatus, feedAt, cycle: s.lossCycle ?? null,
+    winRate: verified ? { wins: verified.filter(t => t.pnl > 0).length, closed: verified.length } : null,
     maxCapitalRequired: maxCapitalRequired === null ? null : money(maxCapitalRequired),
     lots: s.lossCycle ? s.nextLots : null, cash: p ? money(s.balance - p.entry * p.quantity) : s.balance,
     pendingExit: s.pendingExit?.reason ?? null, reviewRequired,
