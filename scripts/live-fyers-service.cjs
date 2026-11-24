@@ -1,8 +1,9 @@
 'use strict';
 const { createServer } = require('node:http');
 const { randomBytes, createCipheriv, createHash, timingSafeEqual } = require('node:crypto');
-const { mkdir, writeFile, rename, rm } = require('node:fs/promises');
+const { mkdir, writeFile, rename, rm, readFile, lstat } = require('node:fs/promises');
 const { join, isAbsolute } = require('node:path');
+const { homedir } = require('node:os');
 const { createLiveFyersAuth } = require('./live-fyers-auth.cjs');
 
 async function storeToken(directory, key, token) {
@@ -71,15 +72,30 @@ async function createService(env, { fetcher } = {}) {
   });
 }
 
+async function probeStorage(home) {
+  if (!isAbsolute(home) || home === '/' || home === '/tmp' || home.startsWith('/tmp/')) throw Error('INVALID_LIVE_HOME');
+  const dir = join(home, '.fyers-live-private');
+  await mkdir(dir, { mode: 0o700, recursive: true });
+  const stat = await lstat(dir);
+  if (!stat.isDirectory() || (stat.mode & 0o077) || stat.uid !== process.getuid()) throw Error('UNSAFE_LIVE_STORAGE');
+  const marker = join(dir, 'storage-probe');
+  try { await writeFile(marker, randomBytes(16).toString('hex'), { flag: 'wx', mode: 0o600, flush: true }); }
+  catch (error) { if (error.code !== 'EEXIST') throw error; }
+  const value = await readFile(marker, 'utf8');
+  if (!/^[a-f0-9]{32}$/.test(value)) throw Error('INVALID_STORAGE_MARKER');
+  return createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
 if (require.main === module) {
+  const randomBoot = randomBytes(8).toString('hex');
   const listen = server => server.listen(Number(process.env.PORT || 3000), '0.0.0.0');
   if (!process.env.LIVE_FYERS_APP_ID) {
-    listen(createServer((req, res) => {
+    probeStorage(homedir()).then(marker => listen(createServer((req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.statusCode = req.method === 'GET' && req.url === '/health' ? 200 : 503;
-      res.end('Live FYERS is not configured. Order submission disabled.');
-    }));
+      res.end(res.statusCode === 200 ? JSON.stringify({ orderSubmission: false, storageMarker: marker, boot: randomBoot }) : 'Live FYERS is not configured.');
+    }))).catch(() => { console.error('Live storage probe failed.'); process.exitCode = 1; });
   } else createService(process.env).then(listen).catch(() => {
     console.error('Live FYERS service could not start. Check private configuration.');
     process.exitCode = 1;
