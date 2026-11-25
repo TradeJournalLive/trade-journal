@@ -1,6 +1,6 @@
 'use strict';
 const { createServer } = require('node:http');
-const { randomBytes, createCipheriv, createHash, timingSafeEqual } = require('node:crypto');
+const { randomBytes, createCipheriv, createDecipheriv, createHash, timingSafeEqual } = require('node:crypto');
 const { mkdir, writeFile, rename, rm, readFile, lstat } = require('node:fs/promises');
 const { join, isAbsolute } = require('node:path');
 const { homedir } = require('node:os');
@@ -19,7 +19,29 @@ async function storeToken(directory, key, token) {
   }
 }
 
-async function createService(env, { fetcher } = {}) {
+async function checkBroker(directory, key, appId, fetcher) {
+  const data = await readFile(join(directory, 'fyers-live-token.enc'));
+  if (data.length <= 28 || data.length > 16384) throw Error('INVALID_LIVE_TOKEN_FILE');
+  const decipher = createDecipheriv('aes-256-gcm', key, data.subarray(0, 12));
+  decipher.setAuthTag(data.subarray(12, 28));
+  const token = Buffer.concat([decipher.update(data.subarray(28)), decipher.final()]).toString('utf8');
+  const checks = await Promise.all(['orders', 'positions'].map(async (name) => {
+    try {
+      const response = await fetcher('https://api-t1.fyers.in/api/v3/' + name, {
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000),
+        headers: { Authorization: appId + ':' + token, Accept: 'application/json' }
+      });
+      const body = await response.json().catch(() => null);
+      return [name, response.ok && body?.s === 'ok' ? 'OK' :
+        'FAILED (HTTP ' + response.status + (Number.isSafeInteger(body?.code) ? ', FYERS code ' + body.code : '') + ')'];
+    } catch {
+      return [name, 'FAILED (broker request unavailable)'];
+    }
+  }));
+  return Object.fromEntries(checks);
+}
+
+async function createService(env, { fetcher = fetch } = {}) {
   const dir = env.LIVE_FYERS_DATA_DIR || join(homedir(), '.fyers-live-private');
   const password = env.LIVE_OPERATOR_PASSWORD;
   if (!dir || !isAbsolute(dir) || !password || password.length < 24 ||
@@ -42,10 +64,18 @@ async function createService(env, { fetcher } = {}) {
     const finish = (code, message) => { res.statusCode = code; res.end(message); };
     try {
       const url = new URL(req.url, origin);
-      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Sign-in form ready. Order submission disabled.');
+      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Read-only connection check ready. Order submission disabled.');
       if (!timingSafeEqual(digest(req.headers.authorization || ''), expected)) {
         res.setHeader('WWW-Authenticate', 'Basic realm="FYERS Live"');
         return finish(401, 'Operator sign-in required.');
+      }
+      if (url.pathname === '/live/fyers/check' && req.method === 'POST') {
+        if (req.headers.origin !== origin) return finish(403, 'Origin rejected.');
+        let result;
+        try { result = await checkBroker(dir, key, env.LIVE_FYERS_APP_ID, fetcher); }
+        catch { return finish(409, 'Saved session unavailable. Return to /live and reconnect FYERS.'); }
+        return finish(Object.values(result).every(s => s === 'OK') ? 200 : 502,
+          'Orders: ' + result.orders + '\\nPositions: ' + result.positions + '\\nOrder submission disabled.');
       }
       if (url.pathname === '/live/fyers/connect' && req.method === 'POST') {
         if (req.headers.origin !== origin) return finish(403, 'Origin rejected.');
@@ -65,7 +95,7 @@ async function createService(env, { fetcher } = {}) {
         res.setHeader('Referrer-Policy', 'same-origin');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; form-action 'self' https://api-t1.fyers.in");
-        return finish(200, '<!doctype html><meta charset="utf-8"><title>FYERS Live Connection</title><h1>FYERS Live Connection</h1><form action="/live/fyers/connect" method="post"><button>Connect FYERS</button></form>');
+        return finish(200, '<!doctype html><meta charset="utf-8"><title>FYERS Live Connection</title><h1>FYERS Live Connection</h1><form action="/live/fyers/connect" method="post"><button>Connect FYERS</button></form><form action="/live/fyers/check" method="post"><button>Check FYERS access</button></form>');
       }
       return finish(404, 'Not found.');
     } catch {
