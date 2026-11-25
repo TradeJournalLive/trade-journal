@@ -41,6 +41,34 @@ async function checkBroker(directory, key, appId, fetcher) {
   return Object.fromEntries(checks);
 }
 
+async function acceptDiagnostic(req, dir, secret) {
+  if (typeof secret !== 'string' || secret.length < 32) return [503, 'Diagnostic webhook is disabled.'];
+  if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return [415, 'JSON required.'];
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 2048) return [413, 'Diagnostic payload too large.'];
+    chunks.push(chunk);
+  }
+  let body;
+  try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { return [400, 'Invalid diagnostic payload.']; }
+  const hash = value => createHash('sha256').update(value).digest();
+  if (typeof body?.secret !== 'string' || !timingSafeEqual(hash(body.secret), hash(secret)))
+    return [401, 'Diagnostic authentication failed.'];
+  if (body.kind !== 'LIVE_DELIVERY_TEST' || typeof body.id !== 'string' || !/^diagnostic-[a-zA-Z0-9-]{1,64}$/.test(body.id) ||
+      Object.keys(body).some(key => !['kind', 'id', 'secret'].includes(key)))
+    return [400, 'Diagnostic payload only; trading signals are not accepted.'];
+  const temp = join(dir, '.diagnostic-' + randomBytes(16).toString('hex'));
+  try {
+    await writeFile(temp, JSON.stringify({ id: body.id, receivedAt: new Date().toISOString() }),
+      { mode: 0o600, flag: 'wx', flush: true });
+    await rename(temp, join(dir, 'tradingview-diagnostic.json'));
+  } finally { await rm(temp, { force: true }); }
+  return [202, 'Diagnostic received. Order submission disabled.'];
+}
+
 async function createService(env, { fetcher = fetch } = {}) {
   const dir = env.LIVE_FYERS_DATA_DIR || join(homedir(), '.fyers-live-private');
   const password = env.LIVE_OPERATOR_PASSWORD;
@@ -64,10 +92,21 @@ async function createService(env, { fetcher = fetch } = {}) {
     const finish = (code, message) => { res.statusCode = code; res.end(message); };
     try {
       const url = new URL(req.url, origin);
-      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Read-only connection check ready. Order submission disabled.');
+      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Read-only connection check and diagnostic route ready. Order submission disabled.');
+      if (url.pathname === '/live/tradingview/diagnostic' && req.method === 'POST') {
+        try { return finish(...await acceptDiagnostic(req, dir, env.LIVE_TRADINGVIEW_TEST_SECRET)); }
+        catch { return finish(503, 'Diagnostic could not be stored.'); }
+      }
       if (!timingSafeEqual(digest(req.headers.authorization || ''), expected)) {
         res.setHeader('WWW-Authenticate', 'Basic realm="FYERS Live"');
         return finish(401, 'Operator sign-in required.');
+      }
+      if (url.pathname === '/live/tradingview/receipt' && req.method === 'GET') {
+        try { return finish(200, await readFile(join(dir, 'tradingview-diagnostic.json'), 'utf8')); }
+        catch (error) {
+          if (error.code === 'ENOENT') return finish(404, 'No diagnostic alert received yet.');
+          throw error;
+        }
       }
       if (url.pathname === '/live/fyers/check' && req.method === 'POST') {
         if (req.headers.origin !== origin) return finish(403, 'Origin rejected.');
