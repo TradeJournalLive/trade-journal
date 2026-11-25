@@ -42,7 +42,7 @@ async function createService(env, { fetcher } = {}) {
     const finish = (code, message) => { res.statusCode = code; res.end(message); };
     try {
       const url = new URL(req.url, origin);
-      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Order submission disabled.');
+      if (url.pathname === '/health' && req.method === 'GET') return finish(200, 'FYERS live connection service. Sign-in form ready. Order submission disabled.');
       if (!timingSafeEqual(digest(req.headers.authorization || ''), expected)) {
         res.setHeader('WWW-Authenticate', 'Basic realm="FYERS Live"');
         return finish(401, 'Operator sign-in required.');
@@ -62,6 +62,7 @@ async function createService(env, { fetcher } = {}) {
         return finish(200, 'Live FYERS token saved. Order submission remains disabled.');
       }
       if (url.pathname === '/live' && req.method === 'GET') {
+        res.setHeader('Referrer-Policy', 'same-origin');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; form-action 'self' https://api-t1.fyers.in");
         return finish(200, '<!doctype html><meta charset="utf-8"><title>FYERS Live Connection</title><h1>FYERS Live Connection</h1><form action="/live/fyers/connect" method="post"><button>Connect FYERS</button></form>');
