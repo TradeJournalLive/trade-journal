@@ -20,7 +20,7 @@ async function storeToken(directory, key, token) {
 }
 
 async function createService(env, { fetcher } = {}) {
-  const dir = env.LIVE_FYERS_DATA_DIR;
+  const dir = env.LIVE_FYERS_DATA_DIR || join(homedir(), '.fyers-live-private');
   const password = env.LIVE_OPERATOR_PASSWORD;
   if (!dir || !isAbsolute(dir) || !password || password.length < 24 ||
       !/^[0-9a-f]{64}$/i.test(env.LIVE_TOKEN_KEY ?? '')) throw Error('INVALID_LIVE_SERVICE_CONFIG');
@@ -32,6 +32,7 @@ async function createService(env, { fetcher } = {}) {
     redirectUrl: env.LIVE_FYERS_REDIRECT_URL, fetcher
   });
   const origin = new URL(env.LIVE_FYERS_REDIRECT_URL).origin;
+  if (!env.LIVE_FYERS_DATA_DIR) await probeStorage(homedir());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   return createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -94,7 +95,7 @@ if (require.main === module) {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.statusCode = req.method === 'GET' && req.url === '/health' ? 200 : 503;
-      res.end(res.statusCode === 200 ? JSON.stringify({ orderSubmission: false, storageMarker: marker, boot: randomBoot }) : 'Live FYERS is not configured.');
+      res.end(res.statusCode === 200 ? JSON.stringify({ orderSubmission: false, storageMarker: marker, boot: randomBoot, privateStorageDefault: true }) : 'Live FYERS is not configured.');
     }))).catch(() => { console.error('Live storage probe failed.'); process.exitCode = 1; });
   } else createService(process.env).then(listen).catch(() => {
     console.error('Live FYERS service could not start. Check private configuration.');
