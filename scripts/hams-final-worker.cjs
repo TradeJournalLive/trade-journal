@@ -34,6 +34,8 @@ const owner = hash(config.webhookSecret), workerId = crypto.randomUUID(), checkp
 const now = () => new Date().toISOString();
 const day = at => new Date(Date.parse(at) + 330*60000).toISOString().slice(0,10);
 let state = emptyHamsState(), decisions = [], pending = null, connection, socket, master = [], spot = null;
+const INDIA_VIX = 'NSE:INDIAVIX-INDEX';
+let indiaVix;
 let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = false, busy = false, publishing = false, pollAfter;
 let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
@@ -180,6 +182,12 @@ function onMessage(message) {
   try {
     for (const r of Array.isArray(message) ? message : [message]) {
       if (!r?.symbol) continue;
+      if (r.symbol === INDIA_VIX) {
+        const t=Number(r.exch_feed_time)*1000,value=Number(r.ltp),age=Date.now()-t;
+        if(r.type!=='dp'&&Number.isFinite(t)&&age>=0&&age<=60000&&Number.isFinite(value)&&value>0&&(!indiaVix||t>=Date.parse(indiaVix.at)))
+          indiaVix={value,at:new Date(t).toISOString()};
+        continue;
+      }
       const at = now();
       if (r.type === 'dp') { const d = readDepth(r,at); if (d) depths.set(r.symbol,d); }
       else {
@@ -218,7 +226,7 @@ function tryEntry() {
     if(!executionAllowed()||!spot||(!state.rulesV2.emergency?.pending&&Date.now()-spot.at>5000))return;
     initializeLossCycle();
     const at=now(),before=state.position,closed=state.trades.length;
-    state=markHamsLimit(state,{at,spot:spot.price,chain:state.position||state.rulesV2.setup?contractQuotes(at):[]});
+    state=markHamsLimit(state,{at,spot:spot.price,chain:state.position||state.rulesV2.setup?contractQuotes(at):[],indiaVix});
     decisions=state.rulesV2.decisions;
     mark=state.rulesV2.mark;
     if(state.trades.length!==closed){save();audit('TRADE',state.trades.at(-1));}
@@ -394,7 +402,7 @@ async function main() {
   save();
   await flushLedger();
   socket=fyersDataSocket.getInstance(`${connection.appId}:${connection.accessToken}`,directory,false);
-  socket.on('connect',()=>{status=publishFailures?'STORAGE_RETRY':'READY';quotes.clear();depths.clear();spot=null;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);});
+  socket.on('connect',()=>{status=publishFailures?'STORAGE_RETRY':'READY';quotes.clear();depths.clear();spot=null;indiaVix=undefined;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);try{socket.subscribe([INDIA_VIX]);}catch(error){diagnostics.failure('feed.vix.subscribe',error);}});
   socket.on('message',onMessage);socket.on('error',error=>{diagnostics.failure('feed.socket',error);status='FEED_ERROR';feedAt=null;});socket.on('close',()=>{diagnostics.write('FEED_DISCONNECTED');status='FEED_DISCONNECTED';feedAt=null;});
   socket.connect(); if(socket.autoreconnect)socket.autoreconnect(50);
   save(); console.log('HAMS Final paper worker started; read-only FYERS data.');
