@@ -42,6 +42,21 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,loadedToken
         const target=new URL('https://api-t1.fyers.in/api/v3/generate-authcode');for(const [key,value] of Object.entries({client_id:appId,redirect_uri:callback,response_type:'code',state:session.oauth.state}))target.searchParams.set(key,value);
         redirect(res,target.toString());return true;
       }
+      if(route==='/stage/webhook/auth-check'){
+        let result='Webhook authentication check unavailable.';
+        try{
+          // Deliberately invalid diagnostic: authenticated requests reach 422 without creating a receipt.
+          const response=await request(origin+'/api/v1/webhooks/tradingview',{
+            method:'POST',redirect:'error',signal:AbortSignal.timeout(5000),
+            headers:{'content-type':'application/json'},
+            body:JSON.stringify({secret:webhookSecret,strategyId:'invalid_auth_check_only',metadata:{diagnostic:true}})
+          });
+          result=response.status===422?'Panel credential accepted by rehearsal webhook. No receipt created.':
+            response.status===401?'Panel credential rejected by rehearsal webhook (401).':
+            'Unexpected webhook response (HTTP '+response.status+').';
+        }catch{}
+        page(res,200,'<p>'+escape(result)+'</p><a href="/stage">Back to rehearsal</a>');return true;
+      }
       if(route==='/stage/hams/review'){
         try{getEngine().acknowledgeFlatReview('hams',body.get('incident'));}
         catch{page(res,409,'<p>HAMS rehearsal review could not be acknowledged. Refresh and confirm it is flat.</p>');return true;}
@@ -71,7 +86,7 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,loadedToken
       const health=getRuntime(),checks=engine.store.probeHealth();
       const receipts=engine.store.recentSignals().map(r=>'<tr><td>'+escape(r.strategy)+'</td><td>'+escape(time(r.receivedAt))+'</td><td>'+escape(r.action)+'</td><td style="overflow-wrap:anywhere;max-width:260px">'+escape(r.id)+'</td><td>'+(r.processed?'Processed':'Queued')+'</td></tr>').join('');
       const results=['current','hams'].map(s=>{const r=engine.read(s).state.rules,decisions=r.decisions.slice(-8).reverse().map(d=>'<tr><td>'+escape(time(d.decidedAt))+'</td><td>'+escape(d.status)+'</td><td style="overflow-wrap:anywhere">'+escape(d.reason)+'</td></tr>').join('');return '<section><h2>'+escape(s==='current'?'NIFTY Current':'HAMS')+'</h2><p>Paper balance: '+escape(r.balance.toLocaleString('en-IN',{style:'currency',currency:'INR'}))+' · Next size: '+escape(r.nextLots)+' lots</p><p>Open position: '+escape(r.position?r.position.contract.id+' · '+r.position.lots+' lots':'None')+'</p><p>Closed trades: '+r.trades.length+'</p><table><thead><tr><th>Time · IST</th><th>Decision</th><th>Reason</th></tr></thead><tbody>'+decisions+'</tbody></table></section>';}).join('');
-      const setup='<section><h2>Test alert connection</h2><label>Webhook URL <input readonly style="width:100%" value="'+escape(origin+'/api/v1/webhooks/tradingview')+'"></label><label>Test webhook secret <input type="password" readonly style="width:100%" value="'+escape(webhookSecret||'')+'"></label><p>Current strategy ID: <code>'+escape(currentStrategyId||'Not configured')+'</code></p><p>Delivery checks: '+checks.count+' · Last received: '+escape(time(checks.lastReceivedAt))+' IST</p></section>';
+      const setup='<section><h2>Test alert connection</h2><form method="post" action="/stage/webhook/auth-check">'+input(session)+'<button>Check panel webhook credential</button></form><label>Webhook URL <input readonly style="width:100%" value="'+escape(origin+'/api/v1/webhooks/tradingview')+'"></label><label>Test webhook secret <input type="password" readonly style="width:100%" value="'+escape(webhookSecret||'')+'"></label><p>Current strategy ID: <code>'+escape(currentStrategyId||'Not configured')+'</code></p><p>Delivery checks: '+checks.count+' · Last received: '+escape(time(checks.lastReceivedAt))+' IST</p></section>';
       page(res,200,'<section><h2>FYERS non-trading feed</h2><p>Application credentials: '+(configured?'Configured':'Missing')+'</p><p>Local token: '+(saved?(saved.connectedAt===loadedTokenAt?'Loaded':'Saved · test-app restart required'):'Not connected')+'</p><p>Fresh prices: '+(health.feed?.ageMs!==null&&health.feed?.ageMs<=5000?'Yes':'Waiting')+' · Last update: '+escape(time(health.feed?.lastTickAt))+' IST</p>'+(lastAuthError?'<p>'+escape(lastAuthError)+'</p>':'')+'<form method="post" action="/stage/fyers/connect">'+input(session)+'<button'+(!configured?' disabled':'')+'>Connect FYERS</button></form></section><section><h2>Shadow strategies</h2><table>'+rows+'</table></section>'+setup+'<section><h2>Recent signal receipts</h2><table><thead><tr><th>Strategy</th><th>Time · IST</th><th>Action</th><th>Signal</th><th>Status</th></tr></thead><tbody>'+receipts+'</tbody></table></section>'+results+'<section><a href="/health">Health</a><form method="post" action="/stage/logout">'+input(session)+'<button>Sign out</button></form></section>',true);return true;
     }
     page(res,404,'<p>Not found.</p>');return true;
