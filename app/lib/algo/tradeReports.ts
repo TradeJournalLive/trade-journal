@@ -8,8 +8,9 @@ export type ReportTrade = {
   signalId: string; signalAt?: string; receivedAt?: string; openedAt: string; closedAt?: string;
   entry: number; exit?: number; quantity?: number; lots?: number; capital?: number; currency: string;
   pnl?: number; recordedPnl?: number; points?: number; stop?: number; target?: number; reason?: string; quality: string;
+  indiaVix?: { value: number; at: string };
 };
-export const tradeColumns = ["Entry date", "Engine", "Instrument", "Side", "Status", "Signal date", "Signal time (IST)", "Received date", "Received time (IST)", "Entry time (IST)", "Entry price", "Exit date", "Exit time (IST)", "Exit price", "Quantity", "Lots", "Capital used", "Currency", "Gross P&L", "Recorded gross P&L", "Points", "Recorded SL", "Recorded target", "Exit reason", "Quality", "Signal ID", "Trade ID"];
+export const tradeColumns = ["Entry date", "Engine", "Instrument", "Side", "Status", "Signal date", "Signal time (IST)", "Received date", "Received time (IST)", "Entry time (IST)", "Entry price", "Exit date", "Exit time (IST)", "Exit price", "Quantity", "Lots", "Capital used", "Currency", "Gross P&L", "Recorded gross P&L", "Points", "Recorded SL", "Recorded target", "Exit reason", "Quality", "Signal ID", "Trade ID", "India VIX at entry", "India VIX quote time (IST)"];
 function signalFor(events: StoredAlgoEvent[], id: string, symbol: string, openedAt: string) {
   const matching = events.filter(event => event.signal.id === id && event.signal.symbol === symbol && Date.parse(event.receivedAt) <= Date.parse(openedAt));
   return matching.length === 1 ? matching[0] : undefined;
@@ -45,5 +46,5 @@ export function buildTradeReports(books: Books, events: StoredAlgoEvent[]) {
   return [...unique.values()].sort((a, b) => a.openedAt.localeCompare(b.openedAt) || a.id.localeCompare(b.id));
 }
 export function tradeRows(trades: ReportTrade[]) {
-  return trades.map(t => [istDay(t.openedAt), t.engine, t.symbol, t.side, t.status, istDay(t.signalAt), istTime(t.signalAt), istDay(t.receivedAt), istTime(t.receivedAt), istTime(t.openedAt), t.entry, istDay(t.closedAt), istTime(t.closedAt), t.exit ?? "", t.quantity ?? "", t.lots ?? "", t.capital ?? "", t.currency, t.pnl ?? "", t.recordedPnl ?? "", t.points ?? "", t.stop ?? "", t.target ?? "", t.reason ?? "", t.quality, t.signalId, t.id]);
+  return trades.map(t => [istDay(t.openedAt), t.engine, t.symbol, t.side, t.status, istDay(t.signalAt), istTime(t.signalAt), istDay(t.receivedAt), istTime(t.receivedAt), istTime(t.openedAt), t.entry, istDay(t.closedAt), istTime(t.closedAt), t.exit ?? "", t.quantity ?? "", t.lots ?? "", t.capital ?? "", t.currency, t.pnl ?? "", t.recordedPnl ?? "", t.points ?? "", t.stop ?? "", t.target ?? "", t.reason ?? "", t.quality, t.signalId, t.id, t.indiaVix?.value ?? "", istTime(t.indiaVix?.at)]);
 }
