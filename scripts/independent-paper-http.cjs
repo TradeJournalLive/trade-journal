@@ -1,5 +1,6 @@
 const {createServer}=require('node:http');
-const {timingSafeEqual}=require('node:crypto');
+const {timingSafeEqual,createHmac}=require('node:crypto');
+const deliveryCredential=secret=>createHmac('sha256',secret).update('shadow-delivery-only-v1').digest('hex');
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&timingSafeEqual(x,y);};
 function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthetic=false,handleRequest}){
   if(webhookSecret?.length<16||adminToken?.length<32||!webhookSecret||!adminToken)throw Error('PRIVATE_EXECUTION_CONFIGURATION_REQUIRED');
@@ -16,7 +17,7 @@ function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthe
       let size=0;const parts=[];for await(const chunk of req){size+=chunk.length;if(size>16384)return send(413,{error:'Request too large'});parts.push(chunk);}
       const body=JSON.parse(Buffer.concat(parts).toString('utf8'));
       if(direct){
-        if(!equal(body.secret,webhookSecret))return send(401,{error:'Unauthorized'});
+        if(!equal(body.secret,body.metadata?.diagnostic===true?deliveryCredential(webhookSecret):webhookSecret))return send(401,{error:'Unauthorized'});
         if(body.metadata?.diagnostic===true){
           if(body.strategyId!=='independent_delivery_check_v1'||body.metadata.niftyPaper||body.metadata.hamsFinalPaper||body.metadata.btcPaper||body.metadata.ribbonPaper)return send(422,{error:'Invalid delivery check'});
           return send(202,{...engine.store.probe(body.signalId),mode:'SHADOW',realOrdersEnabled:false,executionComplete:false,diagnostic:true});
@@ -34,4 +35,4 @@ function createIndependentPaperHttp({engine,webhookSecret,adminToken,allowSynthe
   server.requestTimeout=5000;server.headersTimeout=6000;
   return server;
 }
-module.exports={createIndependentPaperHttp};
+module.exports={createIndependentPaperHttp,deliveryCredential};
