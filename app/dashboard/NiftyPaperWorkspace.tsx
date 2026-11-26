@@ -117,10 +117,8 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
 }
 
 export default function NiftyPaperWorkspace() {
-  const [strategy, setStrategy] = useState<Strategy>("current");
   return <div className="space-y-4">
-    <div role="tablist" aria-label="Paper strategies" className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{(Object.keys(names) as Strategy[]).map(name => <button key={name} type="button" role="tab" aria-selected={strategy === name} className={`algo-action ${strategy === name ? "primary" : "secondary"}`} onClick={() => setStrategy(name)}>{names[name]}</button>)}</div>
-    <StrategySession key={strategy} strategy={strategy} />
+    <StrategySession strategy="hams" />
     <NiftyEmergency />
   </div>;
 }
