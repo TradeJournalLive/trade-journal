@@ -9,7 +9,7 @@ type Side = "CE" | "PE";
 export type HamsSignal = { strategyId: string; id: string; action: "BUY" | "SELL"; symbol: string; timeframe: string; closedAt: string; receivedAt: string };
 export type HamsQuote = { id: string; expiry: string; strike: number; side: Side; lotSize: number; at: string; bid: number; ask: number; bidSize: number; askSize: number; asks?: { price: number; quantity: number }[]; bids?: { price: number; quantity: number }[]; depthAt?: string };
 export type HamsCandle = { contractId: string; openedAt: string; closedAt: string; low: number };
-export type HamsPosition = { contract: HamsQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number };
+export type HamsPosition = { indiaVix?: { value: number; at: string }; contract: HamsQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number };
 export type HamsTrade = HamsPosition & { ruleVersion?: number; grossPnl?:number; costs?:{total:number}; exit: number; closedAt: string; reason: string; pnl: number };
 export type HamsState = { rulesV2?:LimitState; enabled: boolean; balance: number; nextLots: number; position: HamsPosition | null; trades: HamsTrade[]; seen: string[]; status: string; pendingExit: HamsTrade["reason"] | null; lastQuoteAt: string | null };
 export function emptyHamsState(): HamsState {
