@@ -8,7 +8,8 @@ type Attempt = { contractId: string; reference: number; at: string };
 type BreakoutTiming = { lateEntry?: boolean; breakoutAt?: string; breakoutDeadline?: string; breakoutTimePrecision?: "SECOND_BUCKET" | "OBSERVED_TICK" };
 type Setup = LimitSignal & BreakoutTiming & { triggered?: boolean; attempt?: Attempt; prepared?: { contractId: string; ask: number; bid: number; at: string } };
 export type RecoverySizing = { version: 1; baseLots: number; lossToRecover: number; recoveryLots: number; selectedLots: number; estimatedTargetNet: number; estimatedStopLoss: number } | { version: 2; lossToRecover: number; selectedLots: number };
-export type LimitPosition = BreakoutTiming & { sizing?: RecoverySizing; contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
+export type IndiaVixObservation = { value: number; at: string };
+export type LimitPosition = BreakoutTiming & { indiaVix?: IndiaVixObservation; sizing?: RecoverySizing; contract: LimitQuote; signalId: string; signalClosedAt: string; receivedAt: string; openedAt: string; entry: number; stop: number; target: number; quantity: number; lots: number; ruleVersion: 2; orderType: "LIMIT"; entryLimit: number };
 export type LimitTrade = LimitPosition & { exit: number; closedAt: string; reason: string; pnl: number; grossPnl: number; costs: ReturnType<typeof optionCosts>; exitLimit: number; exitOrderType?: "LIMIT" | "MARKET"; reconstruction?: import("./paperReconciliation").ReconstructionEvidence };
 export type LimitState = { version: 2; startedAt: string; enabled: boolean; balance: number; nextLots: number; lossCycleFrom?: string; lossCycle?: NiftyLossCycle; capitalReset?: NiftyCapitalReset; position: LimitPosition | null; trades: LimitTrade[]; setup: Setup | null; seen: string[]; decisions: { id: string; receivedAt: string; decidedAt: string; status: string; reason: string }[]; ticks: { at: string; price: number; high?:number; low?:number }[]; pendingExit: { reason: string; limit: number } | null; emergency?: { id: string; requestedAt: string; pending: boolean; completedAt?: string }; status: string; mark: number | null; rangeFilter: boolean; interval: number };
 const time = (at: string) => Date.parse(at);
@@ -152,7 +153,7 @@ export function observeLimitIndex(ticks: LimitState["ticks"], at: string, spot: 
     : [...ticks,{at,price:spot,high:spot,low:spot}];
   return next.filter(t=>time(at)-time(t.at)<=35*60000);
 }
-export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[] }, breakoutGraceMs=0, allowLateEntry=false): LimitState {
+export function markLimitPaper(previous: LimitState, tick: { at: string; spot: number; chain: LimitQuote[]; indiaVix?: IndiaVixObservation }, breakoutGraceMs=0, allowLateEntry=false): LimitState {
   const s=structuredClone(previous),at=tick.at,session=istSession(at),last=s.ticks.at(-1);
   if(!positive(tick.spot)||!Number.isFinite(time(at))||(last&&time(at)<=time(last.at)))return s;
   startNiftyLossCycle(s,at);
@@ -227,6 +228,8 @@ export function markLimitPaper(previous: LimitState, tick: { at: string; spot: n
     if(fill){
       if(fill.price*quantity+20>s.balance){decision(s,setup,at,"INSUFFICIENT_VIRTUAL_CAPITAL","The full premium exceeds available virtual cash.");s.setup=null;return s;}
       s.position={sizing,contract,signalId:setup.id,signalClosedAt:setup.closedAt,receivedAt:setup.receivedAt,openedAt:at,entry:fill.price,stop:round(fill.price-Math.min(20,fill.price*0.25)),target:round(fill.price+Math.min(100,fill.price)),quantity,lots,ruleVersion:2,orderType:"LIMIT",entryLimit:limit,...(setup.breakoutAt?{breakoutAt:setup.breakoutAt,breakoutDeadline:setup.breakoutDeadline,breakoutTimePrecision:setup.breakoutTimePrecision}:{})};
+      const vix=tick.indiaVix, vixAge=vix?Date.parse(at)-Date.parse(vix.at):NaN;
+      if(vix&&Number.isFinite(vix.value)&&vix.value>0&&vixAge>=0&&vixAge<=60000)s.position.indiaVix={...vix};
       if(setup.lateEntry)s.position.lateEntry=true;
       s.mark=contract.bid;decision(s,setup,at,"ENTERED",`ATM ${contract.side} limit filled: ${lots} lot(s) at ₹${fill.price.toFixed(2)}, limit ₹${limit.toFixed(2)}. ${sizeReason}${setup.lateEntry?" (Entered late)":""}${setup.breakoutDeadline?` Breakout grace deadline: ${setup.breakoutDeadline}.`:""}`);s.setup=null;
     }else if(time(at)-time(setup.attempt.at)>=limitRules.entryWaitMs){decision(s,setup,at,"ENTRY_LIMIT_UNFILLED","Full observed quantity was unavailable within the original ask + ₹4 limit during the 1.5-second attempt.");s.setup=null;}
