@@ -15,7 +15,7 @@ export async function loadHamsTradeReports(secret: string): Promise<ReportTrade[
   const { state, incidents } = hamsRecoveryView(raw?.state ?? null, raw?.incidents ?? [], records);
   const trades: ReportTrade[] = state.trades.map(t => ({
     id: `hams:${t.signalId}:${t.openedAt}`, market: "NIFTY HAMS", engine: "HAMS Final",
-    symbol: t.contract.id, side: t.contract.side, status: "CLOSED", signalId: t.signalId,
+    indiaVix: t.indiaVix, symbol: t.contract.id, side: t.contract.side, status: "CLOSED", signalId: t.signalId,
     signalAt: t.signalClosedAt, receivedAt: t.receivedAt, openedAt: t.openedAt, closedAt: t.closedAt,
     entry: t.entry, exit: t.exit, quantity: t.quantity, lots: t.lots, capital: t.entry * t.quantity,
     currency: "INR", pnl: t.grossPnl ?? t.pnl, recordedPnl: t.grossPnl ?? t.pnl,
@@ -24,7 +24,7 @@ export async function loadHamsTradeReports(secret: string): Promise<ReportTrade[
   const p = state.position;
   if (p) trades.push({
     id: `hams:${p.signalId}:${p.openedAt}`, market: "NIFTY HAMS", engine: "HAMS Final",
-    symbol: p.contract.id, side: p.contract.side, status: "OPEN", signalId: p.signalId,
+    indiaVix: p.indiaVix, symbol: p.contract.id, side: p.contract.side, status: "OPEN", signalId: p.signalId,
     signalAt: p.signalClosedAt, receivedAt: p.receivedAt, openedAt: p.openedAt,
     entry: p.entry, quantity: p.quantity, lots: p.lots, capital: p.entry * p.quantity,
     currency: "INR", stop: p.stop, target: p.target,
