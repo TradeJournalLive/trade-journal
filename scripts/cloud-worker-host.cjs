@@ -31,6 +31,8 @@ if(migrationId&&!fs.existsSync(migrationFile)){
 fs.writeFileSync(path.join(directory,'config.json'),JSON.stringify({webhookSecret:secret,fyersAppId:process.env.PAPER_FYERS_APP_ID}),{mode:0o600});
 const definitions={NIFTY:'nifty-paper-worker.cjs',HAMS:'hams-final-worker.cjs',BTC:'btc-delta-paper-worker.cjs',RIBBON:'nifty-ribbon-worker.cjs'};
 const active=new Set((process.env.CLOUD_WORKERS_ENABLED||'').split(',').filter(Boolean));
+// Temporarily retire Current without deleting its checkpoint or audit history.
+active.delete('NIFTY');
 for(const name of active)if(!definitions[name])throw Error('INVALID_WORKER_SELECTION');
 const children=new Map(),timers=new Set(),exits=new Map();let stopping=false;
 function cleanDiagnostic(value){
