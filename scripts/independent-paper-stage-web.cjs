@@ -42,6 +42,11 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,loadedToken
         const target=new URL('https://api-t1.fyers.in/api/v3/generate-authcode');for(const [key,value] of Object.entries({client_id:appId,redirect_uri:callback,response_type:'code',state:session.oauth.state}))target.searchParams.set(key,value);
         redirect(res,target.toString());return true;
       }
+      if(route==='/stage/hams/review'){
+        try{getEngine().acknowledgeFlatReview('hams',body.get('incident'));}
+        catch{page(res,409,'<p>HAMS rehearsal review could not be acknowledged. Refresh and confirm it is flat.</p>');return true;}
+        redirect(res,'/stage');return true;
+      }
       if(route==='/stage/control'){
         const strategy=body.get('strategy');if(!['current','hams'].includes(strategy)){page(res,422,'<p>Unknown strategy.</p>');return true;}
         if(body.get('enabled')==='true'&&!ready()){page(res,409,'<p>Fresh live feed and verified signal configuration are required before arming.</p>');return true;}
@@ -62,7 +67,7 @@ function createStageWeb({origin,password,appId,appSecret,sessionFile,loadedToken
     }
     if(route==='/stage'&&req.method==='GET'){
       const saved=readFyersSession(sessionFile,appId),engine=getEngine();
-      const rows=['current','hams'].map(s=>{const v=engine.read(s).state;return '<tr><th>'+escape(s==='current'?'NIFTY Current':'HAMS')+'</th><td>'+escape(v.rules.status)+'</td><td><form method="post" action="/stage/control">'+input(session)+'<input type="hidden" name="strategy" value="'+s+'"><input type="hidden" name="enabled" value="'+(!v.rules.enabled)+'"><button'+(!v.rules.enabled&&!ready()?' disabled':'')+'>'+(v.rules.enabled?'Disable entries':'Enable entries')+'</button></form></td></tr>';}).join('');
+      const rows=['current','hams'].map(s=>{const v=engine.read(s).state;const review=s==='hams'&&v.review&&!v.review.positionOpen&&!v.rules.position&&!v.rules.enabled&&!v.rules.pendingExit?'<form method="post" action="/stage/hams/review">'+input(session)+'<input type="hidden" name="incident" value="'+escape(v.review.id)+'"><button>Acknowledge flat HAMS review</button></form>':'';return '<tr><th>'+escape(s==='current'?'NIFTY Current':'HAMS')+'</th><td>'+escape(v.rules.status)+'</td><td><form method="post" action="/stage/control">'+input(session)+'<input type="hidden" name="strategy" value="'+s+'"><input type="hidden" name="enabled" value="'+(!v.rules.enabled)+'"><button'+(!v.rules.enabled&&!ready()?' disabled':'')+'>'+(v.rules.enabled?'Disable entries':'Enable entries')+'</button></form>'+review+'</td></tr>';}).join('');
       const health=getRuntime(),checks=engine.store.probeHealth();
       const receipts=engine.store.recentSignals().map(r=>'<tr><td>'+escape(r.strategy)+'</td><td>'+escape(time(r.receivedAt))+'</td><td>'+escape(r.action)+'</td><td style="overflow-wrap:anywhere;max-width:260px">'+escape(r.id)+'</td><td>'+(r.processed?'Processed':'Queued')+'</td></tr>').join('');
       const results=['current','hams'].map(s=>{const r=engine.read(s).state.rules,decisions=r.decisions.slice(-8).reverse().map(d=>'<tr><td>'+escape(time(d.decidedAt))+'</td><td>'+escape(d.status)+'</td><td style="overflow-wrap:anywhere">'+escape(d.reason)+'</td></tr>').join('');return '<section><h2>'+escape(s==='current'?'NIFTY Current':'HAMS')+'</h2><p>Paper balance: '+escape(r.balance.toLocaleString('en-IN',{style:'currency',currency:'INR'}))+' · Next size: '+escape(r.nextLots)+' lots</p><p>Open position: '+escape(r.position?r.position.contract.id+' · '+r.position.lots+' lots':'None')+'</p><p>Closed trades: '+r.trades.length+'</p><table><thead><tr><th>Time · IST</th><th>Decision</th><th>Reason</th></tr></thead><tbody>'+decisions+'</tbody></table></section>';}).join('');
