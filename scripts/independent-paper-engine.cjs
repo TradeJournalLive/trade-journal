@@ -12,6 +12,7 @@ function changedRecords(before,after,strategy,at){
   for(const t of after.rules.trades)if(!before.rules.trades.some(p=>key(p)===key(t)))add('EXIT',key(t),t);
   for(const d of after.rules.decisions)if(!before.rules.decisions.some(p=>JSON.stringify(p)===JSON.stringify(d)))add('DECISION',[d.id,d.status,d.decidedAt],d);
   if(after.review&&!before.review)add('INCIDENT',after.review.id,after.review);
+  if(before.review&&!after.review)add('INCIDENT_ACK',before.review.id,{incidentId:before.review.id,reason:'FLAT_SHADOW_REVIEW_ACKNOWLEDGED'});
   return records;
 }
 function createIndependentPaperEngine({file,owner,clock=Date.now,workerId=crypto.randomUUID(),initialStates={},currentStrategyId=ids.current}){
@@ -72,7 +73,17 @@ function createIndependentPaperEngine({file,owner,clock=Date.now,workerId=crypto
       state.rules.status=state.rules.position?'OPEN':enabled?'WAITING_FOR_SIGNAL':'DISABLED';return state;
     });
   }
+  function acknowledgeFlatReview(strategy,id){
+    return step(strategy,state=>{
+      if(strategy!=='hams'||!state.review||state.review.id!==id)throw issue('SHADOW_REVIEW_ID_MISMATCH');
+      if(state.rules.position||state.rules.enabled||state.rules.pendingExit||state.review.positionOpen)throw issue('SHADOW_REVIEW_NOT_FLAT');
+      state.review=null;
+      state.rules.setup=null;
+      state.rules.status='DISABLED';
+      return state;
+    });
+  }
   function watchdog(){for(const s of ['current','hams']){const state=store.read(s).state;if(state.review||!state.feedAt||(!state.rules.position&&!state.rules.setup))continue;if(clock()-Date.parse(state.feedAt)>5000||(state.rules.position&&state.activeQuoteAt&&clock()-Date.parse(state.activeQuoteAt)>5000))pause(s,'MARKET_PRICE_GAP','The index or open-option price stream became stale. The unobserved price path requires review.');}}
-  return {signal,process,tick,pause,control,watchdog,renew:()=>store.renew(writer),read:s=>store.read(s),flush:t=>store.flush(t),health:()=>({...store.health(),strategies:Object.fromEntries(['current','hams'].map(s=>{const v=store.read(s);return [s,{revision:v.revision,enabled:v.state.rules.enabled,positionOpen:Boolean(v.state.rules.position),reviewRequired:Boolean(v.state.review),sessionInterrupted:v.state.sessionInterrupted}];}))}),close(){try{store.release(writer);}finally{store.close();}},store};
+  return {signal,process,tick,pause,control,acknowledgeFlatReview,watchdog,renew:()=>store.renew(writer),read:s=>store.read(s),flush:t=>store.flush(t),health:()=>({...store.health(),strategies:Object.fromEntries(['current','hams'].map(s=>{const v=store.read(s);return [s,{revision:v.revision,enabled:v.state.rules.enabled,positionOpen:Boolean(v.state.rules.position),reviewRequired:Boolean(v.state.review),sessionInterrupted:v.state.sessionInterrupted}];}))}),close(){try{store.release(writer);}finally{store.close();}},store};
 }
 module.exports={createIndependentPaperEngine,changedRecords,load};
