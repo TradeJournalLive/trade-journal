@@ -12,7 +12,8 @@ const PaperIncidentHistory = dynamic(() => import("./PaperIncidentHistory"));
 
 const names = { current: "NIFTY Current", hams: "NIFTY HAMS Final" } as const;
 type Strategy = keyof typeof names;
-type Snapshot = { dashboard: NiftyPaperStatus | null; workerOnline: boolean; heartbeatAt: string | null };
+type OpenPosition = NonNullable<NiftyPaperStatus["position"]> & { ltp?: number; ltpAt?: string };
+type Snapshot = { dashboard: (Omit<NiftyPaperStatus, "position"> & { position: OpenPosition | null }) | null; workerOnline: boolean; heartbeatAt: string | null };
 type Trade = { id: string; openedAt: string; closedAt: string; contract: string; lots: number; entry: number; exit: number; pnl: number; charges: number; reason: string; reconstruction?: {fillVerified:false} | null };
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
 const display = (n: number | null | undefined) => n == null ? "—" : money.format(n);
@@ -74,6 +75,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
   }, [refresh]);
 
   const d = value?.dashboard, p = d?.position;
+  const ltpAge = Date.now() - Date.parse(p?.ltpAt ?? "");
   const fresh = Boolean(d?.feedAt && Date.now() - Date.parse(d.feedAt) >= 0 && Date.now() - Date.parse(d.feedAt) < 15000);
   async function post(body: Record<string, unknown>) {
     if (busy || Date.now() < disabledUntil.current) return;
@@ -108,7 +110,7 @@ function StrategySession({ strategy }: { strategy: Strategy }) {
       <div><dt className="text-xs text-slate-600" title="Profitable verified closed trades after charges / all verified closed trades in the paper session.">Win rate</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{d?.winRate?.closed ? `${(100 * d.winRate.wins / d.winRate.closed).toFixed(1)}%` : "—"}</dd></div>
     </dl>
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 text-sm"><h3 className="font-semibold">Open position</h3>{!p && <span className="text-slate-600">{d ? "No open position" : "Awaiting worker status"}</span>}
-      {p && <div className="w-full space-y-1"><p className="font-medium">{p.contract} · {p.lots} lots · {p.quantity} qty{p.lateEntry ? " · Entered late" : ""}</p><p className="flex flex-wrap gap-x-4 text-xs text-slate-600"><span>Entry {display(p.entry)}</span><span>Stop {display(p.stop)}</span><span>Target {display(p.target)}</span><span>Capital {display(p.entry*p.quantity)}</span><span>Open P&amp;L {display(fresh && !d?.reviewRequired && p.mark != null ? (p.mark-p.entry)*p.quantity : null)}</span></p></div>}
+      {p && <div className="w-full space-y-1"><p className="font-medium">{p.contract} · {p.lots} lots · {p.quantity} qty{p.lateEntry ? " · Entered late" : ""}</p><p className="flex flex-wrap gap-x-4 text-xs text-slate-600"><span>Entry {display(p.entry)}</span><span>Stop {display(p.stop)}</span><span>Target {display(p.target)}</span><span>Capital {display(p.entry*p.quantity)}</span><span title="Last traded price for the option">LTP {display(value?.workerOnline && fresh && ltpAge >= 0 && ltpAge <= 5000 ? p.ltp : null)}</span><span>Open P&amp;L {display(fresh && !d?.reviewRequired && p.mark != null ? (p.mark-p.entry)*p.quantity : null)}</span></p></div>}
     </div>
     {d?.reviewRequired && <PaperRecoveryReview strategy={strategy} />}
     <SessionHistory strategy={strategy} />
