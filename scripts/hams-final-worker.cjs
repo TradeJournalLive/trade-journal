@@ -35,7 +35,7 @@ const now = () => new Date().toISOString();
 const day = at => new Date(Date.parse(at) + 330*60000).toISOString().slice(0,10);
 let state = emptyHamsState(), decisions = [], pending = null, connection, socket, master = [], spot = null;
 const INDIA_VIX = 'NSE:INDIAVIX-INDEX';
-let indiaVix;
+let indiaVix, activeLtp;
 let lease, ack = 0, status = 'STARTING', feedAt = null, mark = null, stopped = false, busy = false, publishing = false, pollAfter;
 let journal, initialized = false, claimed = false, incidents = [], lastControl = null, flushing = false, revision = 0;
 let diagnosticsTimer, lastPollStartedAt=null, lastPollFinishedAt=null, lastRefreshStartedAt=null,lastRefreshFinishedAt=null;
@@ -122,6 +122,11 @@ async function publish() {
     save();
     const at = now(), snapshot = { ...journal.read(), workerId, feedAt, mark, workerStatus: reviewRequired() ? 'RECOVERY_REVIEW_REQUIRED' : status };
     const dashboard=state.rulesV2?niftyPaperStatus(state.rulesV2,snapshot.workerStatus,feedAt,reviewRequired(),state.trades,incidents.flatMap(i=>i.position?[i.position]:[])):null;
+    if(dashboard?.position && activeLtp?.contract===dashboard.position.contract &&
+        Date.now()-activeLtp.at>=0 && Date.now()-activeLtp.at<=5000){
+      dashboard.position.ltp=activeLtp.value;
+      dashboard.position.ltpAt=new Date(activeLtp.at).toISOString();
+    }
     let r;try{r=await db.from(TABLE).update(row('state',at,{...snapshot,publicView:hamsPublicView(snapshot),dashboard})).eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').eq('received_at',lease).eq('raw_payload->>workerId',workerId).select('id');}
     catch(error){r={error};}
     const confirmed=await reconcileHamsPublish(r,()=>db.from(TABLE).select('received_at,worker_id:raw_payload->>workerId').eq('secret_hash',owner).eq('strategy_id',STRATEGY).eq('signal_id','state').maybeSingle(),workerId,at);
@@ -193,6 +198,9 @@ function onMessage(message) {
       else {
         const t = Number(r.exch_feed_time)*1000;
         if (!Number.isFinite(t) || Date.now()-t < 0 || Date.now()-t > 5000) continue;
+        const ltp=Number(r.ltp);
+        if(r.symbol===state.position?.contract.id&&Number.isFinite(ltp)&&ltp>0&&
+            (activeLtp?.contract!==r.symbol||t>=activeLtp.at))activeLtp={contract:r.symbol,value:ltp,at:t};
         if (r.symbol === INDEX && Number(r.ltp)>0) spot = { price:Number(r.ltp),at:t };
         else if (Number(r.bid_price)>0 && Number(r.ask_price)>=Number(r.bid_price)) quotes.set(r.symbol,{ at:new Date(t).toISOString(),bid:Number(r.bid_price),ask:Number(r.ask_price),bidSize:Number(r.bid_size),askSize:Number(r.ask_size) });
       }
@@ -402,8 +410,8 @@ async function main() {
   save();
   await flushLedger();
   socket=fyersDataSocket.getInstance(`${connection.appId}:${connection.accessToken}`,directory,false);
-  socket.on('connect',()=>{status=publishFailures?'STORAGE_RETRY':'READY';quotes.clear();depths.clear();spot=null;indiaVix=undefined;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);try{socket.subscribe([INDIA_VIX]);}catch(error){diagnostics.failure('feed.vix.subscribe',error);}});
-  socket.on('message',onMessage);socket.on('error',error=>{diagnostics.failure('feed.socket',error);status='FEED_ERROR';feedAt=null;});socket.on('close',()=>{diagnostics.write('FEED_DISCONNECTED');status='FEED_DISCONNECTED';feedAt=null;});
+  socket.on('connect',()=>{status=publishFailures?'STORAGE_RETRY':'READY';quotes.clear();depths.clear();spot=null;indiaVix=undefined;activeLtp=undefined;socket.subscribe([INDEX,...new Set(symbols)]);socket.subscribe([...new Set(symbols)],true);try{socket.subscribe([INDIA_VIX]);}catch(error){diagnostics.failure('feed.vix.subscribe',error);}});
+  socket.on('message',onMessage);socket.on('error',error=>{diagnostics.failure('feed.socket',error);status='FEED_ERROR';feedAt=null;activeLtp=undefined;});socket.on('close',()=>{diagnostics.write('FEED_DISCONNECTED');status='FEED_DISCONNECTED';feedAt=null;activeLtp=undefined;});
   socket.connect(); if(socket.autoreconnect)socket.autoreconnect(50);
   save(); console.log('HAMS Final paper worker started; read-only FYERS data.');
   diagnostics.write('STARTED');
