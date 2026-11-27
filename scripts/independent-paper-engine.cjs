@@ -38,7 +38,11 @@ function createIndependentPaperEngine({file,owner,clock=Date.now,workerId=crypto
     if(!ids[strategy]||payload?.strategyId!==(strategy==='current'?currentStrategyId:ids.hams)||payload.symbol!=='NSE:NIFTY'||!['BUY','SELL'].includes(payload.action)||String(payload.timeframe)!==(strategy==='current'?'1':'3')||typeof payload.signalId!=='string'||!payload.signalId.trim()||payload.signalId.length>200||payload.signalId.startsWith('panel-test-')||payload.metadata?.diagnostic||payload.metadata?.btcPaper||payload.metadata?.ribbonPaper||payload.metadata?.[strategy==='current'?'hamsFinalPaper':'niftyPaper'])throw issue('INVALID_DIRECT_SIGNAL');
     const data=niftySignalCandle(payload.metadata?.[strategy==='current'?'niftyPaper':'hamsFinalPaper'],payload.timeframe),now=clock();
     if(!data||Date.parse(data.closedAt)>now||now-Date.parse(data.closedAt)>86400000)throw issue('INVALID_SIGNAL_CANDLE_TIME');
-    return {id:payload.signalId,strategyId:payload.strategyId,symbol:'NSE:NIFTY',action:payload.action,interval:Number(payload.timeframe),closedAt:data.closedAt,high:data.high,low:data.low,receivedAt:stamp(now)};
+    // TradingView accepts a standalone {{time}} placeholder in new JSON alerts.
+    const barOpen=payload.metadata?.hamsFinalPaper?.barOpen;
+    const id=strategy==='hams'&&payload.signalId===barOpen&&Number.isFinite(Date.parse(barOpen))
+      ? 'hams-final-'+barOpen+'-NIFTY-'+payload.action : payload.signalId;
+    return {id,strategyId:payload.strategyId,symbol:'NSE:NIFTY',action:payload.action,interval:Number(payload.timeframe),closedAt:data.closedAt,high:data.high,low:data.low,receivedAt:stamp(now)};
   }
   function signal(strategy,payload){return store.receive(strategy,normalize(strategy,payload));}
   function process(strategy){
