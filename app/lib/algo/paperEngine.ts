@@ -14,12 +14,14 @@ export type IndexTrade = IndexPosition & { exit: number; referenceExit: number; 
 export type PaperBook = { market: PaperMarket; enabled: boolean; symbol: string | null; slippage: number; nextCandle: boolean; pending: { signalId: string; symbol: string; action: string; signalPrice: number; openTime: string; timeframe: string } | null; unresolvedPositions: IndexPosition[]; position: IndexPosition | null; trades: IndexTrade[]; lastPrice: number | null; lastSignalAt: string | null; ignored: number; pendingSessionClose: boolean };
 
 function marketOf(event: PaperEvent): PaperMarket | null {
+  if (typeof event.signal.symbol !== "string" || !event.signal.symbol.trim()) return null;
   const symbol = event.signal.symbol.toUpperCase();
-  const underlying = event.raw.automation?.underlying?.toUpperCase();
   if (symbol.includes("BTC") || symbol.includes("BITCOIN")) return "BTC";
   if (symbol.includes("GOLD") || symbol.includes("XAU")) return "GOLD";
   if (symbol.includes("NIFTY") && !/BANK|FIN|MID/.test(symbol)) return "NIFTY";
-  return markets.includes(underlying as PaperMarket) ? underlying as PaperMarket : null;
+  const underlying = event.raw.automation?.underlying;
+  const normalized = typeof underlying === "string" ? underlying.toUpperCase() : null;
+  return markets.find(market => market === normalized) ?? null;
 }
 function ist(iso: string) {
   const date = new Date(Date.parse(iso) + 330 * 60000);
