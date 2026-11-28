@@ -32,10 +32,20 @@ async function checkBroker(directory, key, appId, fetcher) {
         headers: { Authorization: appId + ':' + token, Accept: 'application/json' }
       });
       const body = await response.json().catch(() => null);
-      return [name, response.ok && body?.s === 'ok' ? 'OK' :
-        'FAILED (HTTP ' + response.status + (Number.isSafeInteger(body?.code) ? ', FYERS code ' + body.code : '') + ')'];
+      if (!response.ok || body?.s !== 'ok' || body.code !== 200)
+        return [name, { error: 'FAILED (HTTP ' + response.status + (Number.isSafeInteger(body?.code) ? ', FYERS code ' + body.code : '') + ')' }];
+      if (name === 'orders') {
+        const rows = body.orderBook;
+        if (!Array.isArray(rows) || rows.some(row => ![1, 2, 4, 5, 6, 7].includes(row?.status)))
+          return [name, { error: 'UNVERIFIED (unexpected FYERS order status or payload)' }];
+        return [name, { active: rows.filter(row => row.status === 4 || row.status === 6).length }];
+      }
+      const rows = body.netPositions;
+      if (!Array.isArray(rows) || rows.some(row => !Number.isSafeInteger(row?.netQty)))
+        return [name, { error: 'UNVERIFIED (unexpected FYERS position payload)' }];
+      return [name, { active: rows.filter(row => row.netQty !== 0).length }];
     } catch {
-      return [name, 'FAILED (broker request unavailable)'];
+      return [name, { error: 'FAILED (broker request unavailable)' }];
     }
   }));
   return Object.fromEntries(checks);
@@ -82,6 +92,7 @@ async function createService(env, { fetcher = fetch } = {}) {
     redirectUrl: env.LIVE_FYERS_REDIRECT_URL, fetcher
   });
   const origin = new URL(env.LIVE_FYERS_REDIRECT_URL).origin;
+  let brokerCheck;
   if (!env.LIVE_FYERS_DATA_DIR) await probeStorage(homedir());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   return createServer(async (req, res) => {
@@ -111,10 +122,20 @@ async function createService(env, { fetcher = fetch } = {}) {
       if (url.pathname === '/live/fyers/check' && req.method === 'POST') {
         if (req.headers.origin !== origin) return finish(403, 'Origin rejected.');
         let result;
-        try { result = await checkBroker(dir, key, env.LIVE_FYERS_APP_ID, fetcher); }
+        try {
+          brokerCheck ??= checkBroker(dir, key, env.LIVE_FYERS_APP_ID, fetcher).finally(() => { brokerCheck = undefined; });
+          result = await brokerCheck;
+        }
         catch { return finish(409, 'Saved session unavailable. Return to /live and reconnect FYERS.'); }
-        return finish(Object.values(result).every(s => s === 'OK') ? 200 : 502,
-          'Orders: ' + result.orders + '\\nPositions: ' + result.positions + '\\nOrder submission disabled.');
+        const { orders, positions } = result;
+        const verified = !orders.error && !positions.error;
+        return finish(verified ? 200 : 502, [
+          'Orders: ' + (orders.error || 'OK (' + orders.active + ' pending or in transit)'),
+          'Positions: ' + (positions.error || 'OK (' + positions.active + ' open)'),
+          'Account observation: ' + (!verified ? 'UNVERIFIED' : orders.active || positions.active ? 'ACTIVITY PRESENT' : 'FLAT; NO WORKING ORDERS'),
+          'This check does not confirm stop protection or authorize entries.',
+          'Order submission disabled.'
+        ].join('\n'));
       }
       if (url.pathname === '/live/fyers/connect' && req.method === 'POST') {
         if (req.headers.origin !== origin) return finish(403, 'Origin rejected.');
